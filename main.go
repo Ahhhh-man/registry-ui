@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Ahhhh-man/registry-ui/internal/config"
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
@@ -66,17 +67,28 @@ func serve() error {
 	catalog := func(w http.ResponseWriter, r *http.Request, _ web.Ref) {
 		repos, err := src.Catalog(r.Context())
 		if err != nil {
-			slog.Error("catalog", "err", err)
-			http.Error(w, "registry error", http.StatusBadGateway)
+			web.Error(w, r, err)
 			return
 		}
 		_, _ = fmt.Fprintln(w, strings.Join(repos, "\n"))
+	}
+	tmpl, err := ui.Templates(web.FuncMap(cfg.BasePath, ui.StaticName))
+	if err != nil {
+		return err
 	}
 	h := web.New(cfg.BasePath, web.Handlers{
 		Catalog: catalog, Repo: stub, Tag: stub, Digest: stub,
 		Static: ui.StaticHandler(),
 	})
-	return http.ListenAndServe(cfg.Listen, h)
+	srv := &http.Server{
+		Addr:              cfg.Listen,
+		Handler:           web.Middleware(h, ui.ErrorRenderer(tmpl, cfg.Title)),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second, // above the 10 s upstream timeout, with room for a few calls
+		IdleTimeout:       2 * time.Minute,
+	}
+	return srv.ListenAndServe()
 }
 
 // newSource builds the Source the pages read from. In builds tagged fake,

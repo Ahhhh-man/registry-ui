@@ -1,4 +1,5 @@
+{{/* 4xx and 5xx responses are swapped in too: they carry the inline error state. */}}
 {{define "htmx"}}
-<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false}'>
+<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true},{"code":"...","swap":false}]}'>
 <script src="{{staticURL "htmx.min.js"}}" defer></script>
 {{end}}

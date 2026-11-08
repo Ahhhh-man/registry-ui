@@ -145,6 +145,15 @@
 }
 
 @layer components {
+  /* htmx's indicator styles, which it would otherwise inject inline (the CSP forbids that). */
+  .htmx-indicator {
+    opacity: 0;
+  }
+  .htmx-request .htmx-indicator,
+  .htmx-request.htmx-indicator {
+    opacity: 1;
+    transition: opacity 200ms ease-in;
+  }
   /* Inline Lucide icons ({{icon "name"}}); size utilities override. */
   .icon {
     width: 16px;

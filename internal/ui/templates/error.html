@@ -1,0 +1,30 @@
+{{/* Error states. Data is a web.ErrorPage. "error" is a page body for the
+     layout; "error-inline" is the compact state htmx swaps into a page. */}}
+{{define "error" -}}
+{{$icon := "alert-circle"}}{{if eq .Status 404}}{{$icon = "search"}}{{else if eq .Status 403}}{{$icon = "lock"}}{{else if eq .Status 502}}{{$icon = "triangle-alert"}}{{end -}}
+{{$tone := "bg-panel text-faint"}}{{if eq .Status 502}}{{$tone = "bg-warn-bg text-warn-fg"}}{{else if ge .Status 500}}{{$tone = "bg-danger-bg text-danger-fg"}}{{end -}}
+<section class="mt-10 rounded-md border border-dashed border-border bg-surface px-5 py-12 text-center">
+  <span class="mx-auto grid size-12 place-items-center rounded-md {{$tone}}">{{icon $icon "size-6"}}</span>
+  <h1 class="mt-3 text-lg font-semibold">{{.Title}}</h1>
+  <p class="mx-auto mt-1 max-w-md text-muted">{{.Message}}</p>
+  <div class="mt-5 flex flex-wrap justify-center gap-2">
+    {{- with .Retry}}
+    <a href="{{.}}" class="inline-flex items-center rounded-md bg-accent px-3 py-2 font-medium text-accent-fg hover:opacity-90">Try again</a>
+    {{- end}}
+    <a href="{{catalogURL}}" class="inline-flex items-center rounded-md border border-border px-3 py-2 font-medium hover:bg-panel">Back to repositories</a>
+  </div>
+</section>
+{{- end}}
+
+{{define "error-inline" -}}
+{{$icon := "alert-circle"}}{{if eq .Status 404}}{{$icon = "search"}}{{else if eq .Status 403}}{{$icon = "lock"}}{{else if eq .Status 502}}{{$icon = "triangle-alert"}}{{end -}}
+{{$tone := "bg-panel text-muted"}}{{if eq .Status 502}}{{$tone = "bg-warn-bg text-warn-fg"}}{{else if ge .Status 500}}{{$tone = "bg-danger-bg text-danger-fg"}}{{end -}}
+<div role="alert" class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-3 py-2 {{$tone}}">
+  {{icon $icon}}
+  <span class="font-medium">{{.Title}}.</span>
+  <span>{{.Message}}</span>
+  {{- with .Retry}}
+  <a href="{{.}}" class="font-medium underline">Try again</a>
+  {{- end}}
+</div>
+{{- end}}

@@ -40,19 +40,19 @@ func New(base string, h Handlers) http.Handler {
 				http.Redirect(w, r, target, http.StatusMovedPermanently)
 				return
 			}
-			http.NotFound(w, r)
+			renderError(w, r, notFound)
 			return
 		}
 		switch {
 		case strings.HasPrefix(p, "-/static/"):
 			static.ServeHTTP(w, r)
 		case strings.HasPrefix(p, "-/"):
-			http.NotFound(w, r)
+			renderError(w, r, notFound)
 		default:
 			ref, ok := parseRef(p)
 			page := pages[ref.Kind]
 			if !ok || page == nil {
-				http.NotFound(w, r)
+				renderError(w, r, notFound)
 				return
 			}
 			// The same URL answers with a full page or a fragment.
