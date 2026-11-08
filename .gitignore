@@ -1,0 +1,21 @@
+# Whitelist: ignore everything, then allow what belongs in the repo.
+# New top-level files or folders must be added here explicitly.
+*
+!*/
+
+!/.gitignore
+!/README.md
+!/LICENSE
+!/go.mod
+!/go.sum
+!/main.go
+!/*.nix
+!/flake.lock
+!/govendor.toml
+!/Dockerfile
+!/.dockerignore
+!/Taskfile.yml
+
+!/internal/**
+!/web/**
+!/.github/**

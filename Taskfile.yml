@@ -1,0 +1,36 @@
+version: "3"
+
+tasks:
+  dev:
+    desc: Run with templates and assets served from disk
+    cmds:
+      # Tailwind watch and -tags dev arrive with #5 and #10.
+      - go run .
+
+  build:
+    desc: Build the binary
+    cmds:
+      - CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o registry-ui .
+
+  test:
+    desc: Run the tests
+    cmds:
+      - go test ./...
+
+  lint:
+    desc: Vet and lint
+    cmds:
+      - go vet ./...
+      - golangci-lint run
+
+  css:
+    desc: Compile Tailwind
+    cmds:
+      # Filled in by #5.
+      - echo "no stylesheet yet"
+
+  image:
+    desc: Build the container image with Nix and load it into Docker
+    cmds:
+      - nix build .#image
+      - docker load < result

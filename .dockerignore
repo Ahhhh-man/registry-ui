@@ -1,0 +1,6 @@
+# Same whitelist idea as .gitignore: only send what the build needs.
+*
+!go.mod
+!go.sum
+!main.go
+!internal/
