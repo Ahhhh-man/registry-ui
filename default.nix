@@ -3,7 +3,7 @@
   go,
 }: let
   pname = "registry-ui";
-  version = "0.1.0";
+  version = "0.5.0";
 in
   pkgs.buildGoApplication {
     inherit go pname version;
