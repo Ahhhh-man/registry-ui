@@ -3,6 +3,7 @@
 *
 
 !/.gitignore
+!/.envrc
 !/README.md
 !/LICENSE
 !/go.mod

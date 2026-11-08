@@ -167,6 +167,8 @@ task build   # ./registry-ui
 task image   # builds the container image with Nix and loads it into Docker
 ```
 
+With [direnv](https://direnv.net) and [nix-direnv](https://github.com/nix-community/nix-direnv), run `direnv allow` once and the dev shell loads whenever you `cd` into the repo.
+
 `task dev` needs `REGISTRY_UI_REGISTRY_URL` pointing at a registry. To work on the UI without one, build with `-tags fake`. That serves built-in sample data. The URL still has to be set, but it isn't used:
 
 ```sh
