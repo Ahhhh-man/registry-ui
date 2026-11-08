@@ -10,12 +10,28 @@
     root.classList.contains("dark") ||
     (!root.classList.contains("light") && matchMedia("(prefers-color-scheme: dark)").matches);
 
+  // The new theme spreads out from the button as a growing circle, where the
+  // browser has view transitions and the user hasn't asked for less motion.
   document.addEventListener("click", (e) => {
-    if (!e.target.closest("[data-theme-toggle]")) return;
+    const btn = e.target.closest("[data-theme-toggle]");
+    if (!btn) return;
     const theme = isDark() ? "light" : "dark";
-    root.classList.remove("light", "dark");
-    root.classList.add(theme);
+    const apply = () => {
+      root.classList.remove("light", "dark");
+      root.classList.add(theme);
+    };
     document.cookie = `theme=${theme}; path=/; max-age=31536000; samesite=lax`;
+    if (!document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return apply();
+    const b = btn.getBoundingClientRect();
+    const x = b.left + b.width / 2;
+    const y = b.top + b.height / 2;
+    const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    document.startViewTransition(apply).ready.then(() =>
+      root.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+        { duration: 500, easing: "cubic-bezier(0.2, 0, 0, 1)", pseudoElement: "::view-transition-new(root)" },
+      ),
+    );
   });
 
   // Copy buttons ([data-copy], the "copy" partial). navigator.clipboard only
@@ -62,12 +78,12 @@
   // The tag page's ?platform= link: bring the highlighted card into view.
   document.querySelector('article[aria-current="true"]')?.scrollIntoView({ block: "center" });
 
-  // "/" focuses the last [data-hotkey="/"] field, so a page's own filter wins
-  // over the header search. Esc clears it, then leaves it; the input event
-  // lets an htmx filter catch up.
+  // "/" focuses the header search ([data-hotkey="/"]) on every page. Esc in
+  // any search field clears it, then leaves it; the input event lets an htmx
+  // filter catch up.
   document.addEventListener("keydown", (e) => {
     const t = e.target;
-    if (e.key === "Escape" && t.matches?.('[data-hotkey="/"]')) {
+    if (e.key === "Escape" && t.matches?.('input[type="search"]')) {
       e.preventDefault();
       if (t.value) {
         t.value = "";
@@ -79,8 +95,7 @@
     }
     if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
     if (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
-    const fields = document.querySelectorAll('[data-hotkey="/"]');
-    const field = fields[fields.length - 1];
+    const field = document.querySelector('[data-hotkey="/"]');
     if (!field) return;
     e.preventDefault();
     field.focus();

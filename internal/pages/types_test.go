@@ -128,17 +128,17 @@ func TestCatalogTypeKeptInLinks(t *testing.T) {
 
 func TestRepoTypes(t *testing.T) {
 	s := newTestServer(t, "/")
-	all := cardTags(get(t, s, "/", "/library/nginx", false).Body.String())
+	all := cardTags(get(t, s, "/", "/library/nginx?tab=tags", false).Body.String())
 	sig := all[2]
 	images := strings.Join(slices.DeleteFunc(slices.Clone(all), func(t string) bool { return t == sig }), " ")
 	for _, c := range []struct{ target, tags, chips, empty string }{
 		// Unfiltered: signatures are known by name, the rest by the header tag.
-		{"/library/nginx", strings.Join(all, " "), "*All 15 · Images · Signatures 1", ""},
+		{"/library/nginx?tab=tags", strings.Join(all, " "), "*All 15 · Images · Signatures 1", ""},
 		{"/library/nginx?type=image", images, "All 15 · *Images 14 · Signatures 1", ""},
 		{"/library/nginx?type=signature", sig, "All 15 · Images 14 · *Signatures 1", ""},
 		{"/library/nginx?type=helm", "", "All 15 · Images 14 · *Helm charts 0 · Signatures 1", "No Helm charts here"},
 		{"/library/nginx?type=artifact", "", "All 15 · Images 14 · Signatures 1 · *Other artifacts 0", "No artifacts here"},
-		{"/charts/podinfo", "6.7.1 6.7.0", "*All 2 · Helm charts", ""},
+		{"/charts/podinfo?tab=tags", "6.7.1 6.7.0", "*All 2 · Helm charts", ""},
 		{"/charts/podinfo?type=helm", "6.7.1 6.7.0", "All 2 · *Helm charts 2", ""},
 		{"/charts/podinfo?type=image", "", "All 2 · *Images 0 · Helm charts 2", "No images here"},
 		// With the name filter.
@@ -174,16 +174,16 @@ func TestRepoTypeKeptInLinks(t *testing.T) {
 	s.Src = &manyTags{Source: s.Src, n: 250}
 	body := get(t, s, "/", "/many?type=image&sort=name&view=list&page=2", false).Body.String()
 	contains(t, body,
-		`href="/many?page=3&amp;sort=name&amp;type=image&amp;view=list"`, // Next
-		`hx-get="/many?fragment=row&amp;page=2&amp;sort=name&amp;tag=`,   // a row's details…
-		`&amp;type=image&amp;view=list"`,                                 // …on this page
-		`<input type="hidden" name="type" value="image">`,                // the filter
-		`<a href="/many?sort=size&amp;type=image&amp;view=list" class=`,  // the sort menu
-		`<a href="/many?sort=name&amp;view=list" class=`,                 // the All chip, back to page 1
+		`href="/many?page=3&amp;sort=name&amp;tab=tags&amp;type=image&amp;view=list"`, // Next
+		`hx-get="/many?fragment=row&amp;page=2&amp;sort=name&amp;tag=`,                // a row's details…
+		`&amp;type=image&amp;view=list"`,                                              // …on this page
+		`<input type="hidden" name="type" value="image">`,                             // the filter
+		`<a href="/many?sort=size&amp;tab=tags&amp;type=image&amp;view=list" class=`,  // the sort menu
+		`<a href="/many?sort=name&amp;tab=tags&amp;view=list" class=`,                 // the All chip, back to page 1
 	)
 
 	rec := get(t, s, "/", "/library/nginx?q=1.27&type=image&sort=size&fragment=tags", true)
-	if u := rec.Header().Get("HX-Replace-Url"); u != "/library/nginx?q=1.27&sort=size&type=image" {
+	if u := rec.Header().Get("HX-Replace-Url"); u != "/library/nginx?q=1.27&sort=size&tab=tags&type=image" {
 		t.Errorf("HX-Replace-Url = %q", u)
 	}
 	// Filtered, then sorted by size; tags of one image tie and keep version order.

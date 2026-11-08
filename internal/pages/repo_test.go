@@ -38,7 +38,7 @@ func cardTags(body string) []string {
 
 func TestRepoPage(t *testing.T) {
 	s := newTestServer(t, "/")
-	rec := get(t, s, "/", "/library/nginx", false)
+	rec := get(t, s, "/", "/library/nginx?tab=tags", false)
 	if rec.Code != 200 {
 		t.Fatalf("status %d", rec.Code)
 	}
@@ -59,6 +59,9 @@ func TestRepoPage(t *testing.T) {
 			t.Errorf("page lacks %s", want)
 		}
 	}
+	if n := strings.Count(body, `data-hotkey="/"`); n != 1 {
+		t.Errorf("%d fields take /; only the header search should", n)
+	}
 	// latest is pinned; words sort above numbers; 1.10 is newer than 1.9.
 	if got := strings.Join(cardTags(body), " "); !strings.HasPrefix(got, "latest stable sha256-") || !strings.HasSuffix(got, "1.25.5 1.10.3 1.9.15") {
 		t.Errorf("order = %s", got)
@@ -77,12 +80,12 @@ func TestRepoFilterAndPages(t *testing.T) {
 	if len(tags) != 100 || tags[0] != "v250" || tags[99] != "v151" {
 		t.Errorf("page 1 = %d tags, %v … %v", len(tags), tags[0], tags[len(tags)-1])
 	}
-	if !strings.Contains(body, "Page 1 of 3") || !strings.Contains(body, `href="/many?page=2&amp;q=v&amp;view=list"`) {
+	if !strings.Contains(body, "Page 1 of 3") || !strings.Contains(body, `href="/many?page=2&amp;q=v&amp;tab=tags&amp;view=list"`) {
 		t.Error("page 1 lacks its pagination, with the filter and view kept")
 	}
 
 	body = get(t, s, "/", "/many?page=3", false).Body.String()
-	if tags := cardTags(body); len(tags) != 50 || tags[49] != "v1" || !strings.Contains(body, `href="/many?page=2"`) || strings.Contains(body, ">Next<") {
+	if tags := cardTags(body); len(tags) != 50 || tags[49] != "v1" || !strings.Contains(body, `href="/many?page=2&amp;tab=tags"`) || strings.Contains(body, ">Next<") {
 		t.Errorf("page 3 = %v", tags)
 	}
 
@@ -94,12 +97,12 @@ func TestRepoFilterAndPages(t *testing.T) {
 	if strings.Contains(body, "<!doctype html>") || strings.Contains(body, "Pages") {
 		t.Error("the tags fragment should be the bare list, on one page")
 	}
-	if u := rec.Header().Get("HX-Replace-Url"); u != "/many?q=V24" {
+	if u := rec.Header().Get("HX-Replace-Url"); u != "/many?q=V24&tab=tags" {
 		t.Errorf("HX-Replace-Url = %q", u)
 	}
 
 	body = get(t, s, "/", "/many?q=nope&fragment=tags", true).Body.String()
-	if !strings.Contains(body, "No tags match “nope”") || !strings.Contains(body, `<a href="/many"`) {
+	if !strings.Contains(body, "No tags match “nope”") || !strings.Contains(body, `<a href="/many?tab=tags"`) {
 		t.Errorf("no-match state missing:\n%s", body)
 	}
 	if n := src.tagCalls.Load(); n != 4 {
@@ -211,7 +214,7 @@ func TestRepoListView(t *testing.T) {
 		}
 		return "cards"
 	}
-	if got := view("/library/nginx", "list"); got != "list" {
+	if got := view("/library/nginx?tab=tags", "list"); got != "list" {
 		t.Errorf("view cookie list gave %s", got)
 	}
 	if got := view("/library/nginx?view=cards", "list"); got != "cards" {
@@ -258,10 +261,13 @@ func TestRepoOverview(t *testing.T) {
 		return body
 	}
 
-	body := page("/library/nginx?tab=overview")
+	body := page("/library/nginx")
+	if strings.Index(body, `href="/library/nginx?tab=tags"`) < strings.Index(body, `<a href="/library/nginx" aria-current="page"`) {
+		t.Error("Overview isn't the first tab")
+	}
 	for _, want := range []string{
-		`<a href="/library/nginx?tab=overview" aria-current="page"`,
-		`<a href="/library/nginx" class=`, // Tags, not current
+		`<a href="/library/nginx" aria-current="page"`,
+		`<a href="/library/nginx?tab=tags" class=`, // Tags, not current
 		"Official build of Nginx",
 		`<a href="https://github.com/nginxinc/docker-nginx" rel="noreferrer"`,
 		"Read from the OCI labels on latest.",
@@ -327,7 +333,7 @@ func TestRepoNotFound(t *testing.T) {
 
 func TestRepoBasePath(t *testing.T) {
 	s := newTestServer(t, "/registry/")
-	body := get(t, s, "/registry/", "/registry/library/nginx", false).Body.String()
+	body := get(t, s, "/registry/", "/registry/library/nginx?tab=tags", false).Body.String()
 	for _, want := range []string{`href="/registry/library/nginx:1.27.3"`, `hx-get="/registry/library/nginx?fragment=card&amp;tag=1.27.3"`, `action="/registry/library/nginx"`, `<a href="/registry/" class="hover:text-text">Repositories</a>`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %s", want)

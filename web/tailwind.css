@@ -22,7 +22,7 @@
   --drop-shadow-*: initial;
   --text-shadow-*: initial;
 
-  --color-bg: light-dark(#ffffff, #09090b);
+  --color-bg: light-dark(#f5f6f8, #09090b); /* a shade off white, so surfaces stand out */
   --color-surface: light-dark(#ffffff, #111114);
   --color-panel: light-dark(#f4f4f5, #141417);
   --color-border: light-dark(#e4e4e7, #26262b);
@@ -34,7 +34,8 @@
   --color-accent-fg: light-dark(#ffffff, #09090b);
   --color-accent-soft: light-dark(#edf2f9, rgb(66 107 169 / 0.22));
   --color-accent-text: light-dark(#345588, #c4d5ef);
-  --color-teal: #72c2d4; /* the falling block in the logo */
+  --color-teal: #72c2d4; /* the logo's cube tops */
+  --color-accent-deep: light-dark(#2f5288, #5d84c2); /* the logo's shaded cube sides */
   --color-warn-bg: light-dark(#fef3c7, rgb(251 191 36 / 0.12));
   --color-warn-fg: light-dark(#92400e, #fcd34d);
   --color-info-bg: light-dark(#e0f2fe, rgb(56 189 248 / 0.12));
@@ -126,6 +127,9 @@
 @layer base {
   body {
     background-color: var(--color-bg);
+    /* A faint blue glow under the header, fading out down the page. */
+    background-image: radial-gradient(ellipse 70% 360px at 50% 0, color-mix(in oklab, var(--color-accent) 13%, transparent), transparent);
+    background-repeat: no-repeat;
     color: var(--color-text);
     font-size: 14px;
     line-height: 1.5;
@@ -160,5 +164,55 @@
     width: 16px;
     height: 16px;
     flex-shrink: 0;
+  }
+}
+
+/* Motion: small and quick, and none at all with prefers-reduced-motion. The
+   theme switch itself is a circular view transition started in app.js. */
+@media (prefers-reduced-motion: no-preference) {
+  @layer base {
+    a,
+    button,
+    summary,
+    input,
+    select,
+    [data-row] {
+      transition-property: color, background-color, border-color, box-shadow, opacity;
+      transition-duration: 150ms;
+      transition-timing-function: ease-out;
+    }
+  }
+  @layer components {
+    /* The theme toggle's sun and moon turn into each other. */
+    .theme-icon {
+      transition:
+        rotate 400ms cubic-bezier(0.2, 0, 0, 1),
+        scale 400ms cubic-bezier(0.2, 0, 0, 1),
+        opacity 250ms ease-out;
+    }
+    details[data-menu][open] > :not(summary) {
+      animation: pop 150ms ease-out;
+    }
+    [data-selection-bar]:not([hidden]) > div,
+    [data-toast]:not([hidden]) {
+      animation: rise 200ms ease-out;
+    }
+  }
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
 }

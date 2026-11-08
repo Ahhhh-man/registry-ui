@@ -70,7 +70,7 @@ func TestCatalogSortKeptInLinks(t *testing.T) {
 
 func TestRepoSorts(t *testing.T) {
 	s := newTestServer(t, "/")
-	sig := cardTags(get(t, s, "/", "/library/nginx", false).Body.String())[2]
+	sig := cardTags(get(t, s, "/", "/library/nginx?tab=tags", false).Body.String())[2]
 	for _, c := range []struct{ sort, want string }{
 		{"", "latest stable " + sig + " mainline 1.27.3-alpine 1.27.3 1.27.2-alpine 1.27.2 1.27 1.26.2-alpine 1.26.2 1.26 1.25.5 1.10.3 1.9.15"},
 		{"version-asc", "latest 1.9.15 1.10.3 1.25.5 1.26 1.26.2 1.26.2-alpine 1.27 1.27.2 1.27.2-alpine 1.27.3 1.27.3-alpine mainline " + sig + " stable"},
@@ -123,12 +123,12 @@ func TestRepoSortKeptInLinks(t *testing.T) {
 		t.Errorf("name sort, page 2 starts at %v, want %v: the whole list is sorted before paging", tags[0], all[100])
 	}
 	for _, want := range []string{
-		`href="/many?page=3&amp;sort=name&amp;view=list"`,                                             // Next
+		`href="/many?page=3&amp;sort=name&amp;tab=tags&amp;view=list"`,                                // Next
 		`hx-get="/many?fragment=row&amp;page=2&amp;sort=name&amp;tag=` + all[100] + `&amp;view=list"`, // a row's details
 		`<input type="hidden" name="sort" value="name">`,                                              // the filter
-		`<a href="/many?sort=size&amp;view=list" class=`,                                              // the menu goes back to page 1
-		`<a href="/many?sort=name&amp;view=list" aria-current="true"`,
-		`<a href="/many?view=list" class=`,
+		`<a href="/many?sort=size&amp;tab=tags&amp;view=list" class=`,                                 // the menu goes back to page 1
+		`<a href="/many?sort=name&amp;tab=tags&amp;view=list" aria-current="true"`,
+		`<a href="/many?tab=tags&amp;view=list" class=`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %s", want)
@@ -139,7 +139,7 @@ func TestRepoSortKeptInLinks(t *testing.T) {
 	if tags := strings.Join(cardTags(rec.Body.String()), " "); tags != "v24 v240 v241 v242 v243 v244 v245 v246 v247 v248 v249" {
 		t.Errorf("filtered, oldest first = %s", tags)
 	}
-	if u := rec.Header().Get("HX-Replace-Url"); u != "/many?q=v24&sort=version-asc" {
+	if u := rec.Header().Get("HX-Replace-Url"); u != "/many?q=v24&sort=version-asc&tab=tags" {
 		t.Errorf("HX-Replace-Url = %q", u)
 	}
 

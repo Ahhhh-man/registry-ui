@@ -57,7 +57,7 @@ var partialCases = []struct {
 	},
 	{
 		"tabs", `{{template "tabs" (dict "Label" "Repository" "Tabs" (list (dict "Label" "Tags" "Icon" "tag" "Href" "/library/nginx" "Count" 42 "Current" true) (dict "Label" "Overview" "Icon" "book-open" "Href" "/library/nginx?tab=overview")))}}`,
-		[]string{`<nav aria-label="Repository"`, `<a href="/library/nginx" aria-current="page"`, `<a href="/library/nginx?tab=overview" class=`, ">42</span>", "aria-[current=page]:border-accent"},
+		[]string{`<nav aria-label="Repository"`, `<a href="/library/nginx" aria-current="page"`, `<a href="/library/nginx?tab=overview" class=`, ">42</span>", "aria-[current=page]:[border-image:"},
 	},
 	{
 		"segmented", `{{template "segmented" (dict "Label" "View" "Name" "view" "Options" (list (dict "Value" "cards" "Label" "Cards" "Icon" "layers" "Pressed" true) (dict "Value" "list" "Label" "List" "Icon" "list" "Disabled" true)))}}`,
@@ -80,7 +80,7 @@ var partialCases = []struct {
 	},
 	{
 		"filter", `<form>{{template "filter" (dict "Name" "q" "Value" "1.27" "Placeholder" "Filter tags" "Label" "Filter tags")}}</form>`,
-		[]string{`<input type="search" name="q" value="1.27" placeholder="Filter tags" aria-label="Filter tags"`, `data-hotkey="/"`},
+		[]string{`<input type="search" name="q" value="1.27" placeholder="Filter tags" aria-label="Filter tags"`},
 	},
 	{"badge", `{{template "badge" (dict "Label" "linux/amd64")}}`, []string{"bg-panel text-muted", ">linux/amd64</span>"}},
 	{"badge accent", `{{template "badge" (dict "Label" "latest" "Variant" "accent")}}`, []string{"bg-accent-soft text-accent-text", ">latest</span>"}},

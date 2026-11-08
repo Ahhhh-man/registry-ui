@@ -121,7 +121,7 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 	if c, err := r.Cookie("view"); err == nil && v.View == "" {
 		v.List = c.Value == "list"
 	}
-	if q.Get("tab") == "overview" {
+	if !tagsTab(q, web.Fragment(r)) {
 		s.overview(w, r, &v, tags)
 		return
 	}
@@ -337,7 +337,7 @@ func (v *repoView) cards(r *http.Request, page []string, host string) {
 	for i, t := range page {
 		v.Cards[i] = tagCard{
 			Repo: v.Repo, Tag: t, Label: tagLabel(t), Badges: latestBadge(t),
-			Load: v.link(r, "fragment", frag, "tag", t),
+			Load: v.link(r, "fragment", frag, "tag", t, "tab", ""), // a fragment is always Tags
 		}
 		if v.List {
 			k := kind
@@ -362,7 +362,23 @@ func (v *repoView) link(r *http.Request, kv ...string) string {
 	if v.Page > 1 {
 		page = strconv.Itoa(v.Page)
 	}
-	return pageURL(r.URL.EscapedPath(), append([]string{"q", v.Query, "type", v.Type, "view", v.View, "sort", v.Sort, "page", page}, kv...)...)
+	return pageURL(r.URL.EscapedPath(), append([]string{"tab", "tags", "q", v.Query, "type", v.Type, "view", v.View, "sort", v.Sort, "page", page}, kv...)...)
+}
+
+// tagsTab reports whether a request is for the Tags tab rather than
+// Overview, the default: ?tab=tags, a Tags fragment, or a link from before
+// Overview came first that carries a Tags-only parameter.
+func tagsTab(q url.Values, fragment string) bool {
+	switch q.Get("tab") {
+	case "tags":
+		return true
+	case "overview":
+		return false
+	}
+	if fragment != "" {
+		return fragment != "summary"
+	}
+	return q.Has("q") || q.Has("view") || q.Has("sort") || q.Has("type") || q.Has("page")
 }
 
 // repoCard answers one card's or row's details, rendered with the template
