@@ -76,3 +76,8 @@ jobs:
             echo "::error::Image is $((size / 1000)) kB uncompressed, over the 20 MB limit."
             exit 1
           fi
+
+      - name: Pull-through cache smoke test
+        run: |
+          docker load < result
+          .github/smoke/pull-through.sh

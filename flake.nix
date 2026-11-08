@@ -76,6 +76,7 @@
                 go-overlay.packages.${system}.govendor
                 tailwindcss_4
                 go-task
+                crane # seeds test images in the CI smoke tests
               ]
               ++ pre-commit-check.enabledPackages;
           };
