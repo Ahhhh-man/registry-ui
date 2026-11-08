@@ -116,6 +116,16 @@ var partialCases = []struct {
 		"error-state", `{{template "error-state" (dict "Title" "Can't reach the registry" "Text" "registry:5000 refused the connection." "Retry" "/")}}`,
 		[]string{"bg-danger-bg", "Can&#39;t reach the registry", `<a href="/" class=`, "Retry</a>"},
 	},
+	{"list-header", `{{template "list-header" (dict "Title" "All repositories" "Hint" "A–Z" "Icon" "arrow-down-wide-narrow")}}`, []string{"<h2 ", "All repositories</h2>", "</svg>A–Z</span>"}},
+	{
+		"repo-row loading", `{{template "repo-row" (dict "Repo" "library/nginx" "Namespace" "library/" "Name" "nginx")}}`,
+		[]string{`<a href="/library/nginx" data-row aria-busy="true" hx-get="/?fragment=row&amp;repo=library/nginx" hx-trigger="intersect once" hx-swap="outerHTML"`, `<span class="font-medium text-faint">library/</span>nginx</div>`, "animate-pulse w-1/2"},
+	},
+	{
+		"repo-row loaded", `{{template "repo-row" (dict "Repo" "charts/podinfo" "Namespace" "charts/" "Name" "podinfo" "Loaded" true "Helm" true "Tags" 1 "Age" "2 days ago" "Date" "2024-11-06")}}`,
+		[]string{`data-row data-tags="1"`, "No description label", "</svg>Helm chart</span>", "</svg>1 tag</span>", `title="Latest created 2024-11-06"`, "</svg>2 days ago</span>"},
+	},
+	{"repo-row failed", `{{template "repo-row" (dict "Repo" "x/y" "Namespace" "x/" "Name" "y" "Failed" true)}}`, []string{"Couldn't load details"}},
 	{"note", `{{template "note" "Layers and build history come later."}}`, []string{`role="note"`, "bg-accent-soft", "Layers and build history come later."}},
 	{"warning", `{{template "warning" "2 more tags will also go."}}`, []string{`role="note"`, "bg-warn-bg", "2 more tags will also go."}},
 }

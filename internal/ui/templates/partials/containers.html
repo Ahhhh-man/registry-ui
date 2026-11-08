@@ -26,11 +26,13 @@
 
 {{/* stat: a figure with an icon, for the catalog's stats row. An empty
      Value shows a skeleton, for figures that load later.
-     dict "Icon" icon name, "Label" string, "Value" string or number. */}}
+     dict "Icon" icon name, "Label" string, "Value" string or number,
+          "Name" string (optional): sets data-stat on the figure, for
+          app.js to fill in. */}}
 {{define "stat" -}}
 <div class="flex items-center gap-3 rounded-md border border-border bg-surface px-4 py-3">
 <span class="grid size-9 shrink-0 place-items-center rounded-md bg-accent-soft text-accent-text">{{icon .Icon "size-5"}}</span>
-<div class="min-w-0"><div class="text-xl leading-tight font-semibold tabular-nums">{{with .Value}}{{.}}{{else}}{{template "skeleton" "w-12"}}{{end}}</div><div class="text-xs text-muted">{{.Label}}</div></div>
+<div class="min-w-0"><div class="text-xl leading-tight font-semibold tabular-nums"{{with .Name}} data-stat="{{.}}"{{end}}>{{with .Value}}{{.}}{{else}}{{template "skeleton" "w-12"}}{{end}}</div><div class="text-xs text-muted">{{.Label}}</div></div>
 </div>
 {{- end}}
 

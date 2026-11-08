@@ -1,0 +1,46 @@
+{{/* Lists of things to open, such as the catalog's repositories. */}}
+
+{{/* list-header: a list's heading, with a hint such as the sort order.
+     dict "Title" string, "Hint" string (optional), "Icon" icon name for the
+          hint (optional). */}}
+{{define "list-header" -}}
+<div class="mb-3 flex items-baseline justify-between gap-4">
+<h2 class="min-w-0 truncate text-base font-semibold">{{.Title}}</h2>
+{{- with .Hint}}<span class="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted">{{with $.Icon}}{{icon .}}{{end}}{{.}}</span>{{end}}
+</div>
+{{- end}}
+
+{{/* repo-row: a catalog row linking to a repository. Until Loaded or
+     Failed it shows skeletons and, once scrolled into view, replaces itself
+     with the catalog's row fragment for Repo. Loaded rows carry
+     data-tags for app.js's tag total.
+     Data: "Repo" string, "Namespace" ("library/" or ""), "Name" string,
+           "Loaded" bool, "Failed" bool, "Tags" int, "Description" string,
+           "Platforms" int, "Helm" bool, "Age" and "Date" strings for when
+           the latest tag was created ("2 days ago", "2024-11-06"). */}}
+{{define "repo-row" -}}
+<a href="{{repoURL .Repo}}" data-row
+{{- if .Loaded}} data-tags="{{.Tags}}"{{else if not .Failed}} aria-busy="true" hx-get="{{catalogURL}}?fragment=row&amp;repo={{.Repo}}" hx-trigger="intersect once" hx-swap="outerHTML"{{end}}
+ class="group flex items-center gap-4 rounded-md border border-border bg-surface px-4 py-3 hover:border-accent/50">
+{{- template "repo-tile" (dict "Repo" .Repo "Helm" .Helm)}}
+<div class="min-w-0 flex-1">
+<div class="truncate text-base font-semibold">{{with .Namespace}}<span class="font-medium text-faint">{{.}}</span>{{end}}{{.Name}}</div>
+<div class="mt-0.5 truncate text-muted">
+{{- if .Failed}}<span class="text-faint">Couldn't load details</span>
+{{- else if not .Loaded}}{{template "skeleton" "w-1/2"}}
+{{- else if .Description}}{{.Description}}
+{{- else}}<span class="text-faint">No description label</span>{{end -}}
+</div>
+</div>
+<div class="hidden shrink-0 items-center gap-4 text-xs whitespace-nowrap text-muted sm:flex">
+{{- if .Loaded}}
+{{- if .Helm}}<span class="inline-flex items-center gap-1.5">{{icon "anchor" "text-faint"}}Helm chart</span>
+{{- else if .Platforms}}<span class="inline-flex items-center gap-1.5">{{icon "cpu" "text-faint"}}{{.Platforms}} platform{{if ne .Platforms 1}}s{{end}}</span>{{end}}
+<span class="inline-flex items-center gap-1.5">{{icon "tag" "text-faint"}}{{.Tags}} tag{{if ne .Tags 1}}s{{end}}</span>
+{{- with .Age}}
+<span class="inline-flex items-center gap-1.5" title="Latest created {{$.Date}}">{{icon "clock" "text-faint"}}{{.}}</span>{{end}}
+{{- else if not .Failed}}{{template "skeleton" "w-16"}}{{template "skeleton" "w-12"}}{{template "skeleton" "w-16"}}{{end}}
+</div>
+{{icon "chevron-right" "text-faint group-hover:text-accent"}}
+</a>
+{{- end}}

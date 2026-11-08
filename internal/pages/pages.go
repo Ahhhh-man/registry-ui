@@ -83,8 +83,3 @@ func write(w http.ResponseWriter, body []byte) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write(body)
 }
-
-// notYet answers pages that don't exist yet.
-func notYet(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "this page isn't built yet", http.StatusNotImplemented)
-}

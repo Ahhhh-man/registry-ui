@@ -23,7 +23,7 @@
   {{- if not .SignIn}}
   <form action="{{catalogURL}}" method="get" role="search" class="relative order-last w-full sm:order-none sm:ml-4 sm:max-w-md sm:flex-1">
     <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-faint">{{icon "search"}}</span>
-    <input type="search" name="q" value="{{.Query}}" placeholder="Search repositories…" aria-label="Search repositories" autocomplete="off" data-hotkey="/"
+    <input type="search" id="search" name="q" value="{{.Query}}" placeholder="Search repositories…" aria-label="Search repositories" autocomplete="off" data-hotkey="/"
       class="peer w-full rounded-md border border-transparent bg-panel py-2 pr-10 pl-10 text-text placeholder:text-muted focus:border-accent focus:bg-surface">
     <kbd class="pointer-events-none absolute top-1/2 right-2.5 hidden -translate-y-1/2 bg-surface text-faint sm:block sm:peer-focus:hidden" aria-hidden="true">/</kbd>
   </form>

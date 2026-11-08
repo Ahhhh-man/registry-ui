@@ -1,0 +1,34 @@
+{{/* The catalog: every repository, A–Z. Data is pages.catalogPage. */}}
+{{define "catalog" -}}
+<div class="flex flex-col gap-8">
+<div class="flex flex-col items-start gap-3">
+{{template "pill" (dict "Icon" "hard-drive" "Text" .Host)}}
+{{template "page-header" (dict "Title" "Repositories" "Description" "Every image, tag and platform stored in this registry.")}}
+</div>
+<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+{{template "stat" (dict "Icon" "package" "Label" "Repositories" "Value" (printf "%d" .Total))}}
+{{if .Total}}<div hidden>{{template "stat" (dict "Icon" "tag" "Label" "Tags" "Name" "tags")}}</div>{{else}}{{template "stat" (dict "Icon" "tag" "Label" "Tags" "Value" "0")}}{{end}}
+</div>
+{{template "catalog-list" .}}
+</div>
+{{- end}}
+
+{{/* catalog-list: the rows. It reloads itself from the header search as you
+     type; data-repo-list marks the unfiltered list, whose rows add up to the
+     Tags total, hidden until then. */}}
+{{define "catalog-list" -}}
+<section id="repo-list" hx-get="{{catalogURL}}" hx-trigger="input changed delay:200ms from:#search" hx-include="#search" hx-select="#repo-list" hx-swap="outerHTML" hx-replace-url="true" hx-sync="this:replace" hx-disinherit="*"{{if not .Query}} data-repo-list{{end}}>
+{{template "list-header" (dict "Title" (or (and .Query (printf "Matching “%s”" .Query)) "All repositories") "Hint" "A–Z" "Icon" "arrow-down-wide-narrow")}}
+{{- if not .Total}}
+{{template "empty" (dict "Icon" "package" "Title" "No repositories yet" "Text" "Images pushed to this registry show up here.")}}
+{{- else if not .Rows}}
+{{template "empty" (dict "Title" (printf "No repositories match “%s”" .Query) "Text" "Check the spelling, or search for part of a name." "Href" catalogURL "Link" "Show all repositories")}}
+{{- else}}
+<div class="flex flex-col gap-2.5">
+{{- range .Rows}}
+{{template "repo-row" .}}
+{{- end}}
+</div>
+{{- end}}
+</section>
+{{- end}}

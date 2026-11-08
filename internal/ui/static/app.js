@@ -59,11 +59,18 @@
   });
 
   // "/" focuses the last [data-hotkey="/"] field, so a page's own filter wins
-  // over the header search. Esc leaves it.
+  // over the header search. Esc clears it, then leaves it; the input event
+  // lets an htmx filter catch up.
   document.addEventListener("keydown", (e) => {
     const t = e.target;
     if (e.key === "Escape" && t.matches?.('[data-hotkey="/"]')) {
-      t.blur();
+      e.preventDefault();
+      if (t.value) {
+        t.value = "";
+        t.dispatchEvent(new Event("input", { bubbles: true }));
+      } else {
+        t.blur();
+      }
       return;
     }
     if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
@@ -74,5 +81,18 @@
     e.preventDefault();
     field.focus();
     field.select();
+  });
+
+  // The catalog's Tags figure stays hidden until every row of the unfiltered
+  // list has loaded its tag count (rows load as they scroll into view), then
+  // shows their sum.
+  document.addEventListener("htmx:afterSettle", () => {
+    const list = document.querySelector("[data-repo-list]");
+    const out = document.querySelector('[data-stat="tags"]');
+    if (!list || !out || list.querySelector("[data-row]:not([data-tags])")) return;
+    let total = 0;
+    for (const row of list.querySelectorAll("[data-tags]")) total += Number(row.dataset.tags);
+    out.textContent = total;
+    out.closest("[hidden]")?.removeAttribute("hidden");
   });
 })();
