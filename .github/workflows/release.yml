@@ -1,7 +1,8 @@
 name: release
 
 # A stable tag (vX.Y.Z) publishes ghcr.io/ahhhh-man/registry-ui:X.Y.Z and latest
-# as one amd64+arm64 manifest list, then creates a GitHub release.
+# as one amd64+arm64 manifest list, copies it to Docker Hub (ahhhhman/registry-ui),
+# then creates a GitHub release.
 # Run by hand, it builds both images only; untick dry-run to also push them as
 # sha-<commit> (no semver tags, no release).
 on:
@@ -19,6 +20,8 @@ permissions:
 
 env:
   IMAGE: ghcr.io/ahhhh-man/registry-ui
+  # Docker Hub names can't contain dashes, hence the different namespace.
+  DOCKERHUB_REPO: ahhhhman/registry-ui
   # 20 MB, measured on the uncompressed image tarball.
   MAX_IMAGE_BYTES: 20000000
 
@@ -119,6 +122,28 @@ jobs:
           crane auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin <<< "$GITHUB_TOKEN"
           crane index append -m "$IMAGE@$AMD64" -m "$IMAGE@$ARM64" -t "$IMAGE:${tags[0]}"
           for t in "${tags[@]:1}"; do crane tag "$IMAGE:${tags[0]}" "$t"; done
+
+      # A copy, not a rebuild, so both registries serve the same digests.
+      - name: Copy to Docker Hub
+        if: github.ref_type == 'tag'
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          crane auth login docker.io -u "$DOCKERHUB_USERNAME" --password-stdin <<< "$DOCKERHUB_TOKEN"
+          crane copy "$IMAGE:$v" "docker.io/$DOCKERHUB_REPO:$v"
+          crane tag "docker.io/$DOCKERHUB_REPO:$v" latest
+
+      - name: Sync the Docker Hub description
+        if: github.ref_type == 'tag'
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.DOCKERHUB_REPO }}
+          short-description: See what's in your container registry, including your pull-through cache.
+          enable-url-completion: true
 
   release:
     needs: manifest

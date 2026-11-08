@@ -46,6 +46,8 @@ volumes:
   registry-data:
 ```
 
+The same image is on Docker Hub as `ahhhhman/registry-ui`, if you'd rather pull from there.
+
 Push something, then open <http://localhost:8080>:
 
 ```sh
