@@ -13,6 +13,8 @@ import (
 	"os"
 
 	"github.com/Ahhhh-man/registry-ui/internal/config"
+	"github.com/Ahhhh-man/registry-ui/internal/ui"
+	"github.com/Ahhhh-man/registry-ui/internal/web"
 )
 
 var version = "dev"
@@ -46,6 +48,11 @@ func serve() error {
 	}
 	slog.SetLogLoggerLevel(cfg.LogLevel)
 	slog.Info("starting registry-ui", "version", version, "config", cfg)
-	// Placeholder until the router (#4) exists.
-	return http.ListenAndServe(cfg.Listen, http.NotFoundHandler())
+	// Stub pages until #12–#14.
+	stub := func(w http.ResponseWriter, _ *http.Request, ref web.Ref) { _, _ = fmt.Fprintf(w, "%+v\n", ref) }
+	h := web.New(cfg.BasePath, web.Handlers{
+		Catalog: stub, Repo: stub, Tag: stub, Digest: stub,
+		Static: ui.StaticHandler(),
+	})
+	return http.ListenAndServe(cfg.Listen, h)
 }
