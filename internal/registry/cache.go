@@ -29,6 +29,9 @@ const (
 type Cache struct {
 	src   Source
 	group singleflight.Group
+	// partial is set for storage mode, where an index lists only the
+	// platforms on disk, so even a lookup by digest can grow and must expire.
+	partial bool
 
 	mu    sync.Mutex
 	max   int
@@ -46,7 +49,8 @@ var _ Source = (*Cache)(nil)
 
 // NewCache returns a Cache in front of src.
 func NewCache(src Source) *Cache {
-	return &Cache{src: src, max: cacheSize, order: list.New(), items: map[string]*list.Element{}}
+	_, partial := src.(*Storage)
+	return &Cache{src: src, partial: partial, max: cacheSize, order: list.New(), items: map[string]*list.Element{}}
 }
 
 // Catalog implements Source.
@@ -64,7 +68,7 @@ func (c *Cache) Tags(ctx context.Context, repo string) ([]string, error) {
 // Resolve implements Source.
 func (c *Cache) Resolve(ctx context.Context, repo, ref string) (Manifest, error) {
 	ttl := cacheTTL
-	if digestRef.MatchString(ref) {
+	if digestRef.MatchString(ref) && !c.partial {
 		ttl = 0
 	}
 	m, err := cached(ctx, c, ttl, func(ctx context.Context) (Manifest, error) { return c.src.Resolve(ctx, repo, ref) }, "manifest", repo, ref)

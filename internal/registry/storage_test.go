@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
 	"github.com/Ahhhh-man/registry-ui/internal/registry/registrytest"
@@ -26,10 +28,51 @@ func newStorage(t *testing.T) (*registry.Storage, *registrytest.Registry) {
 // never fetched it.
 func removeBlob(t *testing.T, r *registrytest.Registry, digest string) {
 	t.Helper()
-	hex := strings.TrimPrefix(digest, "sha256:")
-	if err := os.Remove(filepath.Join(r.StoragePath, "docker", "registry", "v2", "blobs", "sha256", hex[:2], hex, "data")); err != nil {
+	if err := os.Remove(blobPath(r, digest)); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func blobPath(r *registrytest.Registry, digest string) string {
+	hex := strings.TrimPrefix(digest, "sha256:")
+	return filepath.Join(r.StoragePath, "docker", "registry", "v2", "blobs", "sha256", hex[:2], hex, "data")
+}
+
+// In storage mode an index lists only the platforms on disk, so the cache
+// must pick up a platform pulled after the index was first looked up, even
+// by digest.
+func TestCacheRefreshesStorageIndex(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s, r := newStorage(t)
+		c := registry.NewCache(s)
+		idx, arm64 := digest(t, r.Index), digest(t, r.Platforms[1])
+		platforms := func() int {
+			t.Helper()
+			m, err := c.Resolve(t.Context(), registrytest.RepoIndex, idx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return len(m.Platforms)
+		}
+
+		blob := blobPath(r, arm64)
+		if err := os.Rename(blob, blob+".pulling"); err != nil {
+			t.Fatal(err)
+		}
+		if n := platforms(); n != 2 {
+			t.Fatalf("before arm64 is pulled: %d platforms, want 2", n)
+		}
+		if err := os.Rename(blob+".pulling", blob); err != nil {
+			t.Fatal(err)
+		}
+		if n := platforms(); n != 2 {
+			t.Errorf("right after the pull: %d platforms, want the cached 2", n)
+		}
+		time.Sleep(31 * time.Second)
+		if n := platforms(); n != 3 {
+			t.Errorf("after the cache expires: %d platforms, want 3", n)
+		}
+	})
 }
 
 func TestStorageUncached(t *testing.T) {
