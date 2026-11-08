@@ -50,7 +50,7 @@ Everything is an environment variable. There are no config files or flags. An em
 | `REGISTRY_UI_SECRET` | random on each start | Key for the session cookie. Set it to keep people signed in across restarts. |
 | `REGISTRY_UI_REGISTRY_INSECURE` | `false` | Skip TLS verification when talking to the registry. |
 | `REGISTRY_UI_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. |
-| `REGISTRY_UI_STORAGE_PATH` | unset | Read the registry's storage folder directly instead of its API. Meant for pull-through caches. |
+| `REGISTRY_UI_STORAGE_PATH` | unset | Read the registry's storage folder directly instead of its API. See [Pull-through caches](#pull-through-caches). |
 
 Invalid values stop the UI at startup with one line per problem.
 
@@ -86,6 +86,45 @@ The UI has no users of its own. It mirrors the registry:
 - If the registry asks for credentials, the UI shows a sign-in form, checks what you enter against the registry, and forwards it on every request. Basic auth and token servers both work.
 - Your credentials are sealed (AES-GCM) in an `HttpOnly` cookie that lasts 12 hours. The UI keeps nothing on disk.
 - Without `REGISTRY_UI_SECRET`, a new key is picked on every start and everyone is signed out on restart. Set it to any long random string, e.g. `openssl rand -hex 32`.
+
+## Pull-through caches
+
+If your registry is a pull-through cache (`REGISTRY_PROXY_REMOTEURL`), use storage mode. Browsing a proxy through its API does the wrong thing: it asks the upstream for every tag list, pulls and stores any tag you click that isn't cached yet, and spends your upstream rate limit doing it. You'd see the upstream's tags, not your cache.
+
+In storage mode the UI reads the registry's storage folder directly, mounted read-only, and never sends the registry or the upstream a single request. You see exactly what's cached. Multi-arch images only list the platforms someone has actually pulled.
+
+```yaml
+services:
+  registry:
+    image: registry:3
+    ports: ["5000:5000"]
+    environment:
+      REGISTRY_PROXY_REMOTEURL: https://registry-1.docker.io
+    volumes: ["cache-data:/var/lib/registry"]
+
+  registry-ui:
+    image: ghcr.io/ahhhh-man/registry-ui:latest
+    ports: ["8080:8080"]
+    environment:
+      REGISTRY_UI_STORAGE_PATH: /var/lib/registry
+      REGISTRY_UI_PULL_URL: localhost:5000 # required when REGISTRY_UI_REGISTRY_URL is unset
+    volumes: ["cache-data:/var/lib/registry:ro"]
+    healthcheck:
+      test: ["CMD", "/registry-ui", "healthcheck"]
+
+volumes:
+  cache-data:
+```
+
+Pull something through the cache (`docker pull localhost:5000/library/busybox`) and it shows up in the UI.
+
+**Storage mode skips the registry's auth.** Anyone who can reach the UI sees everything in the cache. If that matters, put the UI behind your reverse proxy's auth.
+
+Limits:
+
+- Only the registry's `filesystem` storage driver works. S3, GCS, Azure and the rest don't.
+- The UI must see the same folder the registry writes to: same host, or a volume both containers mount.
+- An empty folder is fine. The registry creates its layout on the first pull.
 
 ## Supported registries
 
