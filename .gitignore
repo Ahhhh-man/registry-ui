@@ -1,7 +1,6 @@
 # Whitelist: ignore everything, then allow what belongs in the repo.
 # New top-level files or folders must be added here explicitly.
 *
-!*/
 
 !/.gitignore
 !/README.md
@@ -17,6 +16,10 @@
 !/.dockerignore
 !/Taskfile.yml
 
+# A folder must be allowed before its contents.
+!/internal/
 !/internal/**
+!/web/
 !/web/**
+!/.github/
 !/.github/**

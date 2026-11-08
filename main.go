@@ -14,12 +14,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/Ahhhh-man/registry-ui/internal/config"
+	"github.com/Ahhhh-man/registry-ui/internal/format"
+	"github.com/Ahhhh-man/registry-ui/internal/pages"
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
 	"github.com/Ahhhh-man/registry-ui/internal/ui"
 	"github.com/Ahhhh-man/registry-ui/internal/web"
@@ -62,24 +64,16 @@ func serve() error {
 	}
 	src = registry.NewCache(src)
 
-	// Stub pages until #12–#14.
-	stub := func(w http.ResponseWriter, _ *http.Request, ref web.Ref) { _, _ = fmt.Fprintf(w, "%+v\n", ref) }
-	catalog := func(w http.ResponseWriter, r *http.Request, _ web.Ref) {
-		repos, err := src.Catalog(r.Context())
-		if err != nil {
-			web.Error(w, r, err)
-			return
-		}
-		_, _ = fmt.Fprintln(w, strings.Join(repos, "\n"))
-	}
-	tmpl, err := ui.Templates(web.FuncMap(cfg.BasePath, ui.StaticName))
+	funcs := web.FuncMap(cfg.BasePath, ui.StaticName)
+	maps.Copy(funcs, format.Funcs())
+	tmpl, err := ui.Templates(funcs)
 	if err != nil {
 		return err
 	}
-	h := web.New(cfg.BasePath, web.Handlers{
-		Catalog: catalog, Repo: stub, Tag: stub, Digest: stub,
-		Static: ui.StaticHandler(),
-	})
+	p := &pages.Server{Src: src, Templates: tmpl, Title: cfg.Title, PullHost: cfg.PullURL}
+	handlers := p.Handlers()
+	handlers.Static = ui.StaticHandler()
+	h := web.New(cfg.BasePath, handlers)
 	srv := &http.Server{
 		Addr:              cfg.Listen,
 		Handler:           web.Middleware(h, ui.ErrorRenderer(tmpl, cfg.Title)),
