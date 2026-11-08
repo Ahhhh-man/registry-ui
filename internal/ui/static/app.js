@@ -155,7 +155,6 @@
     }
     const count = sel.tags.size;
     box.querySelector("[data-selection-bar]").hidden = !count;
-    box.querySelector("[data-selection-hint]").hidden = !!count;
     box.querySelector("[data-selection-count]").textContent = count;
     if (count !== announced) {
       box.querySelector("[data-selection-status]").textContent = count ? `${count} selected` : "Selection cleared";

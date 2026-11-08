@@ -108,13 +108,13 @@
 {{- end}}
 {{- end}}
 
-{{/* repo-selection: the list view's selection bar, or a hint in its place
-     while nothing is selected. app.js keeps the selection, per repository,
-     in sessionStorage and fills this in. */}}
+{{/* repo-selection: the list view's selection bar, hidden while nothing is
+     selected. min-h-12 keeps its space, so the table doesn't move when it
+     shows. app.js keeps the selection, per repository, in sessionStorage
+     and fills this in. */}}
 {{define "repo-selection" -}}
 <div data-select="{{repoURL .Repo}}" class="flex min-h-12 items-center">
-<p data-selection-hint class="inline-flex items-center gap-2 text-xs text-muted">{{icon "info" "text-faint"}}<span>Click rows to select · <kbd>Shift</kbd>-click selects a range</span></p>
-<div data-selection-bar hidden class="flex w-full flex-wrap items-center gap-2 rounded-md border border-accent/35 bg-accent-soft py-1.5 pr-1.5 pl-4 text-sm text-accent-text">
+<div data-selection-bar hidden class="flex w-full flex-wrap items-center gap-2 rounded-md border border-accent/35 bg-accent-soft py-1 pr-1 pl-4 text-sm text-accent-text">
 {{- icon "check"}}<span><b data-selection-count class="font-semibold">0</b> selected</span>
 <span class="ml-auto flex flex-wrap items-center gap-2">
 {{- template "button" (dict "Label" "Copy names" "Icon" "copy" "Action" "names")}}

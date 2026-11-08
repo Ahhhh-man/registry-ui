@@ -175,7 +175,7 @@ func TestRepoListView(t *testing.T) {
 	hex := strings.TrimPrefix(m.Digest, "sha256:")
 	for _, want := range []string{
 		`value="list" aria-pressed="true"`, `value="cards" aria-pressed="false"`,
-		`data-select="/library/nginx"`, "Click rows to select", `data-selection-bar hidden`,
+		`data-select="/library/nginx"`, `data-selection-bar hidden`, `aria-live="polite"`,
 		`data-action="names"`, `data-action="pulls"`, `data-action="clear"`, `role="status"`,
 		`<input type="checkbox" data-select-all aria-label="Select all tags on this page"`,
 		`<input type="checkbox" aria-label="Select 1.27.3"`,
@@ -189,6 +189,9 @@ func TestRepoListView(t *testing.T) {
 	}
 	if strings.Contains(body, "<article") || strings.Contains(body, "Delete") {
 		t.Error("the list view shows cards or a delete button")
+	}
+	if strings.Contains(body, "Click rows") {
+		t.Error("the list view shows the selection hint")
 	}
 	_, main, _ := strings.Cut(body, "<main")
 	checkMarkup(t, main)
