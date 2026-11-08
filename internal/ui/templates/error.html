@@ -11,6 +11,9 @@
     {{- with .Retry}}
     <a href="{{.}}" class="inline-flex items-center rounded-md bg-accent px-3 py-2 font-medium text-accent-fg hover:opacity-90">Try again</a>
     {{- end}}
+    {{- with .SignIn}}
+    <a href="{{.}}" class="inline-flex items-center rounded-md bg-accent px-3 py-2 font-medium text-accent-fg hover:opacity-90">Sign in</a>
+    {{- end}}
     <a href="{{catalogURL}}" class="inline-flex items-center rounded-md border border-border px-3 py-2 font-medium hover:bg-panel">Back to repositories</a>
   </div>
 </section>
@@ -25,6 +28,9 @@
   <span>{{.Message}}</span>
   {{- with .Retry}}
   <a href="{{.}}" class="font-medium underline">Try again</a>
+  {{- end}}
+  {{- with .SignIn}}
+  <a href="{{.}}" class="font-medium underline">Sign in</a>
   {{- end}}
 </div>
 {{- end}}

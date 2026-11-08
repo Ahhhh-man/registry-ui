@@ -33,10 +33,13 @@
       <span class="dark:hidden">{{icon "moon" "size-5"}}</span>
       <span class="hidden dark:block">{{icon "sun" "size-5"}}</span>
     </button>
-    {{- block "header-user" .}}{{if and .User (not .SignIn)}}
+    {{- block "header-user" .}}{{if .SignIn}}{{else if .User}}
     <span class="mx-2 h-6 w-px bg-border" aria-hidden="true"></span>
     <span class="grid size-8 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent-text" title="Signed in as {{.User}}"><span aria-hidden="true">{{tileLetter .User}}</span><span class="sr-only">Signed in as {{.User}}</span></span>
     <form method="post" action="{{logoutURL}}">{{template "button" (dict "Label" "Log out" "Icon" "log-out" "Variant" "icon" "Type" "submit")}}</form>
+    {{- else if .Login}}
+    <span class="mx-2 h-6 w-px bg-border" aria-hidden="true"></span>
+    {{template "button" (dict "Label" "Sign in" "Href" .Login)}}
     {{- end}}{{end}}
   </div>
 </header>

@@ -19,6 +19,7 @@ type Page struct {
 	Theme     string        // Theme(r)
 	Query     string        // current repo search, echoed in the search box
 	User      string        // signed-in username: shows the avatar and Log out
+	Login     string        // sign-in link for the header when not signed in, or ""
 	SignIn    bool          // the sign-in page: no search box or user menu
 	Body      template.HTML // the page itself, rendered by its own template
 }

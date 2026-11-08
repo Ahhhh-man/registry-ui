@@ -16,7 +16,7 @@ func TestErrorRenderer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	render := ErrorRenderer(tmpl, "registry.example.com")
+	render := ErrorRenderer(tmpl, func(*http.Request) Page { return Page{Title: "registry.example.com"} })
 	p := web.ErrorPage{Status: http.StatusBadGateway, Title: "Can't reach the registry", Message: "Down.", Retry: "/registry/nginx?x=1&y=2"}
 
 	for _, inline := range []bool{false, true} {

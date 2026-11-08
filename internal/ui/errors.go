@@ -11,8 +11,8 @@ import (
 
 // ErrorRenderer draws web's error states: the "error" template inside the
 // layout, or "error-inline" alone for htmx. templates is what Templates
-// returns; title is the registry title for the header.
-func ErrorRenderer(templates func() (*template.Template, error), title string) web.ErrorRenderer {
+// returns; header gives the layout's title and sign-in state for r.
+func ErrorRenderer(templates func() (*template.Template, error), header func(r *http.Request) Page) web.ErrorRenderer {
 	return func(w http.ResponseWriter, r *http.Request, p web.ErrorPage) {
 		var b bytes.Buffer
 		t, err := templates()
@@ -20,7 +20,9 @@ func ErrorRenderer(templates func() (*template.Template, error), title string) w
 			err = t.ExecuteTemplate(&b, "error-inline", p)
 		} else if err == nil {
 			if err = t.ExecuteTemplate(&b, "error", p); err == nil {
-				page := Page{Title: title, PageTitle: p.Title, Theme: Theme(r), Body: template.HTML(b.String())} //nolint:gosec // our own rendered template
+				page := header(r)
+				page.PageTitle, page.Theme = p.Title, Theme(r)
+				page.Body = template.HTML(b.String()) //nolint:gosec // our own rendered template
 				b.Reset()
 				err = t.ExecuteTemplate(&b, "layout", page)
 			}

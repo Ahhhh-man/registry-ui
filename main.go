@@ -76,6 +76,7 @@ func serve() error {
 	}
 	// Login checks credentials with the source itself, never the cache.
 	check, _ := src.(interface{ Check(context.Context) error })
+	challenged, _ := src.(interface{ Challenged() bool })
 	src = registry.NewCache(src)
 
 	funcs := web.FuncMap(cfg.BasePath, ui.StaticName)
@@ -88,12 +89,15 @@ func serve() error {
 	if check != nil {
 		p.Check = check.Check
 	}
+	if challenged != nil {
+		p.Challenged = challenged.Challenged
+	}
 	handlers := p.Handlers()
 	handlers.Static = ui.StaticHandler()
 	h := web.New(cfg.BasePath, handlers)
 	srv := &http.Server{
 		Addr:              cfg.Listen,
-		Handler:           web.Middleware(h, ui.ErrorRenderer(tmpl, cfg.Title)),
+		Handler:           web.Middleware(h, ui.ErrorRenderer(tmpl, p.Header)),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second, // above the 10 s upstream timeout, with room for a few calls

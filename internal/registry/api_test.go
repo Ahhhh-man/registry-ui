@@ -45,6 +45,24 @@ func TestAPIBasicAuth(t *testing.T) {
 	}
 }
 
+// Challenged is set only by a challenge to an anonymous request.
+func TestAPIChallenged(t *testing.T) {
+	a := newAPI(t, registrytest.NewWithBasicAuth(t, "alice", "secret").URL)
+	_, _ = a.Catalog(registry.WithCredentials(t.Context(), "alice", "wrong"))
+	if a.Challenged() {
+		t.Error("challenged after a signed-in request")
+	}
+	_, _ = a.Tags(t.Context(), registrytest.RepoIndex)
+	if !a.Challenged() {
+		t.Error("not challenged after an anonymous request")
+	}
+
+	open := newAPI(t, registrytest.New(t).URL)
+	if _, err := open.Catalog(t.Context()); err != nil || open.Challenged() {
+		t.Errorf("registry without auth: challenged %t, err %v", open.Challenged(), err)
+	}
+}
+
 func TestAPICheck(t *testing.T) {
 	a := newAPI(t, registrytest.NewWithBasicAuth(t, "alice", "secret").URL)
 	if err := a.Check(registry.WithCredentials(t.Context(), "alice", "secret")); err != nil {

@@ -58,6 +58,9 @@ var signatureMediaPrefixes = []string{
 type API struct {
 	reg       name.Registry
 	transport http.RoundTripper
+	// challenged is set once the registry sends an anonymous request an
+	// auth challenge.
+	challenged atomic.Bool
 }
 
 var _ Source = (*API)(nil)
@@ -119,6 +122,11 @@ func (a *API) Check(ctx context.Context) error {
 	}
 	return nil
 }
+
+// Challenged reports whether the registry has sent an auth challenge to an
+// anonymous request since a was made, on /v2/ or anywhere else, so signing
+// in might show more.
+func (a *API) Challenged() bool { return a.challenged.Load() }
 
 // Tags implements Source.
 func (a *API) Tags(ctx context.Context, repo string) ([]string, error) {
@@ -329,12 +337,13 @@ type call struct {
 	auth       authn.Authenticator
 	inner      http.RoundTripper
 	challenged atomic.Bool
+	anon       *atomic.Bool // the API's challenged, for anonymous calls only
 }
 
 func (a *API) call(ctx context.Context) *call {
-	c := &call{inner: a.transport, auth: authn.Anonymous}
+	c := &call{inner: a.transport, auth: authn.Anonymous, anon: &a.challenged}
 	if cr, ok := ctx.Value(credentialsKey{}).(credentials); ok {
-		c.auth = &authn.Basic{Username: cr.user, Password: cr.pass}
+		c.auth, c.anon = &authn.Basic{Username: cr.user, Password: cr.pass}, nil
 	}
 	c.opts = []remote.Option{
 		remote.WithContext(ctx),
@@ -357,6 +366,9 @@ func (c *call) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	if resp.StatusCode == http.StatusUnauthorized && resp.Header.Get("WWW-Authenticate") != "" {
 		c.challenged.Store(true)
+		if c.anon != nil {
+			c.anon.Store(true)
+		}
 	}
 	resp.Body = cancelOnClose{resp.Body, cancel}
 	return resp, nil
