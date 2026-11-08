@@ -84,7 +84,6 @@
 {{define "repo-tags" -}}
 {{if .TagCount}}{{template "type-chips" .Chips}}{{end}}
 {{with .Note}}{{template "warning" .}}{{end}}
-{{if .List}}{{template "repo-selection" .}}{{end}}
 {{- if and .Cards .List}}
 {{- /* relative: the sr-only header text is absolute, and mustn't widen the page. */}}
 <div class="relative overflow-x-auto rounded-md border border-border bg-surface">
@@ -110,21 +109,28 @@
 <span>{{with .Next}}{{template "button" (dict "Label" "Next" "Href" .)}}{{end}}</span>
 </nav>
 {{- end}}
+{{if .List}}{{template "repo-selection" .}}{{end}}
 {{- end}}
 
 {{/* repo-selection: the list view's selection bar, hidden while nothing is
-     selected. min-h-12 keeps its space, so the table doesn't move when it
-     shows. app.js keeps the selection, per repository, in sessionStorage
-     and fills this in. */}}
+     selected. It floats at the bottom of the window, so the table never
+     moves under the pointer; the h-16 spacer around it lets the last rows
+     scroll out from under it. app.js keeps the selection, per
+     repository, in sessionStorage and fills this in. */}}
 {{define "repo-selection" -}}
-<div data-select="{{repoURL .Repo}}" class="flex min-h-12 items-center">
-<div data-selection-bar hidden class="flex w-full flex-wrap items-center gap-2 rounded-md border border-accent/35 bg-accent-soft py-1 pr-1 pl-4 text-sm text-accent-text">
+<div data-select="{{repoURL .Repo}}">
+<div data-selection-bar hidden class="h-16">
+<div class="fixed inset-x-4 bottom-4 z-10 mx-auto max-w-3xl rounded-md bg-surface shadow-[0_8px_30px_rgb(0_0_0/0.2)]">
+<div class="flex flex-wrap items-center gap-2 rounded-md border border-accent/35 bg-accent-soft py-1.5 pr-1.5 pl-4 text-sm text-accent-text">
 {{- icon "check"}}<span><b data-selection-count class="font-semibold">0</b> selected</span>
-<span class="ml-auto flex flex-wrap items-center gap-2">
+{{- /* On a phone the actions take their own row, below the count and Clear. */}}
+<span class="ml-auto sm:order-last sm:ml-0">{{template "button" (dict "Label" "Clear selection" "Icon" "x" "Variant" "icon" "Action" "clear")}}</span>
+<span class="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
 {{- template "button" (dict "Label" "Copy names" "Icon" "copy" "Action" "names")}}
 {{- template "button" (dict "Label" "Copy pull commands" "Icon" "terminal" "Action" "pulls")}}
-{{- template "button" (dict "Label" "Clear selection" "Icon" "x" "Variant" "icon" "Action" "clear")}}
 </span>
+</div>
+</div>
 </div>
 <span data-selection-status aria-live="polite" class="sr-only"></span>
 </div>
