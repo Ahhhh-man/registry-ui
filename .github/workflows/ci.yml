@@ -1,0 +1,78 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        # Every step runs in the flake's dev shell, so CI uses the same tool versions as local work.
+        shell: nix develop --command bash --noprofile --norc -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+
+      # The dev shell builds its Go tools from source, so cache the whole store as one archive.
+      # It's keyed on what the shell depends on; PRs can restore the cache saved by main.
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.nix', 'flake.lock', 'go.mod') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+
+      - name: Format
+        run: |
+          files=$(gofumpt -l .)
+          if [ -n "$files" ]; then
+            echo "::error::These files need formatting. Run 'gofumpt -w .' and commit the result."
+            echo "$files"
+            exit 1
+          fi
+
+      - name: Lint
+        run: task lint
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Vendor manifest
+        run: govendor --check
+
+      - name: Committed CSS is up to date
+        run: |
+          task css
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::The committed CSS is stale. Run 'task css' and commit internal/ui/static/app.css."
+            git status --short
+            exit 1
+          fi
+
+      - name: Build binary
+        run: nix build .#default
+
+      - name: Build image
+        run: nix build .#image
+
+      - name: Image size
+        run: |
+          # Uncompressed size: the sum of the image's layer tars, i.e. what it unpacks to.
+          limit=$((20 * 1000 * 1000))
+          size=$(gzip -dc result | wc -c)
+          echo "Image is $((size / 1000)) kB uncompressed (limit $((limit / 1000)) kB)."
+          if [ "$size" -ge "$limit" ]; then
+            echo "::error::Image is $((size / 1000)) kB uncompressed, over the 20 MB limit."
+            exit 1
+          fi
