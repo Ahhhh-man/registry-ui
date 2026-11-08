@@ -7,7 +7,8 @@ import (
 )
 
 // Templates parses every .html file under templates/ with funcs available,
-// plus this package's icon and tileClass, and returns a function that yields
+// plus this package's builtins (icon, tileClass, tileLetter, dict, list), and
+// returns a function that yields
 // the result. A release build parses the
 // embedded files once, here; a dev build re-reads them from disk on every
 // call, so edits show on refresh.

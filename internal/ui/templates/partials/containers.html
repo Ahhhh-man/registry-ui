@@ -1,0 +1,66 @@
+{{/* Containers and page states.
+
+     card, panel and table hold arbitrary markup, which a Go template can't
+     pass in, so they print a class list for the page's own element:
+       <div class="{{template "panel"}}">…</div>
+     Pages add layout utilities around them, never colour or spacing. */}}
+
+{{/* card: a bordered box whose direct children are padded sections with a
+     rule between them, e.g. a tag's summary above its platform table. */}}
+{{define "card"}}divide-y divide-row-border rounded-md border border-border bg-surface *:px-4 *:py-4{{end}}
+
+{{/* panel: a bordered box with padding; start it with panel-header. */}}
+{{define "panel"}}rounded-md border border-border bg-surface p-5{{end}}
+
+{{/* panel-header: a panel's heading with an icon tile.
+     dict "Icon" icon name, "Title" string. */}}
+{{define "panel-header" -}}
+<h2 class="mb-4 flex items-center gap-2.5 text-base font-semibold"><span class="grid size-8 shrink-0 place-items-center rounded-md bg-accent-soft text-accent-text">{{icon .Icon}}</span>{{.Title}}</h2>
+{{- end}}
+
+{{/* table: for a <table> with <thead>/<tbody>. Pass "selectable" for rows
+     that hold a checkbox: they highlight on hover and while checked.
+       <table class="{{template "table" "selectable"}}"> */}}
+{{define "table"}}w-full border-collapse text-sm [&_td]:border-t [&_td]:border-row-border [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2.5 [&_th]:text-left [&_th]:text-xs [&_th]:font-medium [&_th]:tracking-wide [&_th]:whitespace-nowrap [&_th]:text-faint [&_th]:uppercase
+{{- if eq . "selectable"}} [&_tbody_tr]:cursor-pointer [&_tbody_tr:has(:checked)]:bg-accent-soft [&_tbody_tr:hover]:bg-panel{{end}}{{end}}
+
+{{/* stat: a figure with an icon, for the catalog's stats row. An empty
+     Value shows a skeleton, for figures that load later.
+     dict "Icon" icon name, "Label" string, "Value" string or number. */}}
+{{define "stat" -}}
+<div class="flex items-center gap-3 rounded-md border border-border bg-surface px-4 py-3">
+<span class="grid size-9 shrink-0 place-items-center rounded-md bg-accent-soft text-accent-text">{{icon .Icon "size-5"}}</span>
+<div class="min-w-0"><div class="text-xl leading-tight font-semibold tabular-nums">{{with .Value}}{{.}}{{else}}{{template "skeleton" "w-12"}}{{end}}</div><div class="text-xs text-muted">{{.Label}}</div></div>
+</div>
+{{- end}}
+
+{{/* skeleton: a pulsing placeholder bar for content that loads later. The
+     data is a width class written in a template (so Tailwind sees it),
+     e.g. "w-1/2"; mark the loading region aria-busy="true". */}}
+{{define "skeleton" -}}
+<span aria-hidden="true" class="inline-block h-3 rounded-sm bg-border align-middle motion-safe:animate-pulse {{.}}"></span>
+{{- end}}
+
+{{/* empty: nothing to show, such as a filter with no matches.
+     dict "Icon" icon name (default "search"), "Title" string, "Text" string,
+          "Href" and "Link" for an optional way out ("Back to repositories"). */}}
+{{define "empty" -}}
+<div class="rounded-md border border-dashed border-border bg-surface px-5 py-12 text-center text-muted">
+<div class="mx-auto mb-3 grid size-12 place-items-center rounded-lg bg-panel text-faint">{{icon (or .Icon "search") "size-5"}}</div>
+{{- with .Title}}<p class="font-medium text-text">{{.}}</p>{{end}}
+{{- with .Text}}<p class="mt-1">{{.}}</p>{{end}}
+{{- with .Href}}<a href="{{.}}" class="mt-3 inline-block font-medium text-accent-text hover:underline">{{$.Link}}</a>{{end}}
+</div>
+{{- end}}
+
+{{/* error-state: something failed, such as the registry being unreachable.
+     dict "Title" string, "Text" string, "Retry" URL for a Retry button
+          (optional). */}}
+{{define "error-state" -}}
+<div class="rounded-md border border-border bg-surface px-5 py-12 text-center text-muted">
+<div class="mx-auto mb-3 grid size-12 place-items-center rounded-lg bg-danger-bg text-danger-fg">{{icon "alert-circle" "size-5"}}</div>
+<p class="font-medium text-text">{{.Title}}</p>
+{{- with .Text}}<p class="mt-1">{{.}}</p>{{end}}
+{{- with .Retry}}<div class="mt-4">{{template "button" (dict "Label" "Retry" "Href" .)}}</div>{{end}}
+</div>
+{{- end}}

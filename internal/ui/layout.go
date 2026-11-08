@@ -1,10 +1,14 @@
 package ui
 
 import (
+	"errors"
+	"fmt"
 	"hash/fnv"
 	"html/template"
 	"net/http"
 	"strconv"
+	"strings"
+	"unicode"
 )
 
 // Page is the data for the "layout" template, which wraps a rendered page
@@ -35,8 +39,42 @@ func TileClass(repo string) string {
 	return "bg-tile-" + strconv.Itoa(int(h.Sum32()%8)+1)
 }
 
+// TileLetter returns the upper-case first letter of a repository's name,
+// ignoring its namespace: "library/nginx" gives "N".
+func TileLetter(repo string) string {
+	name := repo[strings.LastIndexByte(repo, '/')+1:]
+	for _, r := range name {
+		return string(unicode.ToUpper(r))
+	}
+	return "?"
+}
+
+// Dict builds a map from key, value pairs, so a template can hand a partial
+// several values: {{template "pill" (dict "Icon" "tag" "Text" "12 tags")}}.
+func Dict(kv ...any) (map[string]any, error) {
+	if len(kv)%2 != 0 {
+		return nil, errors.New("ui: dict needs key, value pairs")
+	}
+	m := make(map[string]any, len(kv)/2)
+	for i := 0; i < len(kv); i += 2 {
+		k, ok := kv[i].(string)
+		if !ok {
+			return nil, fmt.Errorf("ui: dict key %v isn't a string", kv[i])
+		}
+		m[k] = kv[i+1]
+	}
+	return m, nil
+}
+
+// List returns its arguments as a slice, for partials that take several
+// items: (list (dict "Label" "Tags") (dict "Label" "Overview")).
+func List(v ...any) []any { return v }
+
 // builtins are available to every template; Templates adds them.
 var builtins = template.FuncMap{
-	"icon":      Icon,
-	"tileClass": TileClass,
+	"icon":       Icon,
+	"tileClass":  TileClass,
+	"tileLetter": TileLetter,
+	"dict":       Dict,
+	"list":       List,
 }

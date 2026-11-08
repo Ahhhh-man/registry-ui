@@ -1,0 +1,79 @@
+{{/* Small inline labels, page headings and callouts. */}}
+
+{{/* badge: a small label next to a tag name.
+     dict "Label" string,
+          "Variant" "" (neutral) | "accent" | "signature" | "helm".
+     signature and helm bring their own icon. */}}
+{{define "badge" -}}
+<span class="inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-xs font-medium whitespace-nowrap
+  {{- if eq .Variant "accent"}} bg-accent-soft text-accent-text
+  {{- else if eq .Variant "signature"}} bg-warn-bg text-warn-fg
+  {{- else if eq .Variant "helm"}} bg-info-bg text-info-fg
+  {{- else}} bg-panel text-muted{{end}}">
+{{- if eq .Variant "signature"}}{{icon "shield-check" "size-3"}}{{else if eq .Variant "helm"}}{{icon "anchor" "size-3"}}{{end}}{{.Label}}</span>
+{{- end}}
+
+{{/* pill: an icon and short text, for metadata under a page title.
+     dict "Icon" icon name, "Text" string, "Mono" bool (for digests). */}}
+{{define "pill" -}}
+<span class="inline-flex max-w-full items-center gap-1.5 rounded-sm border border-border bg-surface px-2.5 py-1 text-xs text-muted">
+{{- icon .Icon "text-faint"}}<span class="truncate{{if .Mono}} font-mono{{end}}">{{.Text}}</span></span>
+{{- end}}
+
+{{/* breadcrumbs: links back up the hierarchy, then the current page.
+     dict "Trail" list of dict "Label", "Href" (optional; no link without),
+          "Current" string, the page you're on. */}}
+{{define "breadcrumbs" -}}
+<nav aria-label="Breadcrumb">
+<ol class="flex flex-wrap items-center gap-1.5 text-sm text-muted">
+{{- range .Trail}}
+<li class="inline-flex items-center gap-1.5">{{if .Href}}<a href="{{.Href}}" class="hover:text-text">{{.Label}}</a>{{else}}<span>{{.Label}}</span>{{end}}{{icon "chevron-right" "text-faint"}}</li>
+{{- end}}
+<li class="min-w-0 font-medium break-words text-text" aria-current="page">{{.Current}}</li>
+</ol>
+</nav>
+{{- end}}
+
+{{/* repo-tile: a repository's coloured letter tile, or an anchor for a Helm
+     chart. The colour is fixed per name. Decorative, so hidden from
+     screen readers.
+     dict "Repo" string, "Helm" bool, "Large" bool (the page header size). */}}
+{{define "repo-tile" -}}
+<span aria-hidden="true" class="grid shrink-0 place-items-center font-bold text-tile-fg {{tileClass .Repo}} {{if .Large}}size-16 rounded-lg text-2xl{{else}}size-10 rounded-md text-lg{{end}}">
+{{- if .Helm}}{{if .Large}}{{icon "anchor" "size-8"}}{{else}}{{icon "anchor" "size-5"}}{{end}}{{else}}{{tileLetter .Repo}}{{end -}}
+</span>
+{{- end}}
+
+{{/* page-header: the page's <h1> with an optional repo tile, description,
+     badges and pills.
+     dict "Title" string, "Prefix" string shown dimmed before it
+          ("library/" or "nginx:"), "Repo" string (shows its tile),
+          "Helm" bool (anchor tile), "Description" string,
+          "Badges" list of badge dicts, "Pills" list of pill dicts. */}}
+{{define "page-header" -}}
+<div class="flex min-w-0 items-start gap-4">
+{{- with .Repo}}{{template "repo-tile" (dict "Repo" . "Helm" $.Helm "Large" true)}}{{end}}
+<div class="min-w-0">
+<h1 class="flex flex-wrap items-center gap-2.5 text-2xl leading-tight font-semibold tracking-tight">
+<span class="min-w-0 break-words">{{with .Prefix}}<span class="font-medium text-faint">{{.}}</span>{{end}}{{.Title}}</span>
+{{- range .Badges}}{{template "badge" .}}{{end}}
+</h1>
+{{- with .Description}}
+<p class="mt-1.5 text-muted">{{.}}</p>
+{{- end}}
+{{- with .Pills}}
+<div class="mt-3 flex flex-wrap gap-2">{{range .}}{{template "pill" .}}{{end}}</div>
+{{- end}}
+</div>
+</div>
+{{- end}}
+
+{{/* note: an info callout. The data is its text. */}}
+{{define "note" -}}
+<div role="note" class="flex items-start gap-2.5 rounded-md bg-accent-soft px-3 py-3 text-sm text-accent-text">{{icon "info" "mt-0.5"}}<div class="min-w-0">{{.}}</div></div>
+{{- end}}
+
+{{/* warning: a warning callout. The data is its text. */}}
+{{define "warning" -}}
+<div role="note" class="flex items-start gap-2.5 rounded-md bg-warn-bg px-3 py-3 text-sm text-warn-fg">{{icon "triangle-alert" "mt-0.5"}}<div class="min-w-0">{{.}}</div></div>
+{{- end}}

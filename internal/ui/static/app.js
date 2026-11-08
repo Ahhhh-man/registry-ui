@@ -18,6 +18,46 @@
     document.cookie = `theme=${theme}; path=/; max-age=31536000; samesite=lax`;
   });
 
+  // Copy buttons ([data-copy], the "copy" partial). navigator.clipboard only
+  // exists on HTTPS and localhost, so plain-HTTP deployments fall back to
+  // execCommand on a hidden textarea.
+  const fallbackCopy = (text) => {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.readOnly = true;
+    area.className = "fixed top-0 left-0 opacity-0";
+    document.body.append(area);
+    area.select();
+    try {
+      return document.execCommand("copy");
+    } catch {
+      return false;
+    } finally {
+      area.remove();
+    }
+  };
+
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-copy]");
+    if (!btn) return;
+    let ok;
+    try {
+      await navigator.clipboard.writeText(btn.dataset.copy);
+      ok = true;
+    } catch {
+      ok = fallbackCopy(btn.dataset.copy);
+      btn.focus();
+    }
+    const label = btn.querySelector("[data-copy-label]");
+    btn.toggleAttribute("data-copied", ok);
+    if (label) label.textContent = ok ? "Copied" : "Copy failed";
+    clearTimeout(btn.copyTimer);
+    btn.copyTimer = setTimeout(() => {
+      btn.removeAttribute("data-copied");
+      if (label) label.textContent = "Copy";
+    }, 2000);
+  });
+
   // "/" focuses the last [data-hotkey="/"] field, so a page's own filter wins
   // over the header search. Esc leaves it.
   document.addEventListener("keydown", (e) => {

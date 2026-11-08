@@ -1,0 +1,77 @@
+{{/* Buttons, copy controls, tabs and the segmented toggle. Each partial's
+     data is described above its define; build maps with dict and slices
+     with list. Missing optional keys are fine. */}}
+
+{{/* button: a <button>, or an <a> when Href is set.
+     dict "Label" string, "Icon" icon name (optional),
+          "Variant" "" | "danger" | "icon", "Href" (optional),
+          "Type" "button" (default) | "submit".
+     Variant "icon" shows only the icon; Label becomes its aria-label. */}}
+{{define "button" -}}
+{{if .Href}}<a href="{{.Href}}"{{else}}<button type="{{or .Type "button"}}"{{end}}
+{{- if eq .Variant "icon"}} aria-label="{{.Label}}" title="{{.Label}}" class="grid size-9 shrink-0 place-items-center rounded-md text-muted hover:bg-panel hover:text-text"
+{{- else}} class="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium whitespace-nowrap {{if eq .Variant "danger"}}text-danger-fg hover:border-danger-fg{{else}}text-text hover:border-faint{{end}}"{{end}}>
+{{- with .Icon}}{{icon .}}{{end}}{{if ne .Variant "icon"}}{{.Label}}{{end -}}
+{{if .Href}}</a>{{else}}</button>{{end}}
+{{- end}}
+
+{{/* copy: a Copy button; app.js copies data-copy and shows "Copied".
+     dict "Text" string to copy, "Label" accessible name (optional, e.g.
+          "Copy digest"), "Dark" bool (on the code block's dark background). */}}
+{{define "copy" -}}
+<button type="button" data-copy="{{.Text}}"{{with .Label}} aria-label="{{.}}"{{end}} class="group inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 font-sans text-xs font-medium whitespace-nowrap
+  {{- if .Dark}} border-code-fg/10 bg-code-fg/5 text-code-fg hover:bg-code-fg/10 focus-visible:outline-code-fg
+  {{- else}} border-border bg-surface text-text hover:border-accent hover:text-accent-text data-copied:border-accent data-copied:text-accent-text{{end}}">
+{{- icon "copy" "size-3 group-data-copied:hidden"}}{{icon "check" "hidden size-3 group-data-copied:block"}}<span data-copy-label aria-live="polite">Copy</span></button>
+{{- end}}
+
+{{/* copy-field: a one-line command with a Copy button.
+     The data is the command string. */}}
+{{define "copy-field" -}}
+<div class="flex w-full max-w-md min-w-0 items-center gap-2.5 rounded-md border border-border bg-panel py-1 pr-1 pl-3 font-mono text-xs">
+<code class="min-w-0 flex-1 truncate" title="{{.}}"><span class="text-faint select-none" aria-hidden="true">$ </span>{{.}}</code>
+{{- template "copy" (dict "Text" . "Label" "Copy command")}}
+</div>
+{{- end}}
+
+{{/* code-block: the dark pull box, a title bar with Copy above a command.
+     dict "Title" string ("Pull this image"), "Command" string. */}}
+{{define "code-block" -}}
+<div class="w-full max-w-lg min-w-0 overflow-hidden rounded-md border border-code-fg/10 bg-code-bg text-code-fg">
+<div class="flex items-center justify-between gap-2 border-b border-code-fg/10 py-2 pr-2 pl-3 text-xs text-code-fg/70">
+<span class="inline-flex min-w-0 items-center gap-2">{{icon "terminal"}}<span class="truncate">{{.Title}}</span></span>
+{{- template "copy" (dict "Text" .Command "Label" "Copy command" "Dark" true)}}
+</div>
+<code class="block truncate px-4 pt-3 pb-4 font-mono text-sm" title="{{.Command}}"><span class="mr-2.5 text-code-fg/50 select-none" aria-hidden="true">$</span>{{.Command}}</code>
+</div>
+{{- end}}
+
+{{/* tabs: page-level tabs. Each tab is its own URL, so they are links in a
+     <nav>, the current one marked aria-current="page".
+     dict "Label" string (names the nav, e.g. "Repository"),
+          "Tabs" list of dict "Label", "Href", "Icon" (optional),
+                 "Count" (optional), "Current" bool. */}}
+{{define "tabs" -}}
+<nav aria-label="{{.Label}}" class="flex gap-1 overflow-x-auto">
+{{- range .Tabs}}
+<a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}} class="group inline-flex items-center gap-2 border-b-2 border-transparent px-3 pt-2.5 pb-3 font-medium whitespace-nowrap text-muted hover:text-text aria-[current=page]:border-accent aria-[current=page]:text-text">
+{{- with .Icon}}{{icon . "group-aria-[current=page]:text-accent"}}{{end}}{{.Label}}
+{{- with .Count}} <span class="rounded-sm border border-border bg-panel px-2 text-xs text-muted">{{.}}</span>{{end}}</a>
+{{- end}}
+</nav>
+{{- end}}
+
+{{/* segmented: a Cards / List style toggle. It's a GET form of buttons,
+     so a click loads ?Name=Value (other query parameters are dropped);
+     the pressed one has aria-pressed="true".
+     dict "Label" string (names the group, e.g. "View"), "Name" query key,
+          "Options" list of dict "Value", "Label", "Icon" (optional),
+                    "Pressed" bool, "Disabled" bool. */}}
+{{define "segmented" -}}
+<form method="get" role="group" aria-label="{{.Label}}" class="inline-flex rounded-md border border-border bg-surface">
+{{- range .Options}}
+<button type="submit" name="{{$.Name}}" value="{{.Value}}" aria-pressed="{{if .Pressed}}true{{else}}false{{end}}"{{if .Disabled}} disabled{{end}} class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted not-first:border-l not-first:border-border first:rounded-l-md last:rounded-r-md hover:text-text aria-pressed:bg-panel aria-pressed:font-medium aria-pressed:text-text disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted">
+{{- with .Icon}}{{icon .}}{{end}}{{.Label}}</button>
+{{- end}}
+</form>
+{{- end}}
