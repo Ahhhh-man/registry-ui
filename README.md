@@ -14,10 +14,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
 </p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/screenshot-dark.png">
-  <img src=".github/assets/screenshot.png" alt="The tags of library/nginx, with each tag's platforms, digests, sizes and a copyable docker pull command">
-</picture>
+<img src=".github/assets/screenshot.png" alt="Three registry-ui pages overlapping: the list of repositories, the tags of library/nginx, and the nginx:latest tag page with its pull command and a card for each platform">
 
 You run a [CNCF Distribution](https://distribution.github.io/distribution/) registry (`registry:2` or `registry:3`) and want to know what's in it. Maybe it's a pull-through cache and you want to know what it has actually cached. The registry has no UI, and `curl`ing `/v2/_catalog` gets old fast.
 
