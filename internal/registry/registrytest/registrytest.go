@@ -6,9 +6,14 @@
 // last without sending a Link header. A shim in front of both pages them the
 // way Distribution does: sorted, at most PageSize names per page, with a Link
 // header to the next page, so clients have to follow pagination.
+//
+// NewStorage writes the same content to disk in Distribution's filesystem
+// layout instead, for tests of storage mode.
 package registrytest
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +22,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
@@ -75,6 +82,9 @@ type Registry struct {
 	URL string
 	// Host is the host:port part of URL, as used in image references.
 	Host string
+	// StoragePath is the storage root NewStorage wrote, the folder a
+	// registry has at /var/lib/registry. Empty for a served registry.
+	StoragePath string
 
 	// Index is a multi-arch OCI index. Its children are Platforms, in order,
 	// and then Attestation.
@@ -130,11 +140,10 @@ func start(t testing.TB, user, pass string) *Registry {
 	if user != "" {
 		opts = append(opts, remote.WithAuth(&authn.Basic{Username: user, Password: pass}))
 	}
-	push := func(repo, tag string, obj any) {
-		t.Helper()
-		ref, err := name.NewTag(r.Host+"/"+repo+":"+tag, name.Insecure)
+	for _, c := range r.content() {
+		ref, err := name.NewTag(r.Host+"/"+c.repo+":"+c.tag, name.Insecure)
 		if err == nil {
-			switch obj := obj.(type) {
+			switch obj := c.obj.(type) {
 			case v1.ImageIndex:
 				err = remote.WriteIndex(ref, obj, opts...)
 			case v1.Image:
@@ -142,19 +151,95 @@ func start(t testing.TB, user, pass string) *Registry {
 			}
 		}
 		if err != nil {
-			t.Fatalf("registrytest: push %s:%s: %v", repo, tag, err)
+			t.Fatalf("registrytest: push %s:%s: %v", c.repo, c.tag, err)
 		}
 	}
-	push(RepoIndex, TagVersion, r.Index)
-	push(RepoIndex, TagLatest, r.Index)
-	push(RepoIndex, r.SignatureTag, r.Signature)
-	push(RepoSingle, TagSingle, r.Single)
-	push(RepoHelm, TagHelm, r.Helm)
-	push(RepoNested, TagNested, r.Single)
-	for _, tag := range PagedTags {
-		push(RepoPaged, tag, r.Single)
+	return r
+}
+
+// NewStorage writes the same seeded content as New into a temporary folder,
+// laid out the way Distribution's filesystem storage driver lays it out, and
+// returns it with StoragePath set. Nothing is served, so URL and Host are
+// empty.
+func NewStorage(t testing.TB) *Registry {
+	t.Helper()
+	r := &Registry{StoragePath: t.TempDir()}
+	r.build(t)
+	v2 := filepath.Join(r.StoragePath, "docker", "registry", "v2")
+	write := func(path, data string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// blob stores data once and links it into repo under dir.
+	blob := func(repo, dir string, data []byte) v1.Hash {
+		t.Helper()
+		sum := sha256.Sum256(data)
+		h := v1.Hash{Algorithm: "sha256", Hex: hex.EncodeToString(sum[:])}
+		write(filepath.Join(v2, "blobs", "sha256", h.Hex[:2], h.Hex, "data"), string(data))
+		write(filepath.Join(v2, "repositories", repo, dir, "sha256", h.Hex, "link"), h.String())
+		return h
+	}
+	image := func(repo string, img v1.Image) v1.Hash {
+		t.Helper()
+		blob(repo, "_layers", must(img.RawConfigFile()))
+		for _, l := range must(img.Layers()) {
+			rc := must(l.Compressed())
+			blob(repo, "_layers", must(io.ReadAll(rc)))
+			_ = rc.Close()
+		}
+		return blob(repo, "_manifests/revisions", must(img.RawManifest()))
+	}
+	for _, c := range r.content() {
+		var h v1.Hash
+		switch obj := c.obj.(type) {
+		case v1.ImageIndex:
+			for _, d := range must(obj.IndexManifest()).Manifests {
+				image(c.repo, must(obj.Image(d.Digest)))
+			}
+			h = blob(c.repo, "_manifests/revisions", must(obj.RawManifest()))
+		case v1.Image:
+			h = image(c.repo, obj)
+		}
+		tag := filepath.Join(v2, "repositories", c.repo, "_manifests", "tags", c.tag)
+		write(filepath.Join(tag, "current", "link"), h.String())
+		write(filepath.Join(tag, "index", "sha256", h.Hex, "link"), h.String())
 	}
 	return r
+}
+
+// content lists every tag in the seeded registry, in push order.
+func (r *Registry) content() []tagged {
+	c := []tagged{
+		{RepoIndex, TagVersion, r.Index},
+		{RepoIndex, TagLatest, r.Index},
+		{RepoIndex, r.SignatureTag, r.Signature},
+		{RepoSingle, TagSingle, r.Single},
+		{RepoHelm, TagHelm, r.Helm},
+		{RepoNested, TagNested, r.Single},
+	}
+	for _, tag := range PagedTags {
+		c = append(c, tagged{RepoPaged, tag, r.Single})
+	}
+	return c
+}
+
+type tagged struct {
+	repo, tag string
+	obj       any // v1.Image or v1.ImageIndex
+}
+
+// must panics on an error building fixtures from in-memory images, which
+// can only be a bug in this package.
+func must[T any](v T, err error) T {
+	if err != nil {
+		panic("registrytest: build fixtures: " + err.Error())
+	}
+	return v
 }
 
 // build makes the seed content. It is deterministic, so digests are the same

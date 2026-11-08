@@ -11,7 +11,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -89,8 +88,8 @@ func serve() error {
 // fake.go swaps in sample data.
 var newSource = func(cfg config.Config) (registry.Source, error) {
 	if cfg.StoragePath != "" {
-		// Storage mode plugs in here (#25).
-		return nil, errors.New("REGISTRY_UI_STORAGE_PATH: storage mode is not supported yet")
+		slog.Warn("storage mode: the registry's auth is not consulted, so anyone who can reach this UI can see every repository; put it behind your own auth if that matters")
+		return registry.NewStorage(cfg.StoragePath)
 	}
 	return registry.NewAPI(cfg.RegistryURL.String(), cfg.RegistryInsecure)
 }
