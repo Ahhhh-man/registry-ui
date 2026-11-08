@@ -9,10 +9,9 @@
 
 <p align="center">
   <a href="https://github.com/Ahhhh-man/registry-ui/actions/workflows/ci.yml"><img src="https://github.com/Ahhhh-man/registry-ui/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/Ahhhh-man/registry-ui/releases/latest"><img src="https://img.shields.io/github/v/release/Ahhhh-man/registry-ui?sort=semver" alt="Latest release"></a>
   <a href="https://github.com/Ahhhh-man/registry-ui/pkgs/container/registry-ui"><img src="https://img.shields.io/badge/image-ghcr.io%2Fahhhh--man%2Fregistry--ui-blue" alt="Container image"></a>
-  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/Ahhhh-man/registry-ui" alt="Go version"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/Ahhhh-man/registry-ui" alt="License"></a>
+  <a href="go.mod"><img src="https://img.shields.io/badge/go-1.27-00ADD8?logo=go&amp;logoColor=white" alt="Go version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
 </p>
 
 <picture>
