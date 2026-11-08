@@ -6,10 +6,14 @@ import (
 	"embed"
 	"html/template"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/Ahhhh-man/registry-ui/internal/web"
 )
 
 // A release build's files must be the embedded ones; this fails to compile
@@ -28,9 +32,11 @@ func TestReleaseServesFromBinary(t *testing.T) {
 	}
 }
 
+// testFuncs are the router's URL helpers, as the server wires them.
+var testFuncs = web.FuncMap("/", StaticName)
+
 func TestTemplatesUseHashedNames(t *testing.T) {
-	funcs := map[string]any{"staticURL": func(name string) string { return "/-/static/" + StaticName(name) }}
-	tmpl, err := Templates(funcs)
+	tmpl, err := Templates(testFuncs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,11 +53,72 @@ func TestTemplatesUseHashedNames(t *testing.T) {
 	}
 
 	// A typo in a static file name fails the render instead of linking nowhere.
-	bad, err := template.New("bad").Funcs(funcs).Parse(`{{staticURL "nope.css"}}`)
+	bad, err := template.New("bad").Funcs(testFuncs).Parse(`{{staticURL "nope.css"}}`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := bad.Execute(io.Discard, nil); err == nil {
 		t.Error("unknown static name rendered without error")
+	}
+}
+
+func TestLayout(t *testing.T) {
+	tmpl, err := Templates(testFuncs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl, err := tmpl()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for theme, html := range map[string]string{"": `<html lang="en">`, "dark": `<html lang="en" class="dark">`, "light": `<html lang="en" class="light">`} {
+		var b strings.Builder
+		page := Page{Title: "registry.example.com", PageTitle: "nginx", Theme: theme, Query: `ngi"nx`, Body: "<p>placeholder</p>"}
+		if err := tpl.ExecuteTemplate(&b, "layout", page); err != nil {
+			t.Fatal(err)
+		}
+		s := b.String()
+		for _, want := range []string{
+			"<!doctype html>\n" + html,
+			"<title>nginx · registry.example.com</title>",
+			`href="/-/static/` + StaticName("app.css") + `"`,
+			`src="/-/static/` + StaticName("app.js") + `"`,
+			`value="ngi&#34;nx"`,
+			"<p>placeholder</p>",
+			"registry-ui</span>",
+			"data-theme-toggle",
+		} {
+			if !strings.Contains(s, want) {
+				t.Errorf("theme %q: layout lacks %s", theme, want)
+			}
+		}
+		// The CSP forbids inline styles and scripts.
+		if strings.Contains(s, "style=") || strings.Contains(s, "<style") || strings.Count(s, "<script") != strings.Count(s, "<script src=") {
+			t.Errorf("layout has inline style or script:\n%s", s)
+		}
+	}
+}
+
+// The fonts are named by hash in tailwind.css; a stale name would 404.
+func TestCSSURLsResolve(t *testing.T) {
+	css, err := fs.ReadFile(files, "static/app.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	urls := regexp.MustCompile(`url\("?([^")]+)"?\)`).FindAllSubmatch(css, -1)
+	if len(urls) < 2 {
+		t.Fatalf("found %d url()s in app.css, want the two fonts", len(urls))
+	}
+	for _, u := range urls {
+		r := httptest.NewRequest(http.MethodGet, "/"+string(u[1]), nil)
+		w := httptest.NewRecorder()
+		StaticHandler().ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			t.Errorf("app.css links %s, which is a %d", u[1], w.Code)
+		}
+	}
+	// Tailwind's default palette is oklch(); none of it may survive.
+	if strings.Contains(string(css), "oklch(") {
+		t.Error("app.css contains Tailwind's default colours")
 	}
 }

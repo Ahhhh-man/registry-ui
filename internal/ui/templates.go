@@ -7,7 +7,8 @@ import (
 )
 
 // Templates parses every .html file under templates/ with funcs available,
-// and returns a function that yields the result. A release build parses the
+// plus this package's icon and tileClass, and returns a function that yields
+// the result. A release build parses the
 // embedded files once, here; a dev build re-reads them from disk on every
 // call, so edits show on refresh.
 func Templates(funcs template.FuncMap) (func() (*template.Template, error), error) {
@@ -33,5 +34,5 @@ func parseTemplates(fsys fs.FS, funcs template.FuncMap) (*template.Template, err
 	if err != nil {
 		return nil, err
 	}
-	return template.New("").Funcs(funcs).ParseFS(fsys, names...)
+	return template.New("").Funcs(builtins).Funcs(funcs).ParseFS(fsys, names...)
 }

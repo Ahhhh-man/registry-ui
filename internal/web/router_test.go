@@ -165,11 +165,12 @@ func TestFuncMap(t *testing.T) {
 		hashed func(string) string
 		want   []string
 	}{
-		{"/", nil, []string{"/a/b", "/a/b:1.0", "/a/b@" + dgst, "/-/static/app.css"}},
-		{"/registry/", hashed, []string{"/registry/a/b", "/registry/a/b:1.0", "/registry/a/b@" + dgst, "/registry/-/static/app.3f2a.css"}},
+		{"/", nil, []string{"/", "/a/b", "/a/b:1.0", "/a/b@" + dgst, "/-/static/app.css"}},
+		{"/registry/", hashed, []string{"/registry/", "/registry/a/b", "/registry/a/b:1.0", "/registry/a/b@" + dgst, "/registry/-/static/app.3f2a.css"}},
 	} {
 		fm := FuncMap(tt.base, tt.hashed)
 		got := []string{
+			fm["catalogURL"].(func() string)(),
 			fm["repoURL"].(func(string) string)("a/b"),
 			fm["tagURL"].(func(string, string) string)("a/b", "1.0"),
 			fm["digestURL"].(func(string, string) string)("a/b", dgst),
@@ -180,7 +181,7 @@ func TestFuncMap(t *testing.T) {
 		}
 		// Every page URL the helpers build must route.
 		h := testRouter(tt.base)
-		for _, u := range got[:3] {
+		for _, u := range got[:4] {
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, u, nil))
 			if rec.Code != http.StatusOK {

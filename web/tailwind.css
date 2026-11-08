@@ -1,0 +1,154 @@
+/*
+ * Design tokens. Tailwind's default palette and scales are cleared, so only
+ * the names below exist: bg-blue-500, p-7 or rounded-xl produce no CSS.
+ * Compile with `task css`; the output is committed.
+ */
+@import "tailwindcss" source(none);
+
+@source "../internal/ui/templates";
+@source "../internal/ui/static/app.js";
+/* Repo tile colours are picked in Go (TileClass), which isn't scanned. */
+@source inline("bg-tile-{1,2,3,4,5,6,7,8} text-tile-fg");
+
+/* Each colour is light-dark(light, dark); color-scheme on <html> picks one. */
+@theme {
+  --color-*: initial;
+  --spacing: initial;
+  --spacing-*: initial;
+  --radius-*: initial;
+  --font-*: initial;
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --text-shadow-*: initial;
+
+  --color-bg: light-dark(#ffffff, #09090b);
+  --color-surface: light-dark(#ffffff, #111114);
+  --color-panel: light-dark(#f4f4f5, #141417);
+  --color-border: light-dark(#e4e4e7, #26262b);
+  --color-row-border: light-dark(#f1f1f3, #1c1c20);
+  --color-text: light-dark(#09090b, #fafafa);
+  --color-muted: light-dark(#52525b, #a1a1aa);
+  --color-faint: light-dark(#6e6e77, #8b8b94); /* #71717a was 4.4:1 on panel */
+  --color-accent: light-dark(#4f46e5, #818cf8);
+  --color-accent-fg: light-dark(#ffffff, #09090b);
+  --color-accent-soft: light-dark(#eef2ff, rgb(129 140 248 / 0.13));
+  --color-accent-text: light-dark(#4338ca, #c7d2fe);
+  --color-warn-bg: light-dark(#fef3c7, rgb(251 191 36 / 0.12));
+  --color-warn-fg: light-dark(#92400e, #fcd34d);
+  --color-info-bg: light-dark(#e0f2fe, rgb(56 189 248 / 0.12));
+  --color-info-fg: light-dark(#075985, #7dd3fc);
+  --color-danger-bg: light-dark(#fef2f2, rgb(239 68 68 / 0.12));
+  --color-danger-fg: light-dark(#b91c1c, #fca5a5);
+  --color-code-bg: light-dark(#18181b, #0c0c0f);
+  --color-code-fg: #e4e4e7;
+
+  /* Repo letter tiles, white text; TileClass picks one by name. */
+  --color-tile-fg: #ffffff;
+  --color-tile-1: #6366f1;
+  --color-tile-2: #0ea5e9;
+  --color-tile-3: #10b981;
+  --color-tile-4: #f59e0b;
+  --color-tile-5: #ec4899;
+  --color-tile-6: #14b8a6;
+  --color-tile-7: #8b5cf6;
+  --color-tile-8: #f97316;
+
+  /* A 4px scale with a few half steps; anything else is off-system. */
+  --spacing-0: 0px;
+  --spacing-px: 1px;
+  --spacing-0\.5: 2px;
+  --spacing-1: 4px;
+  --spacing-1\.5: 6px;
+  --spacing-2: 8px;
+  --spacing-2\.5: 10px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-9: 36px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+
+  --container-page: 1200px;
+
+  /* Badges and pills; cards, inputs and buttons; repo tiles. */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Theme: the theme cookie puts .light or .dark on <html>; without it the OS decides. */
+:root {
+  color-scheme: light dark;
+}
+:root.light {
+  color-scheme: light;
+}
+:root.dark {
+  color-scheme: dark;
+}
+
+/* dark: must follow the same rule as the tokens, not just the media query. */
+@custom-variant dark {
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not(.light) *) {
+      @slot;
+    }
+  }
+}
+
+/* Fonts are served by hashed name; a test checks these URLs resolve. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("fonts/inter.3100e775.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("fonts/jetbrains-mono.18be4527.woff2") format("woff2");
+}
+
+@layer base {
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  kbd {
+    font-family: var(--font-mono);
+    font-size: 0.82em;
+    border: 1px solid var(--color-border);
+    border-bottom-width: 2px;
+    border-radius: var(--radius-sm);
+    padding: 0 5px;
+  }
+}
+
+@layer components {
+  /* Inline Lucide icons ({{icon "name"}}); size utilities override. */
+  .icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+}

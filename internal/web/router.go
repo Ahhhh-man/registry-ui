@@ -78,9 +78,10 @@ func FuncMap(base string, hashed func(string) string) template.FuncMap {
 		hashed = func(name string) string { return name }
 	}
 	return template.FuncMap{
-		"repoURL":   func(repo string) string { return base + repo },
-		"tagURL":    func(repo, tag string) string { return base + repo + ":" + tag },
-		"digestURL": func(repo, digest string) string { return base + repo + "@" + digest },
-		"staticURL": func(name string) string { return base + "-/static/" + hashed(name) },
+		"catalogURL": func() string { return base },
+		"repoURL":    func(repo string) string { return base + repo },
+		"tagURL":     func(repo, tag string) string { return base + repo + ":" + tag },
+		"digestURL":  func(repo, digest string) string { return base + repo + "@" + digest },
+		"staticURL":  func(name string) string { return base + "-/static/" + hashed(name) },
 	}
 }
