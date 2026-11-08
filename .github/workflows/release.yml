@@ -1,7 +1,7 @@
 name: release
 
-# A stable tag (vX.Y.Z) publishes ghcr.io/ahhhh-man/registry-ui:X.Y.Z, X.Y, X and
-# latest as one amd64+arm64 manifest list, then creates a GitHub release.
+# A stable tag (vX.Y.Z) publishes ghcr.io/ahhhh-man/registry-ui:X.Y.Z and latest
+# as one amd64+arm64 manifest list, then creates a GitHub release.
 # Run by hand, it builds both images only; untick dry-run to also push them as
 # sha-<commit> (no semver tags, no release).
 on:
@@ -36,6 +36,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+    # Each leg sets only its own arch's output, so the two don't overwrite each other.
+    outputs:
+      amd64: ${{ steps.push.outputs.amd64 }}
+      arm64: ${{ steps.push.outputs.arm64 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -71,14 +75,17 @@ jobs:
         run: echo "$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#crane)/bin" >> "$GITHUB_PATH"
 
       - name: Push
+        id: push
         if: github.event_name == 'push' || inputs.dry-run == false
         env:
           ARCH: ${{ matrix.arch }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Pushed by digest, untagged: only the multi-arch index gets tags.
         run: |
-          if [ "$GITHUB_REF_TYPE" = tag ]; then tag=${GITHUB_REF_NAME#v}; else tag=sha-${GITHUB_SHA::7}; fi
+          digest=$(crane digest --tarball image.tar)
           crane auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin <<< "$GITHUB_TOKEN"
-          crane push image.tar "$IMAGE:$tag-$ARCH"
+          crane push image.tar "$IMAGE@$digest"
+          echo "$ARCH=$digest" >> "$GITHUB_OUTPUT"
 
   manifest:
     needs: image
@@ -100,15 +107,17 @@ jobs:
       - name: Merge into one multi-arch manifest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AMD64: ${{ needs.image.outputs.amd64 }}
+          ARM64: ${{ needs.image.outputs.arm64 }}
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             v=${GITHUB_REF_NAME#v}
-            tags=("$v" "${v%.*}" "${v%%.*}" latest)
+            tags=("$v" latest)
           else
             tags=("sha-${GITHUB_SHA::7}")
           fi
           crane auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin <<< "$GITHUB_TOKEN"
-          crane index append -m "$IMAGE:${tags[0]}-amd64" -m "$IMAGE:${tags[0]}-arm64" -t "$IMAGE:${tags[0]}"
+          crane index append -m "$IMAGE@$AMD64" -m "$IMAGE@$ARM64" -t "$IMAGE:${tags[0]}"
           for t in "${tags[@]:1}"; do crane tag "$IMAGE:${tags[0]}" "$t"; done
 
   release:
