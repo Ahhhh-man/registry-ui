@@ -12,8 +12,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-
-	"github.com/Ahhhh-man/registry-ui/internal/web"
 )
 
 // A release build's files must be the embedded ones; this fails to compile
@@ -32,8 +30,7 @@ func TestReleaseServesFromBinary(t *testing.T) {
 	}
 }
 
-// testFuncs are the router's URL helpers, as the server wires them.
-var testFuncs = web.FuncMap("/", StaticName)
+var testFuncs = serverFuncs("/", StaticName)
 
 func TestTemplatesUseHashedNames(t *testing.T) {
 	tmpl, err := Templates(testFuncs)

@@ -75,3 +75,14 @@
 {{- end}}
 </form>
 {{- end}}
+
+{{/* filter: a search box that filters the list below it. Put it in the
+     page's own GET form; "/" focuses it.
+     dict "Name" query key, "Value" the current filter,
+          "Placeholder" string, "Label" accessible name. */}}
+{{define "filter" -}}
+<div class="relative w-full">
+<span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-faint">{{icon "search"}}</span>
+<input type="search" name="{{.Name}}" value="{{.Value}}" placeholder="{{.Placeholder}}" aria-label="{{.Label}}" autocomplete="off" data-hotkey="/" class="w-full rounded-md border border-border bg-surface py-2 pr-3 pl-10 text-text placeholder:text-muted focus:border-accent">
+</div>
+{{- end}}

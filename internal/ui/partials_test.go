@@ -3,11 +3,13 @@ package ui
 import (
 	"html"
 	"html/template"
+	"maps"
 	"os"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/Ahhhh-man/registry-ui/internal/format"
 	"github.com/Ahhhh-man/registry-ui/internal/web"
 )
 
@@ -57,6 +59,10 @@ var partialCases = []struct {
 		"segmented", `{{template "segmented" (dict "Label" "View" "Name" "view" "Options" (list (dict "Value" "cards" "Label" "Cards" "Icon" "layers" "Pressed" true) (dict "Value" "list" "Label" "List" "Icon" "list" "Disabled" true)))}}`,
 		[]string{`<form method="get" role="group" aria-label="View"`, `<button type="submit" name="view" value="cards" aria-pressed="true"`, `value="list" aria-pressed="false" disabled`, "aria-pressed:bg-panel"},
 	},
+	{
+		"filter", `<form>{{template "filter" (dict "Name" "q" "Value" "1.27" "Placeholder" "Filter tags" "Label" "Filter tags")}}</form>`,
+		[]string{`<input type="search" name="q" value="1.27" placeholder="Filter tags" aria-label="Filter tags"`, `data-hotkey="/"`},
+	},
 	{"badge", `{{template "badge" (dict "Label" "linux/amd64")}}`, []string{"bg-panel text-muted", ">linux/amd64</span>"}},
 	{"badge accent", `{{template "badge" (dict "Label" "latest" "Variant" "accent")}}`, []string{"bg-accent-soft text-accent-text", ">latest</span>"}},
 	{"badge signature", `{{template "badge" (dict "Label" "signature" "Variant" "signature")}}`, []string{"bg-warn-bg text-warn-fg", "</svg>signature</span>"}},
@@ -101,6 +107,14 @@ var partialCases = []struct {
 	{"warning", `{{template "warning" "2 more tags will also go."}}`, []string{`role="note"`, "bg-warn-bg", "2 more tags will also go."}},
 }
 
+// serverFuncs are the template funcs the server wires up, at base; the
+// page templates need them all to parse.
+func serverFuncs(base string, hashed func(string) string) template.FuncMap {
+	funcs := web.FuncMap(base, hashed)
+	maps.Copy(funcs, format.Funcs())
+	return funcs
+}
+
 // parseCases parses the templates plus a "case-<name>" template per case.
 func parseCases(t testing.TB, funcs template.FuncMap) *template.Template {
 	t.Helper()
@@ -117,7 +131,7 @@ func parseCases(t testing.TB, funcs template.FuncMap) *template.Template {
 }
 
 func TestPartials(t *testing.T) {
-	tpl := parseCases(t, web.FuncMap("/", nil))
+	tpl := parseCases(t, serverFuncs("/", nil))
 	css, err := os.ReadFile("static/app.css")
 	if err != nil {
 		t.Fatal(err)

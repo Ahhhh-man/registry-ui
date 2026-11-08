@@ -1,0 +1,90 @@
+{{/* The repository page. Data is a pages.repoView; "repo-tags" is the list
+     the tag filter swaps, "repo-card" one tag (a pages.tagCard). */}}
+{{define "repo" -}}
+{{$trail := list (dict "Label" "Repositories" "Href" catalogURL)}}
+{{- with .Namespace}}{{$trail = list (dict "Label" "Repositories" "Href" catalogURL) (dict "Label" .)}}{{end -}}
+<div class="flex flex-col gap-5">
+{{template "breadcrumbs" (dict "Trail" $trail "Current" .Name)}}
+{{template "page-header" (dict "Repo" .Repo "Helm" .Helm "Prefix" .Prefix "Title" .Name "Description" .Description "Pills" .Pills)}}
+</div>
+<div class="mt-6 border-b border-border">
+{{- /* Overview (#29) joins Tags here. */}}
+{{template "tabs" (dict "Label" "Repository" "Tabs" (list (dict "Label" "Tags" "Icon" "tag" "Href" (repoURL .Repo) "Count" .TagCount "Current" true)))}}
+</div>
+<div class="mt-5 mb-4 flex flex-wrap items-center justify-between gap-3">
+<form method="get" action="{{repoURL .Repo}}" role="search" hx-get="{{repoURL .Repo}}" hx-trigger="input delay:250ms, submit" hx-target="#tags" hx-sync="this:replace" hx-vals='{"fragment": "tags"}' class="w-full sm:max-w-xs">
+{{- template "filter" (dict "Name" "q" "Value" .Query "Placeholder" "Filter tags" "Label" "Filter tags")}}
+{{- with .View}}<input type="hidden" name="view" value="{{.}}">{{end}}
+</form>
+<div class="flex flex-wrap items-center gap-3">
+<span class="inline-flex items-center gap-1.5 text-xs text-muted">{{icon "arrow-down-wide-narrow"}}Version, newest first</span>
+{{- /* List (#30) is enabled when it lands. */}}
+{{template "segmented" (dict "Label" "View" "Name" "view" "Options" (list (dict "Value" "cards" "Label" "Cards" "Icon" "layout-list" "Pressed" true) (dict "Value" "list" "Label" "List" "Icon" "list" "Disabled" true)))}}
+</div>
+</div>
+<div id="tags" class="flex flex-col gap-3">
+{{template "repo-tags" .}}
+</div>
+{{- end}}
+
+{{define "repo-tags" -}}
+{{range .Cards}}{{template "repo-card" .}}
+{{else}}{{if .Query}}{{template "empty" (dict "Title" (printf "No tags match “%s”" .Query) "Href" (repoURL .Repo) "Link" "Clear the filter")}}
+{{- else}}{{template "empty" (dict "Icon" "tag" "Title" "No tags yet" "Text" "Nothing has been pushed to this repository.")}}{{end}}
+{{end}}
+{{- if gt .Pages 1}}
+<nav aria-label="Pages" class="mt-2 flex items-center justify-between gap-3">
+<span>{{with .Prev}}{{template "button" (dict "Label" "Previous" "Href" .)}}{{end}}</span>
+<span class="text-sm text-muted">Page {{.Page}} of {{.Pages}}</span>
+<span>{{with .Next}}{{template "button" (dict "Label" "Next" "Href" .)}}{{end}}</span>
+</nav>
+{{- end}}
+{{- end}}
+
+{{define "repo-card" -}}
+<article class="{{template "card"}}"{{with .Load}} hx-get="{{.}}" hx-trigger="revealed" hx-swap="outerHTML" aria-busy="true"{{end}}>
+<div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+<div class="min-w-0">
+<div class="flex flex-wrap items-center gap-2">
+<a href="{{tagURL .Repo .Tag}}" title="{{.Tag}}" class="inline-flex min-w-0 items-center gap-2 font-semibold hover:text-accent-text">{{icon "tag" "text-accent"}}<span class="truncate">{{.Label}}</span></a>
+{{- range .Badges}}{{template "badge" .}}{{end}}
+</div>
+<div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+{{- if .Load}}{{template "skeleton" "w-1/2"}}{{else}}
+{{- if not .Created.IsZero}}<span class="inline-flex items-center gap-1.5" title="{{date .Created}}">{{icon "clock" "text-faint"}}Created {{age .Created}}</span>{{end}}
+<span class="inline-flex items-center gap-1.5">{{icon "hash" "text-faint"}}<span class="font-mono">{{shortDigest .Digest}}</span></span>
+{{- with .SameAs}}
+<span class="inline-flex items-center gap-1.5">{{icon "link" "text-faint"}}<span>Same as {{range $i, $t := .}}{{if $i}}, {{end}}<a href="{{tagURL $.Repo $t}}" class="hover:text-text">{{$t}}</a>{{end}}{{with $.MoreSameAs}} +{{.}}{{end}}</span></span>
+{{- end}}
+{{- end}}
+</div>
+</div>
+{{- with .Command}}{{template "copy-field" .}}{{end}}
+</div>
+{{- if .Load}}
+<div class="flex flex-col gap-3">{{template "skeleton" "w-1/2"}}{{template "skeleton" "w-1/3"}}</div>
+{{- else if .Platforms}}
+<div class="group/platforms overflow-x-auto">
+<table class="{{template "table"}}">
+{{- /* The digest column gives way at phone width; the tag page has it. */}}
+<thead><tr><th>OS / Arch</th><th class="hidden sm:table-cell">Digest</th><th class="text-right!">Compressed size</th></tr></thead>
+<tbody>
+{{- range $i, $p := .Platforms}}
+<tr{{if ge $i 3}} class="hidden group-has-[[open]]/platforms:table-row"{{end}}><td><span class="inline-flex items-center gap-2 whitespace-nowrap">{{icon "cpu" "text-faint"}}{{platform $p}}</span></td><td class="hidden sm:table-cell"><a href="{{digestURL $.Repo $p.Digest}}" class="font-mono hover:text-accent-text">{{shortDigest $p.Digest}}</a></td><td class="text-right whitespace-nowrap tabular-nums">{{size $p.Size}}</td></tr>
+{{- end}}
+</tbody>
+</table>
+{{- if gt (len .Platforms) 3}}
+<details class="group/more mt-2"><summary class="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-accent-text [&::-webkit-details-marker]:hidden">{{$n := len (slice .Platforms 3)}}<span class="group-open/more:hidden">{{$n}} more platform{{if ne $n 1}}s{{end}}</span><span class="hidden group-open/more:inline">Show fewer</span>{{icon "chevron-down" "group-open/more:rotate-180"}}</summary></details>
+{{- end}}
+</div>
+{{- else}}
+<div class="overflow-x-auto">
+<table class="{{template "table"}}">
+<thead><tr><th>Digest</th><th>Type</th><th class="text-right!">Size</th></tr></thead>
+<tbody><tr><td><a href="{{digestURL .Repo .Digest}}" class="font-mono hover:text-accent-text">{{shortDigest .Digest}}</a></td><td>{{.Type}}</td><td class="text-right whitespace-nowrap tabular-nums">{{size .Size}}</td></tr></tbody>
+</table>
+</div>
+{{- end}}
+</article>
+{{- end}}

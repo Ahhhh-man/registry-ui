@@ -12,7 +12,7 @@ import (
 )
 
 func TestErrorRenderer(t *testing.T) {
-	tmpl, err := Templates(web.FuncMap("/registry/", StaticName))
+	tmpl, err := Templates(serverFuncs("/registry/", StaticName))
 	if err != nil {
 		t.Fatal(err)
 	}
