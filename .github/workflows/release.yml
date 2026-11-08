@@ -135,16 +135,6 @@ jobs:
           crane copy "$IMAGE:$v" "docker.io/$DOCKERHUB_REPO:$v"
           crane tag "docker.io/$DOCKERHUB_REPO:$v" latest
 
-      - name: Sync the Docker Hub description
-        if: github.ref_type == 'tag'
-        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ env.DOCKERHUB_REPO }}
-          short-description: See what's in your container registry, including your pull-through cache.
-          enable-url-completion: true
-
   release:
     needs: manifest
     if: github.ref_type == 'tag'
