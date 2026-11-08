@@ -1,11 +1,18 @@
 version: "3"
 
+vars:
+  CSS_IN: web/tailwind.css
+  CSS_OUT: internal/ui/static/app.css
+
 tasks:
   dev:
-    desc: Run with templates and assets served from disk
+    desc: Run with templates and assets served from disk, rebuilding CSS on change
+    deps: [css:watch, run:dev]
+
+  run:dev:
+    internal: true
     cmds:
-      # Tailwind watch and -tags dev arrive with #5 and #10.
-      - go run .
+      - go run -tags dev .
 
   build:
     desc: Build the binary
@@ -26,8 +33,13 @@ tasks:
   css:
     desc: Compile Tailwind
     cmds:
-      # Filled in by #5.
-      - echo "no stylesheet yet"
+      - tailwindcss -i {{.CSS_IN}} -o {{.CSS_OUT}} --minify
+
+  css:watch:
+    internal: true
+    cmds:
+      # "always" keeps watching when task doesn't attach stdin.
+      - tailwindcss -i {{.CSS_IN}} -o {{.CSS_OUT}} --watch=always
 
   image:
     desc: Build the container image with Nix and load it into Docker
