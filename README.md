@@ -1,6 +1,30 @@
-# registry-ui
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/wordmark-dark.svg">
+    <img src=".github/assets/wordmark.svg" alt="registry-ui" width="264">
+  </picture>
+</p>
 
-A small web UI for a self-hosted [CNCF Distribution](https://distribution.github.io/distribution/) registry (`registry:2` / `registry:3`). It answers one question: what images, tags and platforms are in my registry? You get repositories, tags, platforms, digests, sizes and created dates, plus copyable pull commands. It isn't Harbor or Zot. It doesn't push, manage users, replicate or scan. It's one static binary in an image under 20 MB that sits next to your registry and does nothing when nobody is looking at it.
+<p align="center">See what's in your container registry, including your pull-through cache.</p>
+
+<p align="center">
+  <a href="https://github.com/Ahhhh-man/registry-ui/actions/workflows/ci.yml"><img src="https://github.com/Ahhhh-man/registry-ui/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/Ahhhh-man/registry-ui/releases/latest"><img src="https://img.shields.io/github/v/release/Ahhhh-man/registry-ui?sort=semver" alt="Latest release"></a>
+  <a href="https://github.com/Ahhhh-man/registry-ui/pkgs/container/registry-ui"><img src="https://img.shields.io/badge/image-ghcr.io%2Fahhhh--man%2Fregistry--ui-blue" alt="Container image"></a>
+  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/Ahhhh-man/registry-ui" alt="Go version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Ahhhh-man/registry-ui" alt="License"></a>
+</p>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset=".github/assets/screenshot-dark.png">
+  <img src=".github/assets/screenshot.png" alt="The tags of library/nginx, with each tag's platforms, digests, sizes and a copyable docker pull command">
+</picture>
+
+You run a [CNCF Distribution](https://distribution.github.io/distribution/) registry (`registry:2` or `registry:3`) and want to know what's in it. Maybe it's a pull-through cache and you want to know what it has actually cached. The registry has no UI, and `curl`ing `/v2/_catalog` gets old fast.
+
+registry-ui shows you every repository, tag and platform, with digests, sizes and created dates. You can search, sort, filter by type (images, Helm charts, signatures, other artifacts) and copy a pull command for any tag or platform.
+
+It's read-only. It doesn't push, manage users, replicate or scan, so it won't replace Harbor or Zot. It's one static binary in an image under 20 MB, and it sits next to your registry doing nothing until someone opens it.
 
 ## Quick start
 
@@ -26,7 +50,7 @@ volumes:
   registry-data:
 ```
 
-Push something and open <http://localhost:8080>:
+Push something, then open <http://localhost:8080>:
 
 ```sh
 docker pull busybox
@@ -34,11 +58,11 @@ docker tag busybox localhost:5000/busybox
 docker push localhost:5000/busybox
 ```
 
-The UI talks to the registry server-side. Docker clients keep talking to the registry directly, browsers never do, so there's no CORS to set up. The UI starts even if the registry isn't up yet. The healthcheck only checks the UI itself, so a registry outage won't restart it.
+The UI talks to the registry from the server. Docker clients still talk to the registry directly and browsers never do, so there's no CORS to set up. The UI starts even if the registry isn't up yet. The healthcheck only checks the UI itself, so a registry outage won't restart it.
 
 ## Configuration
 
-Everything is an environment variable. There are no config files or flags. An empty value counts as unset.
+Everything is an environment variable. There are no config files or flags, and an empty value counts as unset.
 
 | Variable | Default | What it does |
 |---|---|---|
@@ -52,11 +76,11 @@ Everything is an environment variable. There are no config files or flags. An em
 | `REGISTRY_UI_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. |
 | `REGISTRY_UI_STORAGE_PATH` | unset | Read the registry's storage folder directly instead of its API. See [Pull-through caches](#pull-through-caches). |
 
-Invalid values stop the UI at startup with one line per problem.
+If a value is invalid, the UI won't start, and it prints one line per problem.
 
 ### TLS and reverse proxies
 
-The UI serves plain HTTP. Put TLS on your reverse proxy. Pass the original `Host` (or `X-Forwarded-Host`) and `X-Forwarded-Proto` through, so sign-in works and the session cookie is marked `Secure`. Caddy does this by default:
+The UI serves plain HTTP, so put TLS on your reverse proxy. Pass the original `Host` (or `X-Forwarded-Host`) and `X-Forwarded-Proto` through. Sign-in needs them, and they're how the session cookie gets marked `Secure`. Caddy does this by default:
 
 ```
 registry.example.com {
@@ -64,7 +88,7 @@ registry.example.com {
 }
 ```
 
-To serve the UI under a sub-path, set `REGISTRY_UI_BASE_PATH=/registry/` and forward the path unchanged. Don't strip the prefix: the UI expects to see it.
+To serve the UI under a sub-path, set `REGISTRY_UI_BASE_PATH=/registry/` and forward the path as it is. Don't strip the prefix, because the UI expects to see it.
 
 ```
 example.com {
@@ -76,22 +100,22 @@ example.com {
 
 ### Registries with a private CA
 
-The image trusts the usual public CAs. For a registry signed by your own CA, mount the CA certificate into a folder and point `SSL_CERT_DIR` at it, or point `SSL_CERT_FILE` at a bundle that includes it (this replaces the built-in bundle). For a quick test, `REGISTRY_UI_REGISTRY_INSECURE=true` skips verification altogether.
+The image trusts the usual public CAs. If your registry's certificate comes from your own CA, mount the CA certificate into a folder and point `SSL_CERT_DIR` at it. Or point `SSL_CERT_FILE` at a bundle that includes it, which replaces the built-in bundle. For a quick test, `REGISTRY_UI_REGISTRY_INSECURE=true` skips verification altogether.
 
 ## Authentication
 
-The UI has no users of its own. It mirrors the registry:
+The UI has no users of its own. It does whatever the registry does:
 
-- If the registry allows anonymous reads, there's no sign-in at all.
-- If the registry asks for credentials, the UI shows a sign-in form, checks what you enter against the registry, and forwards it on every request. Basic auth and token servers both work.
-- Your credentials are sealed (AES-GCM) in an `HttpOnly` cookie that lasts 12 hours. The UI keeps nothing on disk.
-- Without `REGISTRY_UI_SECRET`, a new key is picked on every start and everyone is signed out on restart. Set it to any long random string, e.g. `openssl rand -hex 32`.
+- If the registry allows anonymous reads, there's no sign-in.
+- If the registry asks for credentials, the UI shows a sign-in form. It checks what you enter against the registry and sends it with every request. Basic auth and token servers both work.
+- Your credentials are sealed (AES-GCM) in an `HttpOnly` cookie that lasts 12 hours. Nothing is written to disk.
+- Without `REGISTRY_UI_SECRET`, the UI picks a new key every time it starts, so a restart signs everyone out. Set it to any long random string, e.g. `openssl rand -hex 32`.
 
 ## Pull-through caches
 
-If your registry is a pull-through cache (`REGISTRY_PROXY_REMOTEURL`), use storage mode. Browsing a proxy through its API does the wrong thing: it asks the upstream for every tag list, pulls and stores any tag you click that isn't cached yet, and spends your upstream rate limit doing it. You'd see the upstream's tags, not your cache.
+If your registry is a pull-through cache (`REGISTRY_PROXY_REMOTEURL`), use storage mode. Browsing a cache through its API asks the upstream for every tag list, and clicking a tag that isn't cached yet makes the registry pull and store it. Both eat into your upstream rate limit, and you end up looking at the upstream's tags instead of your cache.
 
-In storage mode the UI reads the registry's storage folder directly, mounted read-only, and never sends the registry or the upstream a single request. You see exactly what's cached. Multi-arch images only list the platforms someone has actually pulled.
+In storage mode the UI reads the registry's storage folder directly, mounted read-only. It never sends the registry or the upstream a single request, so you see exactly what's cached. For a multi-arch image, you only see the platforms someone has actually pulled.
 
 ```yaml
 services:
@@ -118,21 +142,21 @@ volumes:
 
 Pull something through the cache (`docker pull localhost:5000/library/busybox`) and it shows up in the UI.
 
-**Storage mode skips the registry's auth.** Anyone who can reach the UI sees everything in the cache. If that matters, put the UI behind your reverse proxy's auth.
+**Storage mode skips the registry's auth.** Anyone who can reach the UI sees everything in the cache. If that's a problem, put the UI behind your reverse proxy's auth.
 
-Limits:
+Some limits:
 
-- Only the registry's `filesystem` storage driver works. S3, GCS, Azure and the rest don't.
-- The UI must see the same folder the registry writes to: same host, or a volume both containers mount.
+- It only works with the registry's `filesystem` storage driver. S3, GCS, Azure and the rest aren't supported.
+- The UI has to see the same folder the registry writes to, so run both on the same host or give them a shared volume.
 - An empty folder is fine. The registry creates its layout on the first pull.
 
 ## Supported registries
 
-[CNCF Distribution](https://distribution.github.io/distribution/) (`registry:2` and `registry:3`) is the one that's supported and tested. Others that implement the OCI distribution API and `/v2/_catalog` should work, but are untested. GHCR, Docker Hub and ECR restrict or lack `_catalog`, so don't expect them to work.
+[CNCF Distribution](https://distribution.github.io/distribution/) (`registry:2` and `registry:3`) is the one that's supported and tested. Other registries that implement the OCI distribution API and `/v2/_catalog` should work, but nobody has tested them. GHCR, Docker Hub and ECR restrict or leave out `_catalog`, so don't expect them to work.
 
 ## No telemetry
 
-The UI never talks to anything except the registry you configure. No telemetry, no update checks, no CDNs. Fonts, scripts and styles are all embedded in the binary.
+The UI only ever talks to the registry you point it at. No telemetry, no update checks, no CDNs. Fonts, scripts and styles are all embedded in the binary.
 
 ## Development
 
@@ -147,13 +171,13 @@ task build   # ./registry-ui
 task image   # builds the container image with Nix and loads it into Docker
 ```
 
-`task dev` needs `REGISTRY_UI_REGISTRY_URL` pointing at a registry. To work on the UI without one, build with `-tags fake`, which serves built-in sample data (the URL must be set but isn't used):
+`task dev` needs `REGISTRY_UI_REGISTRY_URL` pointing at a registry. To work on the UI without one, build with `-tags fake`. That serves built-in sample data. The URL still has to be set, but it isn't used:
 
 ```sh
 REGISTRY_UI_REGISTRY_URL=http://unused go run -tags fake .
 ```
 
-The CSS is built with the Tailwind standalone CLI (`task css`, or watched by `task dev`) from `web/tailwind.css` into `internal/ui/static/app.css`. The output is committed, so building and running the UI needs only Go, no Node or Tailwind. CI checks the committed file is up to date, so run `task css` before you commit a template or style change.
+The CSS is built from `web/tailwind.css` into `internal/ui/static/app.css` with the Tailwind standalone CLI (`task css`, or watched by `task dev`). The output is committed, so building and running the UI needs only Go, with no Node or Tailwind. CI checks that the committed file is up to date, so run `task css` before you commit a template or style change.
 
 No Nix? The `Dockerfile` builds an equivalent image: `docker build -t registry-ui .`. The published image is the Nix one.
 
