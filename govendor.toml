@@ -3,3 +3,51 @@
 schema = 4
 
 [mod]
+  [mod."github.com/docker/cli"]
+    version = "v29.7.2+incompatible"
+    hash = "sha256-OMcAhxCt+LtgBU/UNkmXFJZP4aJx4vrL/UaoEc7TjBE="
+    packages = ["github.com/docker/cli/cli/config", "github.com/docker/cli/cli/config/configfile", "github.com/docker/cli/cli/config/credentials", "github.com/docker/cli/cli/config/memorystore", "github.com/docker/cli/cli/config/types"]
+  [mod."github.com/docker/docker-credential-helpers"]
+    version = "v0.9.3"
+    hash = "sha256-HkmdB771ekeXa+XUzvmHIIfejS0E5k0zv3LVFuOevt4="
+    go = "1.21"
+    packages = ["github.com/docker/docker-credential-helpers/client", "github.com/docker/docker-credential-helpers/credentials"]
+  [mod."github.com/google/go-containerregistry"]
+    version = "v0.22.1"
+    hash = "sha256-uo7PstupArFJ7LVXRS9xrLV4c/TkQVQnIxSSZPaz2D4="
+    go = "1.25.0"
+    packages = ["github.com/google/go-containerregistry/internal/and", "github.com/google/go-containerregistry/internal/compression", "github.com/google/go-containerregistry/internal/gzip", "github.com/google/go-containerregistry/internal/httptest", "github.com/google/go-containerregistry/internal/ipaddr", "github.com/google/go-containerregistry/internal/limit", "github.com/google/go-containerregistry/internal/redact", "github.com/google/go-containerregistry/internal/retry", "github.com/google/go-containerregistry/internal/retry/wait", "github.com/google/go-containerregistry/internal/verify", "github.com/google/go-containerregistry/internal/zstd", "github.com/google/go-containerregistry/pkg/authn", "github.com/google/go-containerregistry/pkg/compression", "github.com/google/go-containerregistry/pkg/logs", "github.com/google/go-containerregistry/pkg/name", "github.com/google/go-containerregistry/pkg/registry", "github.com/google/go-containerregistry/pkg/v1", "github.com/google/go-containerregistry/pkg/v1/empty", "github.com/google/go-containerregistry/pkg/v1/match", "github.com/google/go-containerregistry/pkg/v1/mutate", "github.com/google/go-containerregistry/pkg/v1/partial", "github.com/google/go-containerregistry/pkg/v1/remote", "github.com/google/go-containerregistry/pkg/v1/remote/internal/authchallenge", "github.com/google/go-containerregistry/pkg/v1/remote/transport", "github.com/google/go-containerregistry/pkg/v1/static", "github.com/google/go-containerregistry/pkg/v1/stream", "github.com/google/go-containerregistry/pkg/v1/tarball", "github.com/google/go-containerregistry/pkg/v1/types"]
+  [mod."github.com/klauspost/compress"]
+    version = "v1.19.2"
+    hash = "sha256-Q7taaWYa+O5MkhiGESFs4UdMba8cDGEROXU/Y+3M5vE="
+    go = "1.24"
+    packages = ["github.com/klauspost/compress", "github.com/klauspost/compress/fse", "github.com/klauspost/compress/huff0", "github.com/klauspost/compress/internal/cpuinfo", "github.com/klauspost/compress/internal/le", "github.com/klauspost/compress/internal/snapref", "github.com/klauspost/compress/zstd", "github.com/klauspost/compress/zstd/internal/xxhash"]
+  [mod."github.com/opencontainers/go-digest"]
+    version = "v1.0.0"
+    hash = "sha256-cfVDjHyWItmUGZ2dzQhCHgmOmou8v7N+itDkLZVkqkQ="
+    go = "1.13"
+    packages = ["github.com/opencontainers/go-digest"]
+  [mod."github.com/opencontainers/image-spec"]
+    version = "v1.1.1"
+    hash = "sha256-bxBjtl+6846Ed3QHwdssOrNvlHV6b+Dn17zPISSQGP8="
+    go = "1.18"
+    packages = ["github.com/opencontainers/image-spec/specs-go", "github.com/opencontainers/image-spec/specs-go/v1"]
+  [mod."github.com/sirupsen/logrus"]
+    version = "v1.9.4"
+    hash = "sha256-ltRvmtM3XTCAFwY0IesfRqYIivyXPPuvkFjL4ARh1wg="
+    go = "1.17"
+    packages = ["github.com/sirupsen/logrus"]
+  [mod."golang.org/x/sync"]
+    version = "v0.22.0"
+    hash = "sha256-VZjl0fAM0p/nI81zh+pdBjzxFupx0UcKYXBBpL2ZS7k="
+    go = "1.25.0"
+    packages = ["golang.org/x/sync/errgroup"]
+  [mod."golang.org/x/sys"]
+    version = "v0.47.0"
+    hash = "sha256-TpbRyWWqHjddP6QzUgAbaLd2EE0S+GYNRUIDJd18r98="
+    go = "1.25.0"
+    packages = ["golang.org/x/sys/unix", "golang.org/x/sys/windows"]
+  [mod."gotest.tools/v3"]
+    version = "v3.5.2"
+    hash = "sha256-eAxnRrF2bQugeFYzGLOr+4sLyCPOpaTWpoZsIKNP1WE="
+    go = "1.17"
