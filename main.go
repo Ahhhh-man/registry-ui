@@ -4,15 +4,22 @@
 //
 //	registry-ui [serve]     run the web server (default)
 //	registry-ui healthcheck exit 0 if the server is healthy
+//
+// Built with -tags fake, it serves built-in sample data instead of a real
+// registry, which is handy for UI work. REGISTRY_UI_REGISTRY_URL must still
+// be set, but is not used.
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/Ahhhh-man/registry-ui/internal/config"
+	"github.com/Ahhhh-man/registry-ui/internal/registry"
 	"github.com/Ahhhh-man/registry-ui/internal/ui"
 	"github.com/Ahhhh-man/registry-ui/internal/web"
 )
@@ -48,11 +55,36 @@ func serve() error {
 	}
 	slog.SetLogLoggerLevel(cfg.LogLevel)
 	slog.Info("starting registry-ui", "version", version, "config", cfg)
+	src, err := newSource(cfg)
+	if err != nil {
+		return err
+	}
+	src = registry.NewCache(src)
+
 	// Stub pages until #12–#14.
 	stub := func(w http.ResponseWriter, _ *http.Request, ref web.Ref) { _, _ = fmt.Fprintf(w, "%+v\n", ref) }
+	catalog := func(w http.ResponseWriter, r *http.Request, _ web.Ref) {
+		repos, err := src.Catalog(r.Context())
+		if err != nil {
+			slog.Error("catalog", "err", err)
+			http.Error(w, "registry error", http.StatusBadGateway)
+			return
+		}
+		_, _ = fmt.Fprintln(w, strings.Join(repos, "\n"))
+	}
 	h := web.New(cfg.BasePath, web.Handlers{
-		Catalog: stub, Repo: stub, Tag: stub, Digest: stub,
+		Catalog: catalog, Repo: stub, Tag: stub, Digest: stub,
 		Static: ui.StaticHandler(),
 	})
 	return http.ListenAndServe(cfg.Listen, h)
+}
+
+// newSource builds the Source the pages read from. In builds tagged fake,
+// fake.go swaps in sample data.
+var newSource = func(cfg config.Config) (registry.Source, error) {
+	if cfg.StoragePath != "" {
+		// Storage mode plugs in here (#25).
+		return nil, errors.New("REGISTRY_UI_STORAGE_PATH: storage mode is not supported yet")
+	}
+	return registry.NewAPI(cfg.RegistryURL.String(), cfg.RegistryInsecure)
 }

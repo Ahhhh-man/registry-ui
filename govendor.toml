@@ -41,7 +41,7 @@ schema = 4
     version = "v0.22.0"
     hash = "sha256-VZjl0fAM0p/nI81zh+pdBjzxFupx0UcKYXBBpL2ZS7k="
     go = "1.25.0"
-    packages = ["golang.org/x/sync/errgroup"]
+    packages = ["golang.org/x/sync/errgroup", "golang.org/x/sync/singleflight"]
   [mod."golang.org/x/sys"]
     version = "v0.47.0"
     hash = "sha256-TpbRyWWqHjddP6QzUgAbaLd2EE0S+GYNRUIDJd18r98="
