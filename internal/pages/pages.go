@@ -5,10 +5,12 @@ package pages
 
 import (
 	"bytes"
+	"context"
 	"html/template"
 	"net/http"
 
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
+	"github.com/Ahhhh-man/registry-ui/internal/session"
 	"github.com/Ahhhh-man/registry-ui/internal/ui"
 	"github.com/Ahhhh-man/registry-ui/internal/web"
 )
@@ -19,11 +21,21 @@ type Server struct {
 	Templates func() (*template.Template, error) // as returned by ui.Templates
 	Title     string                             // registry title, shown in the header
 	PullHost  string                             // host[:port] shown in docker pull commands
+	BasePath  string                             // normalised base path, "/" or e.g. "/registry/"
+
+	// Sessions and Check enable /-/login and /-/logout. Check asks the
+	// registry, uncached, whether it accepts the credentials in ctx.
+	Sessions *session.Sessions
+	Check    func(ctx context.Context) error
 }
 
 // Handlers returns the router's page handlers.
 func (s *Server) Handlers() web.Handlers {
-	return web.Handlers{Catalog: s.Catalog, Repo: s.Repo, Tag: s.Tag, Digest: s.Digest}
+	h := web.Handlers{Catalog: s.Catalog, Repo: s.Repo, Tag: s.Tag, Digest: s.Digest}
+	if s.Sessions != nil && s.Check != nil {
+		h.Login, h.Logout = s.Login, s.Logout
+	}
+	return h
 }
 
 // page renders the template name with data inside the layout. p carries the
@@ -40,6 +52,9 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request, p ui.Page, name st
 		return
 	}
 	p.Title, p.Theme = s.Title, ui.Theme(r)
+	if s.Sessions != nil && s.Check != nil { // no sign-in, no user menu
+		p.User, _, _ = s.Sessions.Get(r)
+	}
 	p.Body = template.HTML(b.String()) //nolint:gosec // our own rendered template
 	b.Reset()
 	if err := t.ExecuteTemplate(&b, "layout", p); err != nil {

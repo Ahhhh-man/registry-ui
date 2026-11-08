@@ -15,6 +15,8 @@ type Handlers struct {
 	Repo    PageFunc
 	Tag     PageFunc
 	Digest  PageFunc
+	// Login and Logout serve /-/login and /-/logout, every method.
+	Login, Logout http.HandlerFunc
 	// Static serves /-/static/. It sees the path below that, e.g. "/app.3f2a.css".
 	Static http.Handler
 }
@@ -46,6 +48,10 @@ func New(base string, h Handlers) http.Handler {
 		switch {
 		case strings.HasPrefix(p, "-/static/"):
 			static.ServeHTTP(w, r)
+		case p == "-/login" && h.Login != nil:
+			h.Login(w, r)
+		case p == "-/logout" && h.Logout != nil:
+			h.Logout(w, r)
 		case strings.HasPrefix(p, "-/"):
 			renderError(w, r, notFound)
 		default:
@@ -83,5 +89,7 @@ func FuncMap(base string, hashed func(string) string) template.FuncMap {
 		"tagURL":     func(repo, tag string) string { return base + repo + ":" + tag },
 		"digestURL":  func(repo, digest string) string { return base + repo + "@" + digest },
 		"staticURL":  func(name string) string { return base + "-/static/" + hashed(name) },
+		"loginURL":   func() string { return base + "-/login" },
+		"logoutURL":  func() string { return base + "-/logout" },
 	}
 }

@@ -96,6 +96,30 @@ func (a *API) Catalog(ctx context.Context) ([]string, error) {
 	return repos, nil
 }
 
+// Check asks the registry whether it accepts the credentials in ctx, with a
+// GET /v2/ after any token exchange the registry asks for. It is never
+// cached, so login can use it. A rejection is an *UnauthorizedError.
+func (a *API) Check(ctx context.Context) error {
+	c := a.call(ctx)
+	t, err := transport.NewWithContext(ctx, a.reg, c.auth, c, nil)
+	if err != nil {
+		return c.fail("check", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.reg.Scheme()+"://"+a.reg.RegistryStr()+"/v2/", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := t.RoundTrip(req)
+	if err != nil {
+		return c.fail("check", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if err := transport.CheckError(resp, http.StatusOK); err != nil {
+		return c.fail("check", err)
+	}
+	return nil
+}
+
 // Tags implements Source.
 func (a *API) Tags(ctx context.Context, repo string) ([]string, error) {
 	r, err := a.repo(repo)
@@ -302,19 +326,19 @@ func size(m *v1.Manifest) int64 {
 // whether the registry has sent it an auth challenge.
 type call struct {
 	opts       []remote.Option
+	auth       authn.Authenticator
 	inner      http.RoundTripper
 	challenged atomic.Bool
 }
 
 func (a *API) call(ctx context.Context) *call {
-	c := &call{inner: a.transport}
-	auth := authn.Anonymous
+	c := &call{inner: a.transport, auth: authn.Anonymous}
 	if cr, ok := ctx.Value(credentialsKey{}).(credentials); ok {
-		auth = &authn.Basic{Username: cr.user, Password: cr.pass}
+		c.auth = &authn.Basic{Username: cr.user, Password: cr.pass}
 	}
 	c.opts = []remote.Option{
 		remote.WithContext(ctx),
-		remote.WithAuth(auth),
+		remote.WithAuth(c.auth),
 		remote.WithTransport(c),
 		// Fail fast: a page waiting on retries is worse than an error page.
 		remote.WithRetryStatusCodes(),

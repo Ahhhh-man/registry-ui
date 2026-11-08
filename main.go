@@ -11,6 +11,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -22,6 +23,7 @@ import (
 	"github.com/Ahhhh-man/registry-ui/internal/format"
 	"github.com/Ahhhh-man/registry-ui/internal/pages"
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
+	"github.com/Ahhhh-man/registry-ui/internal/session"
 	"github.com/Ahhhh-man/registry-ui/internal/ui"
 	"github.com/Ahhhh-man/registry-ui/internal/web"
 )
@@ -61,6 +63,12 @@ func serve() error {
 	if err != nil {
 		return err
 	}
+	sessions, err := session.New(cfg.Secret, cfg.BasePath)
+	if err != nil {
+		return err
+	}
+	// Login checks credentials with the source itself, never the cache.
+	check, _ := src.(interface{ Check(context.Context) error })
 	src = registry.NewCache(src)
 
 	funcs := web.FuncMap(cfg.BasePath, ui.StaticName)
@@ -69,7 +77,10 @@ func serve() error {
 	if err != nil {
 		return err
 	}
-	p := &pages.Server{Src: src, Templates: tmpl, Title: cfg.Title, PullHost: cfg.PullURL}
+	p := &pages.Server{Src: src, Templates: tmpl, Title: cfg.Title, PullHost: cfg.PullURL, BasePath: cfg.BasePath, Sessions: sessions}
+	if check != nil {
+		p.Check = check.Check
+	}
 	handlers := p.Handlers()
 	handlers.Static = ui.StaticHandler()
 	h := web.New(cfg.BasePath, handlers)

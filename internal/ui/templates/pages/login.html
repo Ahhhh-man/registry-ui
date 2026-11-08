@@ -1,0 +1,22 @@
+{{/* The sign-in page. Data is a pages.loginData: Registry, Next, User,
+     Failed. The password is never filled in again. */}}
+{{define "login" -}}
+<div class="flex justify-center pt-4 sm:pt-16">
+<form method="post" action="{{loginURL}}" class="w-full max-w-sm rounded-lg border border-border bg-surface p-6 sm:p-8">
+  <span class="grid size-12 place-items-center rounded-lg bg-accent text-accent-fg">{{icon "lock" "size-6"}}</span>
+  <h1 class="mt-4 text-2xl font-semibold tracking-tight">Sign in</h1>
+  <p class="mt-1.5 text-muted"><strong class="font-semibold break-all text-text">{{.Registry}}</strong> requires authentication. Your credentials go straight to the registry and are kept only in an encrypted session cookie.</p>
+  {{- if .Failed}}
+  <div id="login-error" role="alert" class="mt-5 flex items-center gap-2 rounded-md bg-danger-bg px-3 py-2.5 text-sm font-medium text-danger-fg">{{icon "alert-circle" "shrink-0"}}The registry rejected these credentials.</div>
+  {{- end}}
+  <input type="hidden" name="next" value="{{.Next}}">
+  <label for="username" class="mt-5 block text-sm font-medium">Username</label>
+  <input id="username" name="username" value="{{.User}}" required autocomplete="username" autocapitalize="none" spellcheck="false"{{if not .User}} autofocus{{end}}{{if .Failed}} aria-describedby="login-error"{{end}}
+    class="mt-1.5 w-full rounded-md border border-border bg-surface px-3 py-2 text-text focus:border-accent">
+  <label for="password" class="mt-4 block text-sm font-medium">Password</label>
+  <input id="password" name="password" type="password" required autocomplete="current-password"{{if .User}} autofocus{{end}}{{if .Failed}} aria-describedby="login-error"{{end}}
+    class="mt-1.5 w-full rounded-md border border-border bg-surface px-3 py-2 text-text focus:border-accent">
+  <button type="submit" class="mt-6 flex w-full items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 font-medium text-accent-fg hover:opacity-90">Sign in{{icon "arrow-right"}}</button>
+</form>
+</div>
+{{- end}}

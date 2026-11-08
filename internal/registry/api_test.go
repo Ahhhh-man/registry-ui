@@ -45,6 +45,51 @@ func TestAPIBasicAuth(t *testing.T) {
 	}
 }
 
+func TestAPICheck(t *testing.T) {
+	a := newAPI(t, registrytest.NewWithBasicAuth(t, "alice", "secret").URL)
+	if err := a.Check(registry.WithCredentials(t.Context(), "alice", "secret")); err != nil {
+		t.Errorf("good credentials: %v", err)
+	}
+	for _, ctx := range []context.Context{t.Context(), registry.WithCredentials(t.Context(), "alice", "wrong")} {
+		if err := a.Check(ctx); !errors.Is(err, registry.ErrUnauthorized) {
+			t.Errorf("got %v, want ErrUnauthorized", err)
+		}
+	}
+	if err := newAPI(t, registrytest.New(t).URL).Check(t.Context()); err != nil {
+		t.Errorf("registry without auth: %v", err)
+	}
+}
+
+// TestAPICheckToken covers the token-server flow: the registry wants a
+// bearer token, which a token server hands out for good basic credentials.
+func TestAPICheckToken(t *testing.T) {
+	// The token server shares the registry's host: go-containerregistry
+	// refuses a realm on another private address.
+	var reg *httptest.Server
+	reg = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/token":
+			if u, p, _ := r.BasicAuth(); u != "alice" || p != "secret" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"token":"t0k3n"}`))
+		case r.Header.Get("Authorization") != "Bearer t0k3n":
+			w.Header().Set("WWW-Authenticate", `Bearer realm="`+reg.URL+`/token",service="test"`)
+			w.WriteHeader(http.StatusUnauthorized)
+		}
+	}))
+	t.Cleanup(reg.Close)
+
+	a := newAPI(t, reg.URL)
+	if err := a.Check(registry.WithCredentials(t.Context(), "alice", "secret")); err != nil {
+		t.Errorf("good credentials: %v", err)
+	}
+	if err := a.Check(registry.WithCredentials(t.Context(), "alice", "wrong")); !errors.Is(err, registry.ErrUnauthorized) {
+		t.Errorf("bad credentials: got %v, want ErrUnauthorized", err)
+	}
+}
+
 func TestAPIErrors(t *testing.T) {
 	status := func(code int) string {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(code) }))

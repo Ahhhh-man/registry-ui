@@ -18,6 +18,8 @@ type Page struct {
 	PageTitle string        // optional, shown before Title in <title>
 	Theme     string        // Theme(r)
 	Query     string        // current repo search, echoed in the search box
+	User      string        // signed-in username: shows the avatar and Log out
+	SignIn    bool          // the sign-in page: no search box or user menu
 	Body      template.HTML // the page itself, rendered by its own template
 }
 

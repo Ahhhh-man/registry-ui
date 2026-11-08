@@ -215,6 +215,10 @@ func digest(parts ...string) string {
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
+// Check accepts any credentials, like registry.API.Check against a registry
+// without auth.
+func (s *Source) Check(context.Context) error { return nil }
+
 // Catalog implements registry.Source.
 func (s *Source) Catalog(context.Context) ([]string, error) {
 	return slices.Sorted(maps.Keys(s.repos)), nil
