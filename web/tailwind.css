@@ -34,6 +34,7 @@
   --color-accent-fg: light-dark(#ffffff, #09090b);
   --color-accent-soft: light-dark(#edf2f9, rgb(66 107 169 / 0.22));
   --color-accent-text: light-dark(#345588, #c4d5ef);
+  --color-teal: #72c2d4; /* the falling block in the logo */
   --color-warn-bg: light-dark(#fef3c7, rgb(251 191 36 / 0.12));
   --color-warn-fg: light-dark(#92400e, #fcd34d);
   --color-info-bg: light-dark(#e0f2fe, rgb(56 189 248 / 0.12));

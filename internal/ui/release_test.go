@@ -48,6 +48,13 @@ func TestTemplatesUseHashedNames(t *testing.T) {
 	if want := `src="/-/static/` + StaticName("htmx.min.js") + `"`; !strings.Contains(b.String(), want) {
 		t.Errorf("htmx partial = %q, want it to contain %s", b.String(), want)
 	}
+	b.Reset()
+	if err := tpl.ExecuteTemplate(&b, "layout", Page{}); err != nil {
+		t.Fatal(err)
+	}
+	if want := `<link rel="icon" href="/-/static/` + StaticName("favicon.svg") + `"`; !strings.Contains(b.String(), want) {
+		t.Errorf("layout lacks %s", want)
+	}
 
 	// A typo in a static file name fails the render instead of linking nowhere.
 	bad, err := template.New("bad").Funcs(testFuncs).Parse(`{{staticURL "nope.css"}}`)
