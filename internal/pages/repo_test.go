@@ -168,6 +168,74 @@ func TestRepoCard(t *testing.T) {
 	}
 }
 
+func TestRepoOverview(t *testing.T) {
+	s := newTestServer(t, "/")
+	page := func(path string) string {
+		t.Helper()
+		rec := get(t, s, "/", path, false)
+		if rec.Code != 200 {
+			t.Fatalf("%s: status %d", path, rec.Code)
+		}
+		body := rec.Body.String()
+		_, main, _ := strings.Cut(body, "<main")
+		checkMarkup(t, main)
+		return body
+	}
+
+	body := page("/library/nginx?tab=overview")
+	for _, want := range []string{
+		`<a href="/library/nginx?tab=overview" aria-current="page"`,
+		`<a href="/library/nginx" class=`, // Tags, not current
+		"Official build of Nginx",
+		`<a href="https://github.com/nginxinc/docker-nginx" rel="noreferrer"`,
+		"Read from the OCI labels on latest.",
+		`hx-get="/library/nginx" hx-trigger="change" hx-target="#summary"`,
+		`<option value="latest" selected>latest</option>`, `<option value="1.9.15">`,
+		"<dd>Multi-platform image</dd>", "linux/amd64</span>", "<dt>Platforms</dt><dd>6</dd>", "2 days ago",
+		"docker pull registry.example.com/library/nginx:latest",
+		"<noscript>",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("overview lacks %s", want)
+		}
+	}
+	if strings.Contains(body, "Filter tags") || strings.Contains(body, "hx-trigger=\"revealed\"") {
+		t.Error("the overview shows the Tags tab's list")
+	}
+
+	body = page("/library/nginx?tab=overview&tag=1.10.3")
+	if !strings.Contains(body, `<option value="1.10.3" selected>`) || !strings.Contains(body, "<dd>Image</dd>") || !strings.Contains(body, "nginx:1.10.3") {
+		t.Error("?tag= doesn't pick the summary's tag")
+	}
+	if body := page("/library/nginx?tab=overview&tag=nope"); !strings.Contains(body, `<option value="latest" selected>`) {
+		t.Error("an unknown ?tag= should fall back to latest")
+	}
+
+	body = page("/myteam/web/frontend?tab=overview")
+	if !strings.Contains(body, "No description.") || !strings.Contains(body, "v2.0.0 has neither") || strings.Contains(body, "rel=\"noreferrer\"") {
+		t.Error("a repo without labels should say so")
+	}
+	if body := page("/charts/podinfo?tab=overview"); !strings.Contains(body, "<dd>Helm chart</dd>") || !strings.Contains(body, "helm pull oci://registry.example.com/charts/podinfo --version 6.7.1") {
+		t.Error("a chart's summary lacks its type or command")
+	}
+
+	// The dropdown swaps in the summary alone and keeps the URL shareable.
+	m, _ := s.Src.Resolve(context.Background(), "library/nginx", "1.27.3")
+	sig := "sha256-" + strings.TrimPrefix(m.Digest, "sha256:") + ".sig"
+	rec := get(t, s, "/", "/library/nginx?tab=overview&fragment=summary&tag="+sig, true)
+	body = rec.Body.String()
+	if rec.Code != 200 || strings.Contains(body, "<!doctype html>") || strings.Contains(body, "<option") || !strings.Contains(body, "<dd>Cosign signature</dd>") || !strings.Contains(body, "cosign verify ") {
+		t.Errorf("signature summary:\n%s", body)
+	}
+	checkMarkup(t, body)
+	if u := rec.Header().Get("HX-Replace-Url"); u != "/library/nginx?tab=overview&tag="+sig {
+		t.Errorf("HX-Replace-Url = %q", u)
+	}
+	if rec := get(t, s, "/", "/library/nginx?tab=overview&fragment=summary&tag=nope", true); rec.Code != 404 {
+		t.Errorf("unknown tag summary: %d", rec.Code)
+	}
+}
+
 func TestRepoHelmHeader(t *testing.T) {
 	body := get(t, newTestServer(t, "/"), "/", "/charts/podinfo", false).Body.String()
 	if !strings.Contains(body, `<svg class="icon size-8"`) || !strings.Contains(body, ">2 tags</span>") || strings.Contains(body, "platforms</span>") {

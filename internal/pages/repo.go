@@ -26,6 +26,7 @@ const (
 	// sameAsShown is how many "Same as" tags a card names before "+N".
 	sameAsShown      = 3
 	labelDescription = "org.opencontainers.image.description"
+	labelSource      = "org.opencontainers.image.source"
 )
 
 // sigTag matches cosign's signature, attestation and SBOM tags.
@@ -50,6 +51,13 @@ type repoView struct {
 	Cards                 []tagCard
 	Page, Pages           int
 	Prev, Next            string // pagination links, "" at either end
+
+	// The Overview tab: the tag whose labels fill About, its source link,
+	// every tag for the dropdown, and the selected tag's summary.
+	Overview         bool
+	LabelTag, Source string
+	Tags             []string
+	Summary          tagCard
 }
 
 type pill struct {
@@ -72,11 +80,13 @@ type tagCard struct {
 	Command          string   // pull or verify command; "" when there's none
 	Type             string   // what a tag without platforms holds, e.g. "Helm chart"
 	Size             int64
+	Main             string // the platform Size and Created are from, when there are several
 	Platforms        []registry.Platform
 }
 
-// Repo serves a repository's page, the Tags tab in the cards view. Its
-// fragments are "tags", the filtered list, and "card", one card's details.
+// Repo serves a repository's page: the Tags tab in the cards view, or the
+// Overview tab. The Tags tab's fragments are "tags", the filtered list, and
+// "card", one card's details.
 func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 	tags, err := s.Src.Tags(r.Context(), ref.Repo)
 	if err != nil {
@@ -90,6 +100,10 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 	v.Namespace, v.Name = splitRepo(ref.Repo)
 	if v.Namespace != "" {
 		v.Prefix = v.Namespace + "/"
+	}
+	if q.Get("tab") == "overview" {
+		s.overview(w, r, &v, tags)
+		return
 	}
 	matches := tags
 	if v.Query != "" {
@@ -118,9 +132,9 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 	s.page(w, r, ui.Page{PageTitle: ref.Repo}, "repo", v)
 }
 
-// header fills in the pills, description and tile from the latest tag, or
-// the newest if there's no latest. It's decoration, so a tag that can't be
-// read just leaves them out; its card shows the error.
+// header fills in the pills, labels and tile from the latest tag, or the
+// newest if there's no latest. It's decoration, so a tag that can't be read
+// just leaves them out; its card shows the error.
 func (s *Server) header(ctx context.Context, v *repoView, tags []string) {
 	pills := []pill{{Icon: "tag", Text: plural(len(tags), "tag")}}
 	defer func() { v.Pills = pills }()
@@ -129,6 +143,7 @@ func (s *Server) header(ctx context.Context, v *repoView, tags []string) {
 	if i < 0 {
 		return
 	}
+	v.LabelTag = tags[i]
 	m, err := s.Src.Resolve(ctx, v.Repo, tags[i])
 	if err != nil {
 		return
@@ -144,6 +159,10 @@ func (s *Server) header(ctx context.Context, v *repoView, tags []string) {
 		return
 	}
 	v.Description = cfg.Labels[labelDescription]
+	// Labels are whatever the image's author wrote; only web links become links.
+	if src := cfg.Labels[labelSource]; strings.HasPrefix(src, "https://") || strings.HasPrefix(src, "http://") {
+		v.Source = src
+	}
 	if !cfg.Created.IsZero() {
 		pills = append(pills, pill{Icon: "clock", Text: "Created " + format.Age(cfg.Created)})
 	}
@@ -201,17 +220,25 @@ func (s *Server) repoCard(w http.ResponseWriter, r *http.Request, repo string, p
 		web.Error(w, r, errs[i])
 		return
 	}
-	m := ms[i]
-	c := tagCard{Repo: repo, Tag: tag, Label: tagLabel(tag), Badges: latestBadge(tag), Digest: m.Digest, Size: m.Size, Platforms: m.Platforms}
+	c, err := s.card(r.Context(), repo, tag, ms[i])
+	if err != nil {
+		web.Error(w, r, err)
+		return
+	}
 	for j, o := range ms {
-		if j != i && errs[j] == nil && o.Digest == m.Digest {
+		if j != i && errs[j] == nil && o.Digest == c.Digest {
 			c.SameAs = append(c.SameAs, page[j])
 		}
 	}
 	if n := len(c.SameAs); n > sameAsShown {
 		c.SameAs, c.MoreSameAs = c.SameAs[:sameAsShown], n-sameAsShown
 	}
+	s.fragment(w, r, "repo-card", c)
+}
 
+// card returns a tag's details from m, its manifest; all but SameAs.
+func (s *Server) card(ctx context.Context, repo, tag string, m registry.Manifest) (tagCard, error) {
+	c := tagCard{Repo: repo, Tag: tag, Label: tagLabel(tag), Badges: latestBadge(tag), Digest: m.Digest, Size: m.Size, Platforms: m.Platforms}
 	ref := s.PullHost + "/" + repo
 	switch m.Kind {
 	case registry.KindImage, registry.KindIndex:
@@ -234,14 +261,50 @@ func (s *Server) repoCard(w http.ResponseWriter, r *http.Request, repo string, p
 	}
 
 	if p, ok := mainPlatform(m); ok {
-		cfg, err := s.Src.Config(r.Context(), repo, p.Config)
+		cfg, err := s.Src.Config(ctx, repo, p.Config)
+		if err != nil {
+			return c, err
+		}
+		c.Created, c.Size = cfg.Created, p.Size
+		if len(m.Platforms) > 1 {
+			c.Main = format.Platform(p)
+		}
+	}
+	return c, nil
+}
+
+// overview serves the Overview tab. Its fragment "summary" is the summary
+// of ?tag=, which the tag dropdown swaps in.
+func (s *Server) overview(w http.ResponseWriter, r *http.Request, v *repoView, tags []string) {
+	v.Overview, v.Tags = true, tags
+	tag, summary := r.URL.Query().Get("tag"), web.Fragment(r) == "summary"
+	if !summary {
+		s.header(r.Context(), v, tags)
+	}
+	if !slices.Contains(tags, tag) {
+		if summary {
+			web.Error(w, r, fmt.Errorf("tag %s:%s: %w", v.Repo, tag, registry.ErrNotFound))
+			return
+		}
+		tag = v.LabelTag
+	}
+	if tag != "" {
+		m, err := s.Src.Resolve(r.Context(), v.Repo, tag)
+		if err == nil {
+			v.Summary, err = s.card(r.Context(), v.Repo, tag, m)
+		}
 		if err != nil {
 			web.Error(w, r, err)
 			return
 		}
-		c.Created = cfg.Created
 	}
-	s.fragment(w, r, "repo-card", c)
+	if summary {
+		// The dropdown changes the page, so keep its URL in step without the fragment.
+		w.Header().Set("HX-Replace-Url", r.URL.EscapedPath()+"?"+url.Values{"tab": {"overview"}, "tag": {tag}}.Encode())
+		s.fragment(w, r, "repo-summary", v.Summary)
+		return
+	}
+	s.page(w, r, ui.Page{PageTitle: v.Repo}, "repo", v)
 }
 
 // resolveAll resolves tags in parallel, resolveLimit at a time.

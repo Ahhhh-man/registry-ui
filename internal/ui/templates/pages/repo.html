@@ -8,9 +8,9 @@
 {{template "page-header" (dict "Repo" .Repo "Helm" .Helm "Prefix" .Prefix "Title" .Name "Description" .Description "Pills" .Pills)}}
 </div>
 <div class="mt-6 border-b border-border">
-{{- /* Overview (#29) joins Tags here. */}}
-{{template "tabs" (dict "Label" "Repository" "Tabs" (list (dict "Label" "Tags" "Icon" "tag" "Href" (repoURL .Repo) "Count" .TagCount "Current" true)))}}
+{{template "tabs" (dict "Label" "Repository" "Tabs" (list (dict "Label" "Tags" "Icon" "tag" "Href" (repoURL .Repo) "Count" .TagCount "Current" (not .Overview)) (dict "Label" "Overview" "Icon" "book-open" "Href" (print (repoURL .Repo) "?tab=overview") "Current" .Overview)))}}
 </div>
+{{- if .Overview}}{{template "repo-overview" .}}{{else}}
 <div class="mt-5 mb-4 flex flex-wrap items-center justify-between gap-3">
 <form method="get" action="{{repoURL .Repo}}" role="search" hx-get="{{repoURL .Repo}}" hx-trigger="input delay:250ms, submit" hx-target="#tags" hx-sync="this:replace" hx-vals='{"fragment": "tags"}' class="w-full sm:max-w-xs">
 {{- template "filter" (dict "Name" "q" "Value" .Query "Placeholder" "Filter tags" "Label" "Filter tags")}}
@@ -25,6 +25,52 @@
 <div id="tags" class="flex flex-col gap-3">
 {{template "repo-tags" .}}
 </div>
+{{- end}}
+{{- end}}
+
+{{/* repo-overview: the Overview tab, About from the image's OCI labels and
+     a summary of one tag, which the dropdown swaps without a reload. */}}
+{{define "repo-overview" -}}
+<div class="mt-5 grid items-start gap-5 lg:grid-cols-[1fr_22.5rem]">
+<section class="min-w-0 {{template "panel"}}">
+{{template "panel-header" (dict "Icon" "book-open" "Title" "About")}}
+{{- if or .Description .Source}}
+{{- with .Description}}<p class="leading-relaxed">{{.}}</p>{{end}}
+{{- with .Source}}<a href="{{.}}" rel="noreferrer" class="mt-3 inline-flex max-w-full items-center gap-1.5 font-medium text-accent-text hover:underline">{{icon "external-link"}}<span class="truncate">{{.}}</span></a>{{end}}
+<div class="mt-5">{{template "note" (print "Read from the OCI labels on " .LabelTag ". Registries don't store READMEs.")}}</div>
+{{- else if .LabelTag}}
+<p class="text-muted">No description. Registries don't store READMEs, so this tab reads the <code class="font-mono text-xs">org.opencontainers.image.description</code> and <code class="font-mono text-xs">source</code> labels, and {{.LabelTag}} has neither.</p>
+{{- else}}
+<p class="text-muted">Nothing has been pushed to this repository.</p>
+{{- end}}
+</section>
+{{- with .Summary.Tag}}
+<aside aria-labelledby="summary-title" class="min-w-0 {{template "panel"}}">
+<h2 id="summary-title" class="mb-4 text-base font-semibold">Tag summary</h2>
+<form method="get" action="{{repoURL $.Repo}}" hx-get="{{repoURL $.Repo}}" hx-trigger="change" hx-target="#summary" hx-sync="this:replace" hx-vals='{"fragment": "summary"}' class="flex items-end gap-2">
+<input type="hidden" name="tab" value="overview">
+<label class="min-w-0 flex-1 text-xs text-muted">Tag
+<select name="tag" class="mt-1.5 block w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent">
+{{- range $.Tags}}<option value="{{.}}"{{if eq . $.Summary.Tag}} selected{{end}}>{{.}}</option>{{end}}
+</select></label>
+<noscript>{{template "button" (dict "Label" "Show" "Type" "submit")}}</noscript>
+</form>
+<div id="summary">{{template "repo-summary" $.Summary}}</div>
+</aside>
+{{- end}}
+</div>
+{{- end}}
+
+{{/* repo-summary: one tag's facts and pull command (a pages.tagCard). */}}
+{{define "repo-summary" -}}
+<dl class="mt-1 mb-5 [&_dd]:mt-1 [&_dd]:flex [&_dd]:min-h-6 [&_dd]:items-center [&_dd]:justify-between [&_dd]:gap-2 [&_dd]:font-medium [&_dt]:mt-4 [&_dt]:text-xs [&_dt]:text-muted">
+<dt>Content type</dt><dd>{{if .Platforms}}{{if .Main}}Multi-platform image{{else}}Image{{end}}{{else}}{{.Type}}{{end}}</dd>
+<dt>Digest</dt><dd><a href="{{digestURL .Repo .Digest}}" class="min-w-0 truncate font-mono text-xs hover:text-accent-text" title="{{.Digest}}">{{.Digest}}</a>{{template "copy" (dict "Text" .Digest "Label" "Copy digest")}}</dd>
+<dt>Size</dt><dd><span>{{size .Size}}{{with .Main}} <span class="font-normal text-muted">{{.}}</span>{{end}}</span></dd>
+{{- if not .Created.IsZero}}<dt>Created</dt><dd><span title="{{date .Created}}">{{age .Created}}</span></dd>{{end}}
+{{- with .Platforms}}<dt>Platforms</dt><dd>{{len .}}</dd>{{end}}
+</dl>
+{{- with .Command}}{{template "copy-field" .}}{{end}}
 {{- end}}
 
 {{define "repo-tags" -}}
