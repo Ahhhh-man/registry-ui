@@ -72,7 +72,8 @@ func (s *Server) Header(r *http.Request) ui.Page {
 	return p
 }
 
-// page renders the template name with data inside the layout. p carries the
+// page renders the template name with data inside the layout, and
+// name+"-band", if defined, as the layout's header band. p carries the
 // page's title and search query; Title and Theme are filled in here.
 func (s *Server) page(w http.ResponseWriter, r *http.Request, p ui.Page, name string, data any) {
 	t, err := s.Templates()
@@ -81,6 +82,14 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request, p ui.Page, name st
 		return
 	}
 	var b bytes.Buffer
+	if band := t.Lookup(name + "-band"); band != nil {
+		if err := band.Execute(&b, data); err != nil {
+			web.Error(w, r, err)
+			return
+		}
+		p.Band = template.HTML(b.String()) //nolint:gosec // our own rendered template
+		b.Reset()
+	}
 	if err := t.ExecuteTemplate(&b, name, data); err != nil {
 		web.Error(w, r, err)
 		return

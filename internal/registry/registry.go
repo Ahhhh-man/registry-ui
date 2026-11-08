@@ -66,6 +66,8 @@ type Platform struct {
 	Variant string
 	// Digest of this platform's image manifest.
 	Digest string
+	// MediaType of this platform's image manifest, as listed in the index.
+	MediaType string
 	// Config is the digest of this platform's image config; pass it to
 	// Source.Config.
 	Config string

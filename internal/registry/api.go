@@ -226,7 +226,7 @@ func resolve(ctx context.Context, p *remote.Puller, repo name.Repository, ref na
 	}
 	m.Platforms = []Platform{{
 		OS: cfg.OS, Arch: cfg.Architecture, Variant: cfg.Variant,
-		Digest: m.Digest, Config: mf.Config.Digest.String(), Size: m.Size,
+		Digest: m.Digest, MediaType: m.MediaType, Config: mf.Config.Digest.String(), Size: m.Size,
 	}}
 	return m, nil
 }
@@ -241,7 +241,7 @@ func platform(ctx context.Context, p *remote.Puller, repo name.Repository, d v1.
 	if err != nil {
 		return Platform{}, err
 	}
-	pl := Platform{Digest: d.Digest.String(), Config: mf.Config.Digest.String(), Size: size(mf)}
+	pl := Platform{Digest: d.Digest.String(), MediaType: string(d.MediaType), Config: mf.Config.Digest.String(), Size: size(mf)}
 	if d.Platform != nil {
 		pl.OS, pl.Arch, pl.Variant = d.Platform.OS, d.Platform.Architecture, d.Platform.Variant
 	}

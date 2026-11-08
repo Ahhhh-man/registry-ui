@@ -2,10 +2,12 @@ package pages
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Ahhhh-man/registry-ui/internal/format"
@@ -39,77 +41,112 @@ func resolve(t *testing.T, repo, ref string) registry.Manifest {
 func TestTagPage(t *testing.T) {
 	nginx := resolve(t, "library/nginx", "1.27.3")
 	amd64, arm64 := nginx.Platforms[0], nginx.Platforms[1]
+	alpine := resolve(t, "library/nginx", "1.27.3-alpine")
+	kafka := resolve(t, "bitnami/kafka", "latest")
 	single := resolve(t, "myteam/api", "main")
+	chart := resolve(t, "charts/podinfo", "6.7.1")
 	sig := "sha256-" + strings.TrimPrefix(nginx.Digest, "sha256:") + ".sig"
 	pull := "docker pull registry.example.com/library/nginx"
+	created, err := fake.New().Config(t.Context(), "library/nginx", amd64.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	cases := []struct {
 		name, path string
 		htmx       bool
 		status     int
+		cards      int // platform or artifact cards
 		want, not  []string
 	}{
 		{
-			name: "multi-arch", path: "/library/nginx:1.27.3", status: 200,
+			name: "multi-platform index", path: "/library/nginx:1.27.3", status: 200, cards: 6,
 			want: []string{
 				"<title>library/nginx:1.27.3 · registry.example.com</title>",
 				`<span class="font-medium text-faint">nginx:</span>1.27.3</span>`,
 				`<a href="/library/nginx" class="hover:text-text">nginx</a>`,
-				"Created 2 days ago · ", ">6 platforms<", ">Same as latest, mainline, 1.27<",
-				`data-copy="` + nginx.Digest + `"`,
-				pull + ":1.27.3",
-				`href="/library/nginx:1.27.3?platform=linux/arm/v7"`,
-				`href="/library/nginx:1.27.3?platform=linux/amd64" hx-get="/library/nginx:1.27.3?platform=linux/amd64&amp;fragment=platform"`,
-				pull + "@" + amd64.Digest, size(amd64), size(arm64),
-				"application/vnd.oci.image.manifest.v1&#43;json",
+				// The pills: created with the date on hover, platforms with the main one's size, same-as links.
+				`<span title="` + format.Date(created.Created) + `" class=`, ">Created 2 days ago</span>",
+				">6 platforms · " + format.Size(amd64.Size) + " on amd64</span>",
+				`>Same as <a href="/library/nginx:latest" class="font-medium text-accent-text hover:underline">latest</a>, <a href="/library/nginx:mainline"`,
+				// The pull command, whole, with its Copy button.
+				">" + pull + ":1.27.3</code>", `data-copy="` + pull + `:1.27.3" aria-label="Copy pull command"`,
+				// A card per platform.
+				"<h2 class=\"mb-3 text-base font-semibold\">Platforms</h2>",
+				`<article id="platform-linux-arm-v7" class=`, ">linux/arm/v7</span></h3>", ">" + format.Size(arm64.Size) + "</span>",
+				`<a href="/library/nginx@` + amd64.Digest + `" class="text-accent-text hover:underline">` + format.ShortDigest(amd64.Digest) + "</a>",
+				">OCI image manifest</dd>",
+				`data-copy="` + pull + "@" + amd64.Digest + `" aria-label="Copy pull command for linux/amd64"`,
+				`data-copy="` + arm64.Digest + `" aria-label="Copy digest of linux/arm64"`,
+				// Technical details, closed.
+				"<details class=", "Index digest</dt>", ">" + nginx.Digest + "</code>",
+				"application/vnd.oci.image.index.v1&#43;json",
+				"<dd>" + created.Created.UTC().Format("2006-01-02 15:04:05") + " UTC</dd>",
 				"Layers and build history are coming",
 			},
-			not: []string{"Pushed", ">latest</span>"},
+			not: []string{"Pushed", ">latest</span>", `aria-current="true"`, "fragment=platform", "<details open", `role="note"`},
 		},
 		{
-			name: "latest gets its badge", path: "/library/nginx:latest", status: 200,
-			want: []string{">latest</span>", ">Same as mainline, 1.27.3, 1.27<"},
+			name: "latest gets its badge", path: "/library/nginx:latest", status: 200, cards: 6,
+			want: []string{">latest</span>", `>Same as <a href="/library/nginx:mainline"`},
 		},
 		{
-			name: "platform switch", path: "/library/nginx:1.27.3?platform=linux/arm64", status: 200,
-			want: []string{"<!doctype html>", pull + "@" + arm64.Digest, `aria-current="true"`},
-			not:  []string{pull + "@" + amd64.Digest},
+			name: "8 platforms", path: "/library/nginx:1.27.3-alpine", status: 200, cards: 8,
+			want: []string{">8 platforms · " + format.Size(alpine.Platforms[0].Size) + " on amd64</span>", ">linux/riscv64</span></h3>"},
 		},
 		{
-			name: "platform fragment", path: "/library/nginx:1.27.3?platform=linux/arm64&fragment=platform", htmx: true, status: 200,
-			want: []string{`<div id="platforms"`, pull + "@" + arm64.Digest},
-			not:  []string{"<!doctype html>", "Same as"},
+			name: "2 platforms", path: "/bitnami/kafka:latest", status: 200, cards: 2,
+			want: []string{">2 platforms · " + format.Size(kafka.Platforms[0].Size) + " on amd64</span>", `href="/bitnami/kafka:3.8.1"`},
 		},
 		{
-			name: "unknown platform falls back to amd64", path: "/library/nginx:1.27.3?platform=windows/amd64", status: 200,
-			want: []string{pull + "@" + amd64.Digest},
+			name: "platform highlighted", path: "/library/nginx:1.27.3?platform=linux/arm64", status: 200, cards: 6,
+			want: []string{"<!doctype html>", `<article id="platform-linux-arm64" aria-current="true"`},
 		},
 		{
-			name: "single-arch", path: "/myteam/api:main", status: 200,
-			want: []string{">1 platform<", "docker pull registry.example.com/myteam/api@" + single.Digest, "Created today · "},
-			not:  []string{"Same as"},
+			name: "unknown platform highlights none", path: "/library/nginx:1.27.3?platform=windows/amd64", status: 200, cards: 6,
+			not: []string{`aria-current="true"`},
 		},
 		{
-			name: "digest of an index", path: "/library/nginx@" + nginx.Digest, status: 200,
+			name: "old fragment link gets the page", path: "/library/nginx:1.27.3?platform=linux/arm64&fragment=platform", htmx: true, status: 200, cards: 6,
+			want: []string{"<!doctype html>", `id="platform-linux-arm64" aria-current="true"`},
+		},
+		{
+			name: "single-platform", path: "/myteam/api:main", status: 200, cards: 1,
+			want: []string{">1 platform · ", ">Created today</span>", "docker pull registry.example.com/myteam/api:main</code>", "docker pull registry.example.com/myteam/api@" + single.Digest, "Digest</dt>"},
+			not:  []string{"Same as", "Index digest"},
+		},
+		{
+			name: "digest of an index", path: "/library/nginx@" + nginx.Digest, status: 200, cards: 6,
 			want: []string{
 				`<span class="font-medium text-faint">nginx@</span>sha256:` + format.ShortDigest(nginx.Digest) + "</span>",
-				pull + "@" + nginx.Digest, ">6 platforms<", "Same as latest, mainline, 1.27.3, 1.27<",
+				">" + pull + "@" + nginx.Digest + "</code>", ">6 platforms · ", `>Same as <a href="/library/nginx:latest"`,
 			},
 		},
 		{
-			name: "digest of one platform", path: "/library/nginx@" + arm64.Digest, status: 200,
-			want: []string{">1 platform<", ">linux/arm64</h2>", pull + "@" + arm64.Digest},
+			name: "digest of one platform", path: "/library/nginx@" + arm64.Digest, status: 200, cards: 1,
+			want: []string{">1 platform · ", ">linux/arm64</span></h3>", ">" + pull + "@" + arm64.Digest + "</code>"},
 			not:  []string{"Same as", "linux/amd64"},
 		},
 		{
-			name: "signature", path: "/library/nginx:" + sig, status: 200,
-			want: []string{"</svg>signature</span>", "Cosign signature", "not a runnable image", sig[:19] + "….sig", "1.2 KB"},
-			not:  []string{"docker pull", "Platforms", "Created"},
+			name: "signature", path: "/library/nginx:" + sig, status: 200, cards: 1,
+			want: []string{
+				"</svg>signature</span>", ">Signature</span></h3>", "cosign signature, attestation or SBOM", sig[:19] + "….sig", ">1.2 KB</span>",
+				"Belongs to</dt>", `<a href="/library/nginx@` + nginx.Digest + `" class="text-accent-text hover:underline">sha256:` + format.ShortDigest(nginx.Digest) + "</a>",
+			},
+			not: []string{"docker pull", "bg-code-bg", "Platforms</h2>", "Created"},
 		},
 		{
-			name: "helm", path: "/charts/podinfo:6.7.1", status: 200,
-			want: []string{"</svg>helm chart</span>", "Helm chart", "helm pull oci://registry.example.com/charts/podinfo --version 6.7.1", "14 KB"},
-			not:  []string{"docker pull", "Platforms"},
+			name: "helm", path: "/charts/podinfo:6.7.1", status: 200, cards: 1,
+			want: []string{
+				"</svg>helm chart</span>", ">Helm chart</span></h3>", ">14 KB</span>", ">OCI artifact</dd>",
+				">helm pull oci://registry.example.com/charts/podinfo --version 6.7.1</code>", `data-copy="` + chart.Digest + `"`,
+			},
+			not: []string{"docker pull", "Platforms</h2>"},
+		},
+		{
+			name: "index with nothing cached", path: "/library/redis:7.0.15", status: 200,
+			want: []string{"None of this image&#39;s platforms are stored yet", "Platforms</h2>", ">docker pull registry.example.com/library/redis:7.0.15</code>"},
+			not:  []string{">artifact<", "Created"},
 		},
 		{
 			name: "unknown tag", path: "/library/nginx:9.9.9", status: 404,
@@ -141,6 +178,14 @@ func TestTagPage(t *testing.T) {
 					t.Errorf("has %q", n)
 				}
 			}
+			if n := strings.Count(body, "<article "); n != c.cards {
+				t.Errorf("%d cards, want %d", n, c.cards)
+			}
+			if strings.Count(body, `aria-current="true"`) > 1 {
+				t.Error("more than one card highlighted")
+			}
+			_, page, _ := strings.Cut(body, "</head>") // the layout's own scripts are allowed
+			checkMarkup(t, page)
 			if t.Failed() {
 				t.Log(body)
 			}
@@ -148,17 +193,64 @@ func TestTagPage(t *testing.T) {
 	}
 }
 
-func size(p registry.Platform) string { return ">" + format.Size(p.Size) + "<" }
-
 func TestTagPageBasePath(t *testing.T) {
-	_, body := getPage(t, newTestServer(t, "/registry/"), "/registry/", "/registry/library/nginx:1.27.3", false)
-	for _, w := range []string{
-		`<a href="/registry/" class="hover:text-text">Repositories</a>`,
-		`<a href="/registry/library/nginx" class="hover:text-text">nginx</a>`,
-		`href="/registry/library/nginx:1.27.3?platform=linux/arm64"`,
+	nginx := resolve(t, "library/nginx", "1.27.3")
+	sig := "sha256-" + strings.TrimPrefix(nginx.Digest, "sha256:") + ".sig"
+	s := newTestServer(t, "/registry/")
+	for path, wants := range map[string][]string{
+		"/registry/library/nginx:1.27.3": {
+			`<a href="/registry/" class="hover:text-text">Repositories</a>`,
+			`<a href="/registry/library/nginx" class="hover:text-text">nginx</a>`,
+			`<a href="/registry/library/nginx:latest" class=`,
+			`<a href="/registry/library/nginx@` + nginx.Platforms[1].Digest + `" class=`,
+		},
+		"/registry/library/nginx:" + sig: {`<a href="/registry/library/nginx@` + nginx.Digest + `" class=`},
 	} {
-		if !strings.Contains(body, w) {
-			t.Errorf("lacks %q", w)
+		_, body := getPage(t, s, "/registry/", path, false)
+		for _, w := range wants {
+			if !strings.Contains(body, w) {
+				t.Errorf("%s lacks %q", path, w)
+			}
+		}
+	}
+}
+
+// counting counts registry calls, and lists no tags so "Same as" makes none.
+type counting struct {
+	registry.Source
+	resolves, configs atomic.Int32
+}
+
+func (c *counting) Tags(context.Context, string) ([]string, error) {
+	return nil, errors.New("not listed")
+}
+
+func (c *counting) Resolve(ctx context.Context, repo, ref string) (registry.Manifest, error) {
+	c.resolves.Add(1)
+	return c.Source.Resolve(ctx, repo, ref)
+}
+
+func (c *counting) Config(ctx context.Context, repo, digest string) (registry.ImageConfig, error) {
+	c.configs.Add(1)
+	return c.Source.Config(ctx, repo, digest)
+}
+
+// The page resolves the tag once and fetches one config per platform card.
+func TestTagPageCalls(t *testing.T) {
+	for path, configs := range map[string]int32{
+		"/library/nginx:1.27.3":                       6,
+		"/library/nginx:1.27.3?platform=linux/arm/v7": 6,
+		"/myteam/api:main":                            1,
+		"/charts/podinfo:6.7.1":                       0,
+	} {
+		s := newTestServer(t, "/")
+		c := &counting{Source: fake.New()}
+		s.Src = c
+		if status, _ := getPage(t, s, "/", path, false); status != http.StatusOK {
+			t.Fatalf("%s: status %d", path, status)
+		}
+		if r, n := c.resolves.Load(), c.configs.Load(); r != 1 || n != configs {
+			t.Errorf("%s: %d resolves and %d configs, want 1 and %d", path, r, n, configs)
 		}
 	}
 }
@@ -203,7 +295,7 @@ func TestTagPageHidesAttestations(t *testing.T) {
 		t.Fatal(err)
 	}
 	status, body := getPage(t, s, "/", "/"+registrytest.RepoIndex+":"+registrytest.TagVersion, false)
-	if status != http.StatusOK || !strings.Contains(body, ">3 platforms<") || strings.Contains(body, "unknown") || strings.Contains(body, att.String()) {
+	if status != http.StatusOK || !strings.Contains(body, ">3 platforms · ") || strings.Count(body, "<article ") != 3 || strings.Contains(body, "unknown") || strings.Contains(body, att.String()) {
 		t.Errorf("status %d; want 3 platforms and no attestation in\n%s", status, body)
 	}
 }

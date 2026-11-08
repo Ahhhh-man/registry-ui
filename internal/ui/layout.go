@@ -22,6 +22,7 @@ type Page struct {
 	User      string        // signed-in username: shows the avatar and Log out
 	Login     string        // sign-in link for the header when not signed in, or ""
 	SignIn    bool          // the sign-in page: no search box or user menu
+	Band      template.HTML // optional full-width header band above Body
 	Body      template.HTML // the page itself, rendered by its own template
 }
 

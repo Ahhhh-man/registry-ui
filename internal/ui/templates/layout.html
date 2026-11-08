@@ -1,5 +1,6 @@
 {{/* The document around every full page. Data is a ui.Page; the page body
-     comes pre-rendered in .Body, inside a centred column of max-w-page. */}}
+     comes pre-rendered in .Body, inside a centred column of max-w-page,
+     below .Band (if any), a full-width panel with the same column. */}}
 {{define "layout" -}}
 <!doctype html>
 <html lang="en"{{with .Theme}} class="{{.}}"{{end}}>
@@ -45,6 +46,9 @@
     {{- end}}{{end}}
   </div>
 </header>
+{{- with .Band}}
+<div class="border-b border-border bg-panel"><div class="mx-auto w-full max-w-page px-4 py-6 sm:px-8">{{.}}</div></div>
+{{- end}}
 <main class="mx-auto w-full max-w-page px-4 py-6 sm:px-8">
 {{.Body}}
 </main>

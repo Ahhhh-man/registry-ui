@@ -1,32 +1,30 @@
-{{/* Pieces of the tag page's detail panels. */}}
+{{/* Pieces of the tag page. */}}
 
-{{/* fact: a labelled value in a small box; sit several in a grid.
-     dict "Icon" icon name, "Label" string, "Value" string,
-          "Mono" bool (digests, media types), "Note" dimmed text after
-          the value (optional), "Copy" string for a Copy button (optional). */}}
-{{define "fact" -}}
-<div class="min-w-0 rounded-md border border-border bg-bg px-3 py-3">
-<div class="mb-1.5 flex items-center gap-1.5 text-xs text-muted">{{icon .Icon "size-3 text-faint"}}{{.Label}}</div>
-<div class="flex items-center justify-between gap-2 font-medium">
-<span class="min-w-0 truncate{{if .Mono}} font-mono text-xs{{end}}" title="{{.Value}}">{{.Value}}{{with .Note}} <span class="font-normal text-muted">{{.}}</span>{{end}}</span>
-{{- with .Copy}}{{template "copy" (dict "Text" . "Label" (print "Copy " $.Label))}}{{end}}
+{{/* fact-card: one platform of an image, or a chart, signature or other
+     artifact: a heading with its size, a few labelled facts and copy
+     buttons. Sit several in a grid. Current highlights it, for ?platform=.
+     dict "ID" element id (optional), "Current" bool, "Icon" icon name,
+          "Title" string ("linux/amd64"), "Size" string ("72.4 MB"),
+          "Text" a sentence under the heading (optional),
+          "Facts" list of dict "Label", "Value", "Href" (optional link),
+                  "Mono" bool, "Title" hover text (optional),
+          "Copies" list of "copy" partial dicts (optional). */}}
+{{define "fact-card" -}}
+<article{{with .ID}} id="{{.}}"{{end}}{{if .Current}} aria-current="true"{{end}} class="flex min-w-0 flex-col gap-4 rounded-lg border border-border bg-surface p-5 aria-[current=true]:border-accent aria-[current=true]:ring-1 aria-[current=true]:ring-accent">
+<div class="flex items-center justify-between gap-3">
+<h3 class="flex min-w-0 items-center gap-2 text-base font-semibold">{{icon .Icon "text-accent"}}<span class="min-w-0 break-words">{{.Title}}</span></h3>
+{{- with .Size}}<span class="shrink-0 text-base font-semibold tabular-nums">{{.}}</span>{{end}}
 </div>
-</div>
+{{- with .Text}}
+<p class="-mt-2 text-muted">{{.}}</p>
 {{- end}}
-
-{{/* platform-list: an image's platforms with their sizes, the current one
-     highlighted. Each is a link that htmx turns into a swap of Target
-     (outerHTML) with the "platform" fragment of the same URL.
-     dict "Target" a CSS selector, "Platforms" list of dict "Label"
-          ("linux/arm64"), "Size" ("67.0 MB"), "Href", "Current" bool. */}}
-{{define "platform-list" -}}
-<nav aria-label="Platforms" class="rounded-md border border-border bg-surface p-2">
-<p class="px-2.5 pt-2 pb-1.5 text-xs font-medium tracking-wide text-faint uppercase">Platforms</p>
-<ul>
-{{- range $i, $p := .Platforms}}
-<li><a id="platform-{{$i}}" href="{{.Href}}" hx-get="{{.Href}}&amp;fragment=platform" hx-target="{{$.Target}}" hx-swap="outerHTML" hx-push-url="{{.Href}}"{{if .Current}} aria-current="true"{{end}} class="group flex items-center gap-2.5 rounded-sm px-2.5 py-2 hover:bg-panel aria-[current=true]:bg-accent-soft aria-[current=true]:font-medium aria-[current=true]:text-accent-text">
-{{- icon "cpu" "text-faint group-aria-[current=true]:text-accent"}}<span class="min-w-0 truncate">{{.Label}}</span><span class="ml-auto text-xs whitespace-nowrap text-muted tabular-nums group-aria-[current=true]:text-accent-text">{{.Size}}</span></a></li>
+<dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
+{{- range .Facts}}
+<dt class="text-muted">{{.Label}}</dt><dd class="min-w-0 truncate{{if .Mono}} font-mono text-xs leading-5{{end}}"{{with .Title}} title="{{.}}"{{end}}>{{if .Href}}<a href="{{.Href}}" class="text-accent-text hover:underline">{{.Value}}</a>{{else}}{{.Value}}{{end}}</dd>
 {{- end}}
-</ul>
-</nav>
+</dl>
+{{- with .Copies}}
+<div class="mt-auto flex flex-wrap gap-2 border-t border-row-border pt-3">{{range .}}{{template "copy" .}}{{end}}</div>
+{{- end}}
+</article>
 {{- end}}

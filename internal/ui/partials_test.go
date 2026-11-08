@@ -52,8 +52,8 @@ var partialCases = []struct {
 		[]string{"font-mono", `>docker pull registry.example.com/library/nginx:1.27</code>`, `data-copy="docker pull registry.example.com/library/nginx:1.27"`, `aria-label="Copy command"`},
 	},
 	{
-		"code-block", `{{template "code-block" (dict "Title" "Pull this image" "Command" "docker pull registry.example.com/library/nginx")}}`,
-		[]string{"bg-code-bg", "Pull this image", `data-copy="docker pull registry.example.com/library/nginx"`, "bg-code-fg/5"},
+		"code-block", `{{template "code-block" (dict "Label" "Copy pull command" "Command" "docker pull registry.example.com/library/nginx")}}`,
+		[]string{"bg-code-bg", "wrap-anywhere", `data-copy="docker pull registry.example.com/library/nginx" aria-label="Copy pull command"`, "bg-accent", "text-accent-fg"},
 	},
 	{
 		"tabs", `{{template "tabs" (dict "Label" "Repository" "Tabs" (list (dict "Label" "Tags" "Icon" "tag" "Href" "/library/nginx" "Count" 42 "Current" true) (dict "Label" "Overview" "Icon" "book-open" "Href" "/library/nginx?tab=overview")))}}`,
@@ -77,13 +77,16 @@ var partialCases = []struct {
 		[]string{`data-copy="sha256:3f2a" aria-label="Copy digest"`, "group-data-copied:block"},
 	},
 	{
-		"fact", `{{template "fact" (dict "Icon" "hash" "Label" "Digest" "Value" "sha256:3f2a" "Mono" true "Copy" "sha256:3f2a")}}`,
-		[]string{"Digest</div>", `title="sha256:3f2a">sha256:3f2a</span>`, `aria-label="Copy Digest"`},
+		"pill links", `{{template "pill" (dict "Icon" "link" "Text" "Same as" "Title" "hover" "Links" (list (dict "Label" "latest" "Href" "/n:latest") (dict "Label" "1.27" "Href" "/n:1.27")))}}`,
+		[]string{`<span title="hover" class=`, `<span class="min-w-0">Same as <a href="/n:latest" class="`, `>latest</a>, <a href="/n:1.27"`},
 	},
-	{"fact note", `{{template "fact" (dict "Icon" "calendar" "Label" "Created" "Value" "2 days ago" "Note" "2026-11-06")}}`, []string{`2 days ago <span class="font-normal text-muted">2026-11-06</span>`}},
 	{
-		"platform-list", `{{template "platform-list" (dict "Target" "#platforms" "Platforms" (list (dict "Label" "linux/amd64" "Size" "69.0 MB" "Href" "/x?platform=linux/amd64" "Current" true)))}}`,
-		[]string{`<nav aria-label="Platforms"`, `hx-get="/x?platform=linux/amd64&amp;fragment=platform" hx-target="#platforms"`, `aria-current="true"`, ">linux/amd64</span>"},
+		"fact-card", `{{template "fact-card" (dict "ID" "platform-linux-amd64" "Current" true "Icon" "cpu" "Title" "linux/amd64" "Size" "69.0 MB" "Text" "About it." "Facts" (list (dict "Label" "Digest" "Value" "3f2a9c1b7e44" "Mono" true "Title" "sha256:3f2a" "Href" "/n@sha256:3f2a") (dict "Label" "Type" "Value" "OCI image manifest")) "Copies" (list (dict "Text" "sha256:3f2a" "Caption" "Copy digest")))}}`,
+		[]string{
+			`<article id="platform-linux-amd64" aria-current="true"`, "aria-[current=true]:border-accent", "</svg><span", ">linux/amd64</span></h3>", ">69.0 MB</span>", "About it.</p>",
+			`<dt class="text-muted">Digest</dt>`, `title="sha256:3f2a"><a href="/n@sha256:3f2a"`, ">3f2a9c1b7e44</a></dd>", ">OCI image manifest</dd>",
+			`data-copy="sha256:3f2a"`, `aria-live="polite">Copy digest</span>`,
+		},
 	},
 	{
 		"breadcrumbs", `{{template "breadcrumbs" (dict "Trail" (list (dict "Label" "Repositories" "Href" "/") (dict "Label" "library")) "Current" "nginx")}}`,

@@ -18,12 +18,13 @@
 
 {{/* copy: a Copy button; app.js copies data-copy and shows "Copied".
      dict "Text" string to copy, "Label" accessible name (optional, e.g.
-          "Copy digest"), "Dark" bool (on the code block's dark background). */}}
+          "Copy digest"), "Caption" visible text (default "Copy"),
+          "Accent" bool (the solid button on the code block). */}}
 {{define "copy" -}}
-<button type="button" data-copy="{{.Text}}"{{with .Label}} aria-label="{{.}}"{{end}} class="group inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 font-sans text-xs font-medium whitespace-nowrap
-  {{- if .Dark}} border-code-fg/10 bg-code-fg/5 text-code-fg hover:bg-code-fg/10 focus-visible:outline-code-fg
-  {{- else}} border-border bg-surface text-text hover:border-accent hover:text-accent-text data-copied:border-accent data-copied:text-accent-text{{end}}">
-{{- icon "copy" "size-3 group-data-copied:hidden"}}{{icon "check" "hidden size-3 group-data-copied:block"}}<span data-copy-label aria-live="polite">Copy</span></button>
+<button type="button" data-copy="{{.Text}}"{{with .Label}} aria-label="{{.}}"{{end}} class="group inline-flex shrink-0 items-center gap-1.5 rounded-md border font-sans font-medium whitespace-nowrap
+  {{- if .Accent}} border-accent bg-accent px-3 py-1.5 text-sm text-accent-fg hover:opacity-90
+  {{- else}} border-border bg-surface px-2.5 py-1 text-xs text-text hover:border-accent hover:text-accent-text data-copied:border-accent data-copied:text-accent-text{{end}}">
+{{- icon "copy" "size-3 group-data-copied:hidden"}}{{icon "check" "hidden size-3 group-data-copied:block"}}<span data-copy-label aria-live="polite">{{or .Caption "Copy"}}</span></button>
 {{- end}}
 
 {{/* copy-field: a one-line command with a Copy button.
@@ -35,15 +36,14 @@
 </div>
 {{- end}}
 
-{{/* code-block: the dark pull box, a title bar with Copy above a command.
-     dict "Title" string ("Pull this image"), "Command" string. */}}
+{{/* code-block: the dark pull box, a full-width command that wraps rather
+     than truncating, with an accent Copy button.
+     dict "Command" string, "Label" the button's accessible name
+          ("Copy pull command"). */}}
 {{define "code-block" -}}
-<div class="w-full max-w-lg min-w-0 overflow-hidden rounded-md border border-code-fg/10 bg-code-bg text-code-fg">
-<div class="flex items-center justify-between gap-2 border-b border-code-fg/10 py-2 pr-2 pl-3 text-xs text-code-fg/70">
-<span class="inline-flex min-w-0 items-center gap-2">{{icon "terminal"}}<span class="truncate">{{.Title}}</span></span>
-{{- template "copy" (dict "Text" .Command "Label" "Copy command" "Dark" true)}}
-</div>
-<code class="block truncate px-4 pt-3 pb-4 font-mono text-sm" title="{{.Command}}"><span class="mr-2.5 text-code-fg/50 select-none" aria-hidden="true">$</span>{{.Command}}</code>
+<div class="flex w-full min-w-0 items-center gap-3 rounded-lg border border-code-fg/10 bg-code-bg py-2.5 pr-2.5 pl-4 text-code-fg">
+<code class="min-w-0 flex-1 font-mono text-sm wrap-anywhere"><span class="mr-2 text-code-fg/50 select-none" aria-hidden="true">$</span>{{.Command}}</code>
+{{- template "copy" (dict "Text" .Command "Label" .Label "Accent" true)}}
 </div>
 {{- end}}
 

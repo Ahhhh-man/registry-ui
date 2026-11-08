@@ -66,8 +66,12 @@ type repoView struct {
 
 type pill struct {
 	Icon, Text, Copy string // Copy: optional text for the pill's copy button
+	Title            string // optional hover text
 	Mono             bool
+	Links            []link // optional, after Text
 }
+
+type link struct{ Label, Href string }
 
 type badge struct{ Label, Variant string }
 

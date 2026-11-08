@@ -1,10 +1,10 @@
 package pages
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -21,29 +21,22 @@ import (
 // bound as the repo page's 100 tags per page.
 const sameAsLimit = 100
 
-// tagView is the data for the "tag" and "tag-not-found" templates.
+// tagView is the data for the "tag", "tag-band" and "tag-not-found" templates.
 type tagView struct {
 	Repo, Namespace, Name string // "library/nginx", "library", "nginx"
 	Tag                   string // "" on a digest page
 	Prefix, Title         string // "nginx:" and "1.27.3", or "nginx@" and "sha256:3f2a9c1b7e44"
 	Kind                  string // "image", "signature", "helm" or "artifact"
 	Manifest              registry.Manifest
-	Badges, Pills         []map[string]any // page-header data
-	Pull, PullTitle       string           // header pull command; "" for none
-
-	// Images only: the platform list and the selected platform's details.
-	Platforms         []platformLink
-	Platform          registry.Platform
-	PlatformMediaType string
-	PlatformCreated   time.Time
-	PlatformPull      string
-}
-
-// platformLink is an entry in the "platform-list" partial.
-type platformLink struct {
-	Label, Size string // "linux/arm64", "67.0 MB"
-	Href        string // this page with ?platform=
-	Current     bool
+	Index                 bool             // Manifest is a multi-platform index
+	Badges                []map[string]any // page-header data
+	Pills                 []pill
+	Pull                  string // header pull command; "" for none
+	// Cards are "fact-card" data: one per platform of an image, or one
+	// for a chart, signature or artifact. An image with none has nothing
+	// in storage yet.
+	Cards   []map[string]any
+	Created string // the main platform's created time in UTC; "" if unknown
 }
 
 // Tag serves a tag's detail page (#14).
@@ -57,8 +50,7 @@ func (s *Server) Digest(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 }
 
 // manifest renders the page for repo at ref, a tag or a digest. tag is ""
-// for a digest. With ?fragment=platform (htmx) it renders only the
-// platform list and panel, for ?platform= switches.
+// for a digest. ?platform=os/arch highlights that platform's card.
 func (s *Server) manifest(w http.ResponseWriter, r *http.Request, repo, tag, ref string) {
 	ctx := r.Context()
 	v := tagView{Repo: repo, Tag: tag, Name: repo, Title: tag}
@@ -73,7 +65,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, repo, tag, ref
 	pageTitle := repo + sep + v.Title
 
 	m, err := s.Src.Resolve(ctx, repo, ref)
-	if errors.Is(err, registry.ErrNotFound) && web.Fragment(r) == "" {
+	if errors.Is(err, registry.ErrNotFound) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusNotFound)
 		s.page(w, r, ui.Page{PageTitle: pageTitle}, "tag-not-found", v)
@@ -83,46 +75,53 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, repo, tag, ref
 		web.Error(w, r, err)
 		return
 	}
-	v.Manifest = m
+	v.Manifest, v.Index = m, m.Kind == registry.KindIndex
 
 	host := s.PullHost + "/" + repo
 	pinned := host + "@" + m.Digest
 	if tag != "" {
 		pinned = host + ":" + tag
 	}
+	digest := map[string]any{"Label": "Digest", "Value": format.ShortDigest(m.Digest), "Mono": true, "Title": m.Digest}
+	copyDigest := []map[string]any{{"Text": m.Digest, "Caption": "Copy digest"}}
+	var created time.Time // the main platform's, for the header
 	switch m.Kind {
 	case registry.KindImage, registry.KindIndex:
-		if len(m.Platforms) == 0 { // only attestations, say
-			v.Kind = "artifact"
-			break
+		v.Kind, v.Pull = "image", "docker pull "+pinned
+		if created, err = s.platformCards(ctx, r, &v); err != nil {
+			web.Error(w, r, err)
+			return
 		}
-		v.Kind, v.Pull, v.PullTitle = "image", "docker pull "+pinned, "Pull this image"
 	case registry.KindSignature:
 		v.Kind = "signature"
-		// "sha256-<64 hex>.sig" becomes "sha256-<12 hex>….sig".
-		if i := strings.LastIndexByte(tag, '.'); strings.HasPrefix(tag, "sha256-") && i > 19 {
-			v.Title = tag[:19] + "…" + tag[i:]
+		facts := []map[string]any{digest}
+		// A cosign tag, "sha256-<64 hex>.sig", names the image it belongs to.
+		if sm := sigTag.FindStringSubmatch(tag); sm != nil {
+			v.Title = tagLabel(tag)
+			target := "sha256:" + sm[1]
+			facts = append([]map[string]any{{"Label": "Belongs to", "Value": "sha256:" + format.ShortDigest(target), "Mono": true, "Title": target, "Href": s.BasePath + repo + "@" + target}}, facts...)
 		}
+		v.Cards = []map[string]any{{
+			"Icon": "shield-check", "Title": "Signature", "Size": format.Size(m.Size), "Facts": facts, "Copies": copyDigest,
+			"Text": "A cosign signature, attestation or SBOM for an image in this repository. It isn't an image you can run.",
+		}}
 	case registry.KindHelm:
-		v.Kind, v.PullTitle = "helm", "Pull this chart"
+		v.Kind = "helm"
 		v.Pull = "helm pull oci://" + host + "@" + m.Digest
 		if tag != "" {
 			v.Pull = "helm pull oci://" + host + " --version " + tag
 		}
+		v.Cards = []map[string]any{{
+			"Icon": "anchor", "Title": "Helm chart", "Size": format.Size(m.Size), "Copies": copyDigest,
+			"Facts": []map[string]any{digest, {"Label": "Type", "Value": "OCI artifact"}},
+		}}
 	default:
 		v.Kind = "artifact"
-	}
-
-	var created time.Time // the default platform's, for the header
-	if v.Kind == "image" {
-		if err := s.platforms(ctx, r, &v, &created); err != nil {
-			web.Error(w, r, err)
-			return
-		}
-	}
-	if web.Fragment(r) == "platform" && v.Kind == "image" {
-		s.fragment(w, r, "tag-platforms", v)
-		return
+		v.Cards = []map[string]any{{
+			"Icon": "package", "Title": "OCI artifact", "Size": format.Size(m.Size), "Copies": copyDigest,
+			"Text":  "This isn't a container image, so there are no platforms to show.",
+			"Facts": []map[string]any{digest, {"Label": "Type", "Value": manifestType(m.MediaType)}},
+		}}
 	}
 
 	if tag == "latest" {
@@ -138,73 +137,83 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, repo, tag, ref
 	}
 
 	if !created.IsZero() {
-		v.Pills = append(v.Pills, map[string]any{"Icon": "clock", "Text": "Created " + format.Age(created) + " · " + format.Date(created)})
+		v.Created = created.UTC().Format("2006-01-02 15:04:05 UTC")
+		v.Pills = append(v.Pills, pill{Icon: "clock", Text: "Created " + format.Age(created), Title: format.Date(created)})
 	}
-	v.Pills = append(v.Pills, map[string]any{"Icon": "hash", "Text": format.ShortDigest(m.Digest), "Mono": true, "Copy": m.Digest})
-	if n := len(m.Platforms); n > 0 {
-		v.Pills = append(v.Pills, map[string]any{"Icon": "cpu", "Text": plural(n, "platform")})
+	if p, ok := mainPlatform(m); ok {
+		v.Pills = append(v.Pills, pill{Icon: "cpu", Text: plural(len(m.Platforms), "platform") + " · " + format.Size(p.Size) + " on " + format.ShortPlatform(p)})
 	}
 	if same := s.sameAs(ctx, repo, tag, m.Digest); len(same) > 0 {
-		v.Pills = append(v.Pills, map[string]any{"Icon": "link", "Text": "Same as " + strings.Join(same, ", ")})
+		links := make([]link, len(same))
+		for i, t := range same {
+			links[i] = link{t, s.BasePath + repo + ":" + t}
+		}
+		v.Pills = append(v.Pills, pill{Icon: "link", Text: "Same as", Links: links})
 	}
 
 	s.page(w, r, ui.Page{PageTitle: pageTitle}, "tag", v)
 }
 
-// platforms fills in v's platform list and the selected platform's details:
-// ?platform= if it names one, else linux/amd64, else the first. created
-// gets the default platform's created time. A config or platform manifest
+// platformCards adds a card per platform to v, fetching each platform's
+// config for its created time, and returns the main platform's. A config
 // the registry lacks (a pull-through cache holds only what was pulled)
-// leaves its fields empty rather than failing the page.
-func (s *Server) platforms(ctx context.Context, r *http.Request, v *tagView, created *time.Time) error {
-	m := v.Manifest
-	def := 0
-	for i, p := range m.Platforms {
-		if p.OS == "linux" && p.Arch == "amd64" {
-			def = i
-			break
-		}
+// leaves it unknown rather than failing the page.
+func (s *Server) platformCards(ctx context.Context, r *http.Request, v *tagView) (time.Time, error) {
+	ps := v.Manifest.Platforms
+	if len(ps) == 0 {
+		return time.Time{}, nil
 	}
-	sel, want := def, r.URL.Query().Get("platform")
-	for i, p := range m.Platforms {
+	created := make([]time.Time, len(ps))
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(8)
+	for i, p := range ps {
+		g.Go(func() error {
+			c, err := s.Src.Config(gctx, v.Repo, p.Config)
+			if errors.Is(err, registry.ErrNotFound) {
+				return nil
+			}
+			created[i] = c.Created
+			return err
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return time.Time{}, err
+	}
+
+	var main time.Time
+	want := r.URL.Query().Get("platform")
+	mp, _ := mainPlatform(v.Manifest)
+	for i, p := range ps {
+		if p.Digest == mp.Digest {
+			main = created[i]
+		}
 		name := format.Platform(p)
-		if name == want {
-			sel = i
-		}
-		href := r.URL.Path + "?platform=" + strings.ReplaceAll(url.QueryEscape(name), "%2F", "/")
-		v.Platforms = append(v.Platforms, platformLink{Label: name, Size: format.Size(p.Size), Href: href})
+		v.Cards = append(v.Cards, map[string]any{
+			"ID": "platform-" + strings.ReplaceAll(name, "/", "-"), "Current": name == want,
+			"Icon": "cpu", "Title": name, "Size": format.Size(p.Size),
+			"Facts": []map[string]any{
+				{"Label": "Digest", "Value": format.ShortDigest(p.Digest), "Mono": true, "Title": p.Digest, "Href": s.BasePath + v.Repo + "@" + p.Digest},
+				{"Label": "Created", "Value": cmp.Or(format.Age(created[i]), "Unknown"), "Title": format.Date(created[i])},
+				{"Label": "Type", "Value": manifestType(p.MediaType)},
+			},
+			"Copies": []map[string]any{
+				{"Text": "docker pull " + s.PullHost + "/" + v.Repo + "@" + p.Digest, "Caption": "Copy pull command", "Label": "Copy pull command for " + name},
+				{"Text": p.Digest, "Caption": "Copy digest", "Label": "Copy digest of " + name},
+			},
+		})
 	}
-	v.Platforms[sel].Current = true
-	v.Platform = m.Platforms[sel]
-	v.PlatformPull = "docker pull " + s.PullHost + "/" + v.Repo + "@" + v.Platform.Digest
+	return main, nil
+}
 
-	config := func(p registry.Platform) (time.Time, error) {
-		c, err := s.Src.Config(ctx, v.Repo, p.Config)
-		if errors.Is(err, registry.ErrNotFound) {
-			err = nil
-		}
-		return c.Created, err
+// manifestType names an image manifest's media type for people.
+func manifestType(mediaType string) string {
+	switch mediaType {
+	case "application/vnd.oci.image.manifest.v1+json":
+		return "OCI image manifest"
+	case "application/vnd.docker.distribution.manifest.v2+json":
+		return "Docker image manifest"
 	}
-	var err error
-	if v.PlatformCreated, err = config(v.Platform); err != nil {
-		return err
-	}
-	*created = v.PlatformCreated
-	if sel != def {
-		if *created, err = config(m.Platforms[def]); err != nil {
-			return err
-		}
-	}
-
-	v.PlatformMediaType = m.MediaType
-	if m.Kind == registry.KindIndex {
-		pm, err := s.Src.Resolve(ctx, v.Repo, v.Platform.Digest)
-		if err != nil && !errors.Is(err, registry.ErrNotFound) {
-			return err
-		}
-		v.PlatformMediaType = pm.MediaType
-	}
-	return nil
+	return cmp.Or(mediaType, "Unknown")
 }
 
 // sameAs returns the other tags in repo that point at digest, newest first.

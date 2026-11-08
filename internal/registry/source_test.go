@@ -33,7 +33,7 @@ func want(t *testing.T, img v1.Image) registry.Platform {
 	for _, l := range m.Layers {
 		size += l.Size
 	}
-	return registry.Platform{OS: cf.OS, Arch: cf.Architecture, Variant: cf.Variant, Digest: d.String(), Config: m.Config.Digest.String(), Size: size}
+	return registry.Platform{OS: cf.OS, Arch: cf.Architecture, Variant: cf.Variant, Digest: d.String(), MediaType: string(m.MediaType), Config: m.Config.Digest.String(), Size: size}
 }
 
 func digest(t *testing.T, x interface{ Digest() (v1.Hash, error) }) string {

@@ -158,7 +158,7 @@ func (s *Storage) resolve(repo, ref string) (Manifest, error) {
 			if err != nil {
 				return Manifest{}, err
 			}
-			pl := Platform{Digest: d.Digest.String(), Config: mf.Config.Digest.String(), Size: size(mf)}
+			pl := Platform{Digest: d.Digest.String(), MediaType: string(d.MediaType), Config: mf.Config.Digest.String(), Size: size(mf)}
 			if d.Platform != nil {
 				pl.OS, pl.Arch, pl.Variant = d.Platform.OS, d.Platform.Architecture, d.Platform.Variant
 			}
@@ -176,7 +176,7 @@ func (s *Storage) resolve(repo, ref string) (Manifest, error) {
 	if m.Kind != KindImage {
 		return m, nil
 	}
-	pl := Platform{Digest: m.Digest, Config: mf.Config.Digest.String(), Size: m.Size}
+	pl := Platform{Digest: m.Digest, MediaType: m.MediaType, Config: mf.Config.Digest.String(), Size: m.Size}
 	// A manifest fetched without its config (e.g. by `docker manifest
 	// inspect` through a cache) still shows, just without its platform.
 	cfg, err := s.config(repo, pl.Config)

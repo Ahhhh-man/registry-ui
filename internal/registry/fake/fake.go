@@ -79,6 +79,8 @@ var seed = map[string]repoSeed{
 		source:      "https://github.com/docker-library/redis",
 		tags: map[string]entry{
 			"latest": alias("7.4.1"), "7.4.1": img(full, 45.2, 30), "7.4.1-alpine": img(alpine, 16.9, 30), "7.2.6": img(full, 44.1, 61),
+			// An index whose platforms a pull-through cache hasn't stored yet.
+			"7.0.15": img(nil, 0, 400),
 		},
 	},
 	"bitnami/kafka": {
@@ -183,9 +185,10 @@ func (r *repo) add(name, tag string, e entry, created time.Time, labels map[stri
 		parts := strings.SplitN(p, "/", 3)
 		pl := registry.Platform{
 			OS: parts[0], Arch: parts[1],
-			Digest: digest(name, tag, p),
-			Config: digest(name, tag, p, "config"),
-			Size:   size(p),
+			Digest:    digest(name, tag, p),
+			MediaType: mediaManifest,
+			Config:    digest(name, tag, p, "config"),
+			Size:      size(p),
 		}
 		if len(parts) == 3 {
 			pl.Variant = parts[2]

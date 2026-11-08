@@ -49,14 +49,18 @@
     if (!btn) return;
     const ok = await copyText(btn.dataset.copy);
     const label = btn.querySelector("[data-copy-label]");
+    if (label) label.dataset.caption ??= label.textContent; // "Copy", "Copy digest"…
     btn.toggleAttribute("data-copied", ok);
     if (label) label.textContent = ok ? "Copied" : "Copy failed";
     clearTimeout(btn.copyTimer);
     btn.copyTimer = setTimeout(() => {
       btn.removeAttribute("data-copied");
-      if (label) label.textContent = "Copy";
+      if (label) label.textContent = label.dataset.caption;
     }, 2000);
   });
+
+  // The tag page's ?platform= link: bring the highlighted card into view.
+  document.querySelector('article[aria-current="true"]')?.scrollIntoView({ block: "center" });
 
   // "/" focuses the last [data-hotkey="/"] field, so a page's own filter wins
   // over the header search. Esc clears it, then leaves it; the input event

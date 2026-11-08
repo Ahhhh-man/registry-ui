@@ -22,7 +22,7 @@ func newTestServer(t *testing.T, base string) *Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Server{Src: fake.New(), Templates: tmpl, Title: "registry.example.com", PullHost: "registry.example.com"}
+	return &Server{Src: fake.New(), Templates: tmpl, Title: "registry.example.com", PullHost: "registry.example.com", BasePath: base}
 }
 
 func TestPageWrapsLayoutAndFragmentDoesNot(t *testing.T) {
