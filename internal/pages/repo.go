@@ -48,6 +48,7 @@ type repoView struct {
 	Pills                 []pill
 	TagCount              int    // every tag in the repo
 	Query, View           string // the tag filter and view, kept in links
+	List                  bool   // the list view: ?view=list, or the view cookie without ?view=
 	Cards                 []tagCard
 	Page, Pages           int
 	Prev, Next            string // pagination links, "" at either end
@@ -67,8 +68,9 @@ type pill struct {
 
 type badge struct{ Label, Variant string }
 
-// tagCard is one tag on the Tags tab. Until its details load, only Repo,
-// Tag, Label, Badges and Load are set.
+// tagCard is one tag on the Tags tab, a card or a list row. Until its
+// details load, only Repo, Tag, Label, Badges, Load and, in the list view,
+// a best guess at Command are set.
 type tagCard struct {
 	Repo, Tag, Label string
 	Load             string // URL of the card with its details, while they're still to come
@@ -84,9 +86,9 @@ type tagCard struct {
 	Platforms        []registry.Platform
 }
 
-// Repo serves a repository's page: the Tags tab in the cards view, or the
-// Overview tab. The Tags tab's fragments are "tags", the filtered list, and
-// "card", one card's details.
+// Repo serves a repository's page: the Tags tab in the cards or list view,
+// or the Overview tab. The Tags tab's fragments are "tags", the filtered
+// list, and "card" or "row", one tag's details.
 func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 	tags, err := s.Src.Tags(r.Context(), ref.Repo)
 	if err != nil {
@@ -100,6 +102,10 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 	v.Namespace, v.Name = splitRepo(ref.Repo)
 	if v.Namespace != "" {
 		v.Prefix = v.Namespace + "/"
+	}
+	v.List = v.View == "list"
+	if c, err := r.Cookie("view"); err == nil && v.View == "" {
+		v.List = c.Value == "list"
 	}
 	if q.Get("tab") == "overview" {
 		s.overview(w, r, &v, tags)
@@ -117,18 +123,21 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 
 	switch web.Fragment(r) {
 	case "card":
-		s.repoCard(w, r, ref.Repo, page, q.Get("tag"))
+		s.repoCard(w, r, ref.Repo, page, q.Get("tag"), "repo-card")
+		return
+	case "row":
+		s.repoCard(w, r, ref.Repo, page, q.Get("tag"), "tag-row")
 		return
 	case "tags":
 		// The filter is typed into the page, so keep its URL in step without the fragment.
 		w.Header().Set("HX-Replace-Url", v.link(r))
-		v.cards(r, page)
+		v.cards(r, page, s.PullHost)
 		s.fragment(w, r, "repo-tags", v)
 		return
 	}
 
-	v.cards(r, page)
-	s.header(r.Context(), &v, tags)
+	s.header(r.Context(), &v, tags) // first, so cards knows a Helm repo
+	v.cards(r, page, s.PullHost)
 	s.page(w, r, ui.Page{PageTitle: ref.Repo}, "repo", v)
 }
 
@@ -168,13 +177,31 @@ func (s *Server) header(ctx context.Context, v *repoView, tags []string) {
 	}
 }
 
-// cards fills in the page's cards, each waiting to load its details.
-func (v *repoView) cards(r *http.Request, page []string) {
+// cards fills in the page's cards or rows, each waiting to load its
+// details. A row also gets a guess at its command, so a selection can be
+// copied before every row has loaded.
+// shortcut: the tags fragment doesn't know a Helm repo, so its unloaded rows
+// guess docker pull; resolve the header tag there if that matters.
+func (v *repoView) cards(r *http.Request, page []string, host string) {
+	frag, kind := "card", registry.KindImage
+	if v.Helm {
+		kind = registry.KindHelm
+	}
+	if v.List {
+		frag = "row"
+	}
 	v.Cards = make([]tagCard, len(page))
 	for i, t := range page {
 		v.Cards[i] = tagCard{
 			Repo: v.Repo, Tag: t, Label: tagLabel(t), Badges: latestBadge(t),
-			Load: v.link(r, "fragment", "card", "tag", t),
+			Load: v.link(r, "fragment", frag, "tag", t),
+		}
+		if v.List {
+			k := kind
+			if sigTag.MatchString(t) {
+				k = registry.KindSignature
+			}
+			v.Cards[i].Command = command(host, v.Repo, t, k)
 		}
 	}
 	if v.Page > 1 {
@@ -206,10 +233,10 @@ func (v *repoView) link(r *http.Request, kv ...string) string {
 	return r.URL.EscapedPath() + "?" + q.Encode()
 }
 
-// repoCard answers one card's details. "Same as" needs the digest of every
-// tag on the page, so they're all resolved; the cache shares that work
-// between the cards loading at once.
-func (s *Server) repoCard(w http.ResponseWriter, r *http.Request, repo string, page []string, tag string) {
+// repoCard answers one card's or row's details, rendered with the template
+// name. "Same as" needs the digest of every tag on the page, so they're all
+// resolved; the cache shares that work between the cards loading at once.
+func (s *Server) repoCard(w http.ResponseWriter, r *http.Request, repo string, page []string, tag, name string) {
 	i := slices.Index(page, tag)
 	if i < 0 {
 		web.Error(w, r, fmt.Errorf("tag %s:%s on this page: %w", repo, tag, registry.ErrNotFound))
@@ -233,28 +260,25 @@ func (s *Server) repoCard(w http.ResponseWriter, r *http.Request, repo string, p
 	if n := len(c.SameAs); n > sameAsShown {
 		c.SameAs, c.MoreSameAs = c.SameAs[:sameAsShown], n-sameAsShown
 	}
-	s.fragment(w, r, "repo-card", c)
+	s.fragment(w, r, name, c)
 }
 
 // card returns a tag's details from m, its manifest; all but SameAs.
 func (s *Server) card(ctx context.Context, repo, tag string, m registry.Manifest) (tagCard, error) {
 	c := tagCard{Repo: repo, Tag: tag, Label: tagLabel(tag), Badges: latestBadge(tag), Digest: m.Digest, Size: m.Size, Platforms: m.Platforms}
-	ref := s.PullHost + "/" + repo
+	c.Command = command(s.PullHost, repo, tag, m.Kind)
 	switch m.Kind {
-	case registry.KindImage, registry.KindIndex:
-		c.Command = "docker pull " + ref + ":" + tag
+	case registry.KindImage, registry.KindIndex: // the platforms say it all
 	case registry.KindHelm:
 		c.Badges = append(c.Badges, badge{"helm chart", "helm"})
-		c.Command = "helm pull oci://" + ref + " --version " + tag
 		c.Type = "Helm chart"
 	case registry.KindSignature:
-		b, c2 := "signature", ""
-		// A cosign tag names the digest it signs: sha256-<hex>.sig.
+		b := "signature"
 		if sm := sigTag.FindStringSubmatch(tag); sm != nil {
-			b, c2 = cosign[sm[2]].badge, cosign[sm[2]].cmd+" "+ref+"@sha256:"+sm[1]
+			b = cosign[sm[2]].badge
 		}
 		c.Badges = append(c.Badges, badge{b, "signature"})
-		c.Command, c.Type = c2, "Cosign "+b
+		c.Type = "Cosign " + b
 	default:
 		c.Badges = append(c.Badges, badge{"artifact", ""})
 		c.Type = "OCI artifact"
@@ -271,6 +295,24 @@ func (s *Server) card(ctx context.Context, repo, tag string, m registry.Manifest
 		}
 	}
 	return c, nil
+}
+
+// command is the pull, or cosign verify, command for a tag of the given
+// kind; "" for kinds that have none.
+func command(host, repo, tag string, kind registry.Kind) string {
+	ref := host + "/" + repo
+	switch kind {
+	case registry.KindImage, registry.KindIndex:
+		return "docker pull " + ref + ":" + tag
+	case registry.KindHelm:
+		return "helm pull oci://" + ref + " --version " + tag
+	case registry.KindSignature:
+		// A cosign tag names the digest it signs: sha256-<hex>.sig.
+		if sm := sigTag.FindStringSubmatch(tag); sm != nil {
+			return cosign[sm[2]].cmd + " " + ref + "@sha256:" + sm[1]
+		}
+	}
+	return ""
 }
 
 // overview serves the Overview tab. Its fragment "summary" is the summary

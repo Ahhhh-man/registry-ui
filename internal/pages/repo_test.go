@@ -51,7 +51,7 @@ func TestRepoPage(t *testing.T) {
 		`aria-current="page">nginx</li>`,
 		`data-hotkey="/"`, `hx-vals='{"fragment": "tags"}'`,
 		"Version, newest first",
-		`value="list" aria-pressed="false" disabled`,
+		`value="list" aria-pressed="false" class=`, // cards unless asked
 		// Cards wait for their details until they scroll into view.
 		`hx-get="/library/nginx?fragment=card&amp;tag=1.27.3" hx-trigger="revealed"`,
 	} {
@@ -165,6 +165,79 @@ func TestRepoCard(t *testing.T) {
 
 	if rec := get(t, s, "/", "/library/nginx?fragment=card&tag=nope", true); rec.Code != 404 {
 		t.Errorf("unknown tag card: %d", rec.Code)
+	}
+}
+
+func TestRepoListView(t *testing.T) {
+	s := newTestServer(t, "/")
+	body := get(t, s, "/", "/library/nginx?view=list", false).Body.String()
+	m, _ := s.Src.Resolve(context.Background(), "library/nginx", "1.27.3")
+	hex := strings.TrimPrefix(m.Digest, "sha256:")
+	for _, want := range []string{
+		`value="list" aria-pressed="true"`, `value="cards" aria-pressed="false"`,
+		`data-select="/library/nginx"`, "Click rows to select", `data-selection-bar hidden`,
+		`data-action="names"`, `data-action="pulls"`, `data-action="clear"`, `role="status"`,
+		`<input type="checkbox" data-select-all aria-label="Select all tags on this page"`,
+		`<input type="checkbox" aria-label="Select 1.27.3"`,
+		// Rows load like cards, and guess their command until they do.
+		`<tr data-tag="1.27.3" data-pull="docker pull registry.example.com/library/nginx:1.27.3" hx-get="/library/nginx?fragment=row&amp;tag=1.27.3&amp;view=list" hx-trigger="revealed"`,
+		`data-pull="cosign verify registry.example.com/library/nginx@` + m.Digest + `"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("list view lacks %s", want)
+		}
+	}
+	if strings.Contains(body, "<article") || strings.Contains(body, "Delete") {
+		t.Error("the list view shows cards or a delete button")
+	}
+	_, main, _ := strings.Cut(body, "<main")
+	checkMarkup(t, main)
+
+	if body := get(t, s, "/", "/charts/podinfo?view=list", false).Body.String(); !strings.Contains(body, `data-pull="helm pull oci://registry.example.com/charts/podinfo --version 6.7.1"`) {
+		t.Error("a chart row should guess helm pull")
+	}
+
+	// The cookie picks the view when the URL doesn't.
+	view := func(path, cookie string) string {
+		r := httptest.NewRequest("GET", path, nil)
+		r.Header.Set("Cookie", "view="+cookie)
+		rec := httptest.NewRecorder()
+		web.New("/", s.Handlers()).ServeHTTP(rec, r)
+		if strings.Contains(rec.Body.String(), "data-select-all") {
+			return "list"
+		}
+		return "cards"
+	}
+	if got := view("/library/nginx", "list"); got != "list" {
+		t.Errorf("view cookie list gave %s", got)
+	}
+	if got := view("/library/nginx?view=cards", "list"); got != "cards" {
+		t.Errorf("?view=cards with a list cookie gave %s", got)
+	}
+
+	rec := get(t, s, "/", "/library/nginx?fragment=row&tag=1.27.3", true)
+	body = rec.Body.String()
+	for _, want := range []string{
+		`<tr data-tag="1.27.3" data-pull="docker pull registry.example.com/library/nginx:1.27.3">`,
+		`href="/library/nginx@` + m.Digest + `"`, ">6 platforms</span>", ">69.0 MB</td>", "2 days ago",
+		`data-copy="docker pull registry.example.com/library/nginx:1.27.3" aria-label="Copy pull command for 1.27.3"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("row lacks %s", want)
+		}
+	}
+	if rec.Code != 200 || strings.Contains(body, "hx-get") {
+		t.Errorf("row %d should be loaded:\n%s", rec.Code, body)
+	}
+	checkMarkup(t, body)
+	if body := get(t, s, "/", "/library/nginx?fragment=row&tag=sha256-"+hex+".sig", true).Body.String(); !strings.Contains(body, "Cosign signature</td>") {
+		t.Errorf("signature row:\n%s", body)
+	}
+
+	// A filter with no matches keeps the bar, so a selection can still be copied.
+	body = get(t, s, "/", "/library/nginx?view=list&q=nope&fragment=tags", true).Body.String()
+	if !strings.Contains(body, "data-select=") || !strings.Contains(body, "No tags match") {
+		t.Errorf("empty list:\n%s", body)
 	}
 }
 

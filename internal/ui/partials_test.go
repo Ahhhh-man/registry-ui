@@ -40,6 +40,10 @@ var partialCases = []struct {
 		[]string{`aria-label="Log out" title="Log out"`, "size-9", "</svg></button>"},
 	},
 	{
+		"button action", `{{template "button" (dict "Label" "Copy names" "Action" "names")}}`,
+		[]string{`<button type="button" data-action="names" class="`, "Copy names</button>"},
+	},
+	{
 		"copy", `{{template "copy" (dict "Text" "sha256:abc" "Label" "Copy digest")}}`,
 		[]string{`<button type="button" data-copy="sha256:abc" aria-label="Copy digest"`, `<span data-copy-label aria-live="polite">Copy</span>`, "data-copied:"},
 	},

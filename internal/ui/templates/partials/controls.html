@@ -5,10 +5,11 @@
 {{/* button: a <button>, or an <a> when Href is set.
      dict "Label" string, "Icon" icon name (optional),
           "Variant" "" | "danger" | "icon", "Href" (optional),
-          "Type" "button" (default) | "submit".
+          "Type" "button" (default) | "submit",
+          "Action" string (optional): sets data-action, for app.js.
      Variant "icon" shows only the icon; Label becomes its aria-label. */}}
 {{define "button" -}}
-{{if .Href}}<a href="{{.Href}}"{{else}}<button type="{{or .Type "button"}}"{{end}}
+{{if .Href}}<a href="{{.Href}}"{{else}}<button type="{{or .Type "button"}}"{{end}}{{with .Action}} data-action="{{.}}"{{end}}
 {{- if eq .Variant "icon"}} aria-label="{{.Label}}" title="{{.Label}}" class="grid size-9 shrink-0 place-items-center rounded-md text-muted hover:bg-panel hover:text-text"
 {{- else}} class="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium whitespace-nowrap {{if eq .Variant "danger"}}text-danger-fg hover:border-danger-fg{{else}}text-text hover:border-faint{{end}}"{{end}}>
 {{- with .Icon}}{{icon .}}{{end}}{{if ne .Variant "icon"}}{{.Label}}{{end -}}
