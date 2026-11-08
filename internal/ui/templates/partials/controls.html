@@ -105,3 +105,23 @@
 <input type="search" name="{{.Name}}" value="{{.Value}}" placeholder="{{.Placeholder}}" aria-label="{{.Label}}" autocomplete="off" data-hotkey="/" class="w-full rounded-md border border-border bg-surface py-2 pr-3 pl-10 text-text placeholder:text-muted focus:border-accent">
 </div>
 {{- end}}
+
+{{/* type-chips: the content-type filters (All, Images, Helm charts,
+     Signatures, Other artifacts) as links, the current one marked
+     aria-current="true". Helm charts and Signatures wear their badges'
+     icons and colours.
+     The data is a list of pages.typeChip: "Value" the ?type=, "Label",
+     "Href", "Count" (-1 when unknown), "Current" bool. */}}
+{{define "type-chips" -}}
+<nav aria-label="Content type" class="flex flex-wrap gap-2">
+{{- range .}}
+<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}} class="inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-xs font-medium whitespace-nowrap
+  {{- if not .Current}} border-border bg-surface text-muted hover:border-faint hover:text-text
+  {{- else if eq .Value "helm"}} border-info-fg/40 bg-info-bg text-info-fg
+  {{- else if eq .Value "signature"}} border-warn-fg/40 bg-warn-bg text-warn-fg
+  {{- else}} border-accent/35 bg-accent-soft text-accent-text{{end}}">
+{{- if eq .Value "helm"}}{{icon "anchor" "size-3 text-info-fg"}}{{else if eq .Value "signature"}}{{icon "shield-check" "size-3 text-warn-fg"}}{{end}}{{.Label}}
+{{- if ge .Count 0}}<span class="tabular-nums opacity-70">{{.Count}}</span>{{end}}</a>
+{{- end}}
+</nav>
+{{- end}}

@@ -64,6 +64,21 @@ var partialCases = []struct {
 		[]string{`<form method="get" role="group" aria-label="View"`, `<button type="submit" name="view" value="cards" aria-pressed="true"`, `value="list" aria-pressed="false" disabled`, "aria-pressed:bg-panel"},
 	},
 	{
+		"type-chips", `{{template "type-chips" (list (dict "Value" "" "Label" "All" "Href" "/" "Count" 8) (dict "Value" "image" "Label" "Images" "Href" "/?type=image" "Count" 7 "Current" true) (dict "Value" "helm" "Label" "Helm charts" "Href" "/?type=helm" "Count" -1) (dict "Value" "signature" "Label" "Signatures" "Href" "/?type=signature" "Count" -1))}}`,
+		[]string{
+			`<nav aria-label="Content type"`, `<a href="/" class=`, `All<span class="tabular-nums opacity-70">8</span></a>`,
+			`<a href="/?type=image" aria-current="true" class=`, "bg-accent-soft text-accent-text", `<svg class="icon size-3 text-info-fg"`, "Helm charts</a>",
+		},
+	},
+	{
+		"type-chips helm", `{{template "type-chips" (list (dict "Value" "helm" "Label" "Helm charts" "Href" "/?type=helm" "Count" 1 "Current" true))}}`,
+		[]string{`aria-current="true"`, "bg-info-bg text-info-fg"},
+	},
+	{
+		"type-chips signature", `{{template "type-chips" (list (dict "Value" "signature" "Label" "Signatures" "Href" "/?type=signature" "Count" 0 "Current" true))}}`,
+		[]string{`aria-current="true"`, "bg-warn-bg text-warn-fg", ">0</span>"},
+	},
+	{
 		"filter", `<form>{{template "filter" (dict "Name" "q" "Value" "1.27" "Placeholder" "Filter tags" "Label" "Filter tags")}}</form>`,
 		[]string{`<input type="search" name="q" value="1.27" placeholder="Filter tags" aria-label="Filter tags"`, `data-hotkey="/"`},
 	},

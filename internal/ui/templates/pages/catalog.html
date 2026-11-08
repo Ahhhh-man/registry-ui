@@ -14,16 +14,17 @@
 {{- end}}
 
 {{/* catalog-list: the rows. It reloads itself from the header search as you
-     type; data-repo-list marks the unfiltered list, whose rows add up to the
+     type, keeping the sort and type; data-repo-list marks the unfiltered list, whose rows add up to the
      Tags total, hidden until then. */}}
 {{define "catalog-list" -}}
-<section id="repo-list" hx-get="{{catalogURL}}{{with .Sort}}?sort={{.}}{{end}}" hx-trigger="input changed delay:200ms from:#search" hx-include="#search" hx-select="#repo-list" hx-swap="outerHTML" hx-replace-url="true" hx-sync="this:replace" hx-disinherit="*"{{if not .Query}} data-repo-list{{end}}>
+<section id="repo-list" hx-get="{{.List}}" hx-trigger="input changed delay:200ms from:#search" hx-include="#search" hx-select="#repo-list" hx-swap="outerHTML" hx-replace-url="true" hx-sync="this:replace" hx-disinherit="*"{{if not (or .Query .Type)}} data-repo-list{{end}}>
 {{template "list-header" (dict "Title" (or (and .Query (printf "Matching “%s”" .Query)) "All repositories") "Sort" .Menu)}}
+{{- if .Total}}<div class="mb-3">{{template "type-chips" .Chips}}</div>{{end}}
 {{- with .Note}}<div class="mb-3">{{template "warning" .}}</div>{{end}}
 {{- if not .Total}}
 {{template "empty" (dict "Icon" "package" "Title" "No repositories yet" "Text" "Images pushed to this registry show up here.")}}
 {{- else if not .Rows}}
-{{template "empty" (dict "Title" (printf "No repositories match “%s”" .Query) "Text" "Check the spelling, or search for part of a name." "Href" catalogURL "Link" "Show all repositories")}}
+{{template "empty" (dict "Title" .Empty "Text" (and .Query "Check the spelling, or search for part of a name.") "Href" catalogURL "Link" "Show all repositories")}}
 {{- else}}
 <div class="flex flex-col gap-2.5">
 {{- range .Rows}}

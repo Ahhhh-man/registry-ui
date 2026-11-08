@@ -17,6 +17,7 @@
 {{- template "filter" (dict "Name" "q" "Value" .Query "Placeholder" "Filter tags" "Label" "Filter tags")}}
 {{- with .View}}<input type="hidden" name="view" value="{{.}}">{{end}}
 {{- with .Sort}}<input type="hidden" name="sort" value="{{.}}">{{end}}
+{{- with .Type}}<input type="hidden" name="type" value="{{.}}">{{end}}
 </form>
 <div class="flex flex-wrap items-center gap-3">
 {{template "sort-menu" (dict "Menu" .Menu "Align" "left-0 sm:right-0 sm:left-auto")}}
@@ -81,6 +82,7 @@
 {{- end}}
 
 {{define "repo-tags" -}}
+{{if .TagCount}}{{template "type-chips" .Chips}}{{end}}
 {{with .Note}}{{template "warning" .}}{{end}}
 {{if .List}}{{template "repo-selection" .}}{{end}}
 {{- if and .Cards .List}}
@@ -97,7 +99,7 @@
 </div>
 {{- else}}
 {{- range .Cards}}{{template "repo-card" .}}
-{{else}}{{if .Query}}{{template "empty" (dict "Title" (printf "No tags match “%s”" .Query) "Href" (repoURL .Repo) "Link" "Clear the filter")}}
+{{else}}{{if or .Query .Type}}{{template "empty" (dict "Title" .Empty "Href" (repoURL .Repo) "Link" "Clear the filter")}}
 {{- else}}{{template "empty" (dict "Icon" "tag" "Title" "No tags yet" "Text" "Nothing has been pushed to this repository.")}}{{end}}
 {{end}}
 {{- end}}

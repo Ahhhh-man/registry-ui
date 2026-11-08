@@ -45,12 +45,16 @@ type repoView struct {
 	Repo, Namespace, Name string
 	Prefix                string // "library/", shown dimmed before Name
 	Helm                  bool
+	kind                  string // the header tag's ?type=, "" if unknown
 	Description           string
 	Pills                 []pill
 	TagCount              int    // every tag in the repo
 	Query, View, Sort     string // the tag filter, view and sort order, kept in links
+	Type                  string // the ?type= filter, also kept
 	Menu                  sortMenu
-	Note                  string // why the tags aren't in the Sort order, when they aren't
+	Chips                 []typeChip
+	Note                  string // why the tags aren't filtered or in the Sort order, when they aren't
+	Empty                 string // the title when a filter leaves no tags
 	List                  bool   // the list view: ?view=list, or the view cookie without ?view=
 	Cards                 []tagCard
 	Page, Pages           int
@@ -105,7 +109,10 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 	format.SortTags(tags)
 
 	q := r.URL.Query()
-	v := repoView{Repo: ref.Repo, TagCount: len(tags), Query: strings.TrimSpace(q.Get("q")), View: q.Get("view"), Sort: pickSort(tagSorts, q.Get("sort"))}
+	v := repoView{
+		Repo: ref.Repo, TagCount: len(tags), Query: strings.TrimSpace(q.Get("q")), View: q.Get("view"),
+		Sort: pickSort(tagSorts, q.Get("sort")), Type: pickSort(contentTypes, q.Get("type")),
+	}
 	v.Namespace, v.Name = splitRepo(ref.Repo)
 	if v.Namespace != "" {
 		v.Prefix = v.Namespace + "/"
@@ -120,7 +127,8 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 	}
 	f := strings.ToLower(v.Query)
 	matches := slices.DeleteFunc(slices.Clone(tags), func(t string) bool { return !strings.Contains(strings.ToLower(t), f) })
-	v.Note = s.sortTags(r.Context(), ref.Repo, matches, v.Sort)
+	matches, counts, note := s.filterTags(r.Context(), ref.Repo, matches, v.Type)
+	v.Note = cmp.Or(s.sortTags(r.Context(), ref.Repo, matches, v.Sort), note)
 	v.Pages = max(1, (len(matches)+tagsPerPage-1)/tagsPerPage)
 	v.Page, _ = strconv.Atoi(q.Get("page"))
 	v.Page = min(max(v.Page, 1), v.Pages)
@@ -133,20 +141,77 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 	case "row":
 		s.repoCard(w, r, ref.Repo, page, q.Get("tag"), "tag-row")
 		return
-	case "tags":
+	}
+
+	// The page and the tags fragment show the chips, and the header first
+	// tells cards a Helm repo and the chips what the repo holds.
+	s.header(r.Context(), &v, tags)
+	if v.Type == "" && v.kind != "" && counts[v.kind] == 0 {
+		// shortcut: unfiltered, the repo's untyped tags are taken to be the
+		// header tag's kind, so a mixed repo shows its other chips only once a
+		// type is picked; resolve every tag in filterTags if that matters.
+		counts[v.kind] = -1
+	}
+	v.Chips = typeChips(v.Type, counts, func(t string) string { return v.link(r, "type", t, "page", "") })
+	v.Empty = noMatch("tags", v.Type, v.Query)
+
+	v.cards(r, page, s.PullHost)
+	s.loadCards(r.Context(), &v, page)
+	if web.Fragment(r) == "tags" {
 		// The filter is typed into the page, so keep its URL in step without the fragment.
 		w.Header().Set("HX-Replace-Url", v.link(r))
-		v.cards(r, page, s.PullHost)
-		s.loadCards(r.Context(), &v, page)
 		s.fragment(w, r, "repo-tags", v)
 		return
 	}
-
-	s.header(r.Context(), &v, tags) // first, so cards knows a Helm repo
-	v.cards(r, page, s.PullHost)
-	s.loadCards(r.Context(), &v, page)
 	v.Menu = newSortMenu(tagSorts, v.Sort, func(sort string) string { return v.link(r, "sort", sort, "page", "") })
 	s.page(w, r, ui.Page{PageTitle: ref.Repo}, "repo", v)
+}
+
+// filterTags keeps the tags of type t and counts each type for the chips.
+// Signatures are known by name; with a type picked, every tag is resolved
+// for the rest, and without one they're left uncounted. If resolving takes
+// too long the tags stay unfiltered and the returned note says so.
+func (s *Server) filterTags(ctx context.Context, repo string, tags []string, t string) ([]string, map[string]int, string) {
+	counts := map[string]int{"": len(tags)}
+	if t == "" {
+		for _, tag := range tags {
+			if sigTag.MatchString(tag) {
+				counts["signature"]++
+			}
+		}
+		return tags, counts, ""
+	}
+	types := make([]string, len(tags))
+	err := fetchAll(ctx, len(tags), func(ctx context.Context, i int) {
+		if sigTag.MatchString(tags[i]) {
+			types[i] = "signature"
+		} else if m, err := s.Src.Resolve(ctx, repo, tags[i]); err == nil {
+			types[i] = typeOf(m.Kind)
+		}
+	})
+	if err != nil {
+		for _, c := range contentTypes[1:] {
+			counts[c.Value] = -1
+		}
+		return tags, counts, "The registry took too long to describe every tag, so this list isn't filtered by type."
+	}
+	var kept []string
+	for i, tt := range types {
+		if tt != "" {
+			counts[tt]++
+		}
+		if tt == t {
+			kept = append(kept, tags[i])
+		}
+	}
+	return kept, counts, ""
+}
+
+// labelTag is the index of the tag that describes the repo: SortTags pins
+// latest first, so the first that isn't a cosign tag, which sort above
+// versions. It's -1 if there's none.
+func labelTag(tags []string) int {
+	return slices.IndexFunc(tags, func(t string) bool { return !sigTag.MatchString(t) })
 }
 
 // sortTags puts tags, which arrive newest version first, in the order by.
@@ -228,8 +293,7 @@ func (s *Server) loadCards(ctx context.Context, v *repoView, page []string) {
 func (s *Server) header(ctx context.Context, v *repoView, tags []string) {
 	pills := []pill{{Icon: "tag", Text: plural(len(tags), "tag")}}
 	defer func() { v.Pills = pills }()
-	// SortTags pins latest first. Skip cosign tags, which sort above versions.
-	i := slices.IndexFunc(tags, func(t string) bool { return !sigTag.MatchString(t) })
+	i := labelTag(tags)
 	if i < 0 {
 		return
 	}
@@ -238,7 +302,7 @@ func (s *Server) header(ctx context.Context, v *repoView, tags []string) {
 	if err != nil {
 		return
 	}
-	v.Helm = m.Kind == registry.KindHelm
+	v.Helm, v.kind = m.Kind == registry.KindHelm, typeOf(m.Kind)
 	p, ok := mainPlatform(m)
 	if !ok {
 		return
@@ -261,8 +325,6 @@ func (s *Server) header(ctx context.Context, v *repoView, tags []string) {
 // cards fills in the page's cards or rows, each waiting to load its
 // details. A row also gets a guess at its command, so a selection can be
 // copied before every row has loaded.
-// shortcut: the tags fragment doesn't know a Helm repo, so its unloaded rows
-// guess docker pull; resolve the header tag there if that matters.
 func (v *repoView) cards(r *http.Request, page []string, host string) {
 	frag, kind := "card", registry.KindImage
 	if v.Helm {
@@ -293,14 +355,14 @@ func (v *repoView) cards(r *http.Request, page []string, host string) {
 	}
 }
 
-// link returns this page's URL with the filter, view, sort and page kept
+// link returns this page's URL with the filters, view, sort and page kept
 // and kv (key, value pairs) set on top; an empty value drops its key.
 func (v *repoView) link(r *http.Request, kv ...string) string {
 	page := ""
 	if v.Page > 1 {
 		page = strconv.Itoa(v.Page)
 	}
-	return pageURL(r.URL.EscapedPath(), append([]string{"q", v.Query, "view", v.View, "sort", v.Sort, "page", page}, kv...)...)
+	return pageURL(r.URL.EscapedPath(), append([]string{"q", v.Query, "type", v.Type, "view", v.View, "sort", v.Sort, "page", page}, kv...)...)
 }
 
 // repoCard answers one card's or row's details, rendered with the template

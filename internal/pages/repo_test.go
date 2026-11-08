@@ -105,8 +105,8 @@ func TestRepoFilterAndPages(t *testing.T) {
 	if n := src.tagCalls.Load(); n != 4 {
 		t.Errorf("%d tags/list calls for 4 requests", n)
 	}
-	if n := src.resolves.Load(); n != 2 {
-		t.Errorf("%d resolves: only the two full pages' headers should resolve", n)
+	if n := src.resolves.Load(); n != 4 {
+		t.Errorf("%d resolves: only each request's header tag should resolve", n)
 	}
 }
 
