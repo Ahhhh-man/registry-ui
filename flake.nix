@@ -61,6 +61,7 @@
           packages = {
             default = callPackage ./default.nix {inherit go;};
             image = pkgsLinux.callPackage ./image.nix {
+              rev = self.rev or self.dirtyRev or "unknown";
               app = pkgsLinux.callPackage ./default.nix {go = goLinux;};
             };
           };

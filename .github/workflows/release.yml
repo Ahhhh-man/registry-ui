@@ -1,0 +1,124 @@
+name: release
+
+# A stable tag (vX.Y.Z) publishes ghcr.io/ahhhh-man/registry-ui:X.Y.Z, X.Y, X and
+# latest as one amd64+arm64 manifest list, then creates a GitHub release.
+# Run by hand, it builds both images only; untick dry-run to also push them as
+# sha-<commit> (no semver tags, no release).
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Build and size-check both images without pushing
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/ahhhh-man/registry-ui
+  # 20 MB, measured on the uncompressed image tarball.
+  MAX_IMAGE_BYTES: 20000000
+
+jobs:
+  image:
+    name: image (${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+
+      - name: Check the tag matches the version in default.nix
+        if: github.ref_type == 'tag'
+        run: |
+          version=$(nix eval --raw .#default.version)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match default.nix version $version"
+            exit 1
+          fi
+
+      - name: Build
+        run: |
+          nix build .#image
+          gzip -dc result > image.tar
+
+      - name: Check size
+        run: |
+          size=$(stat -c %s image.tar)
+          echo "uncompressed image: $size bytes (limit $MAX_IMAGE_BYTES)"
+          if [ "$size" -gt "$MAX_IMAGE_BYTES" ]; then
+            echo "::error::image is $size bytes uncompressed, over the $MAX_IMAGE_BYTES limit"
+            exit 1
+          fi
+
+      - name: Put crane on PATH
+        if: github.event_name == 'push' || inputs.dry-run == false
+        run: echo "$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#crane)/bin" >> "$GITHUB_PATH"
+
+      - name: Push
+        if: github.event_name == 'push' || inputs.dry-run == false
+        env:
+          ARCH: ${{ matrix.arch }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then tag=${GITHUB_REF_NAME#v}; else tag=sha-${GITHUB_SHA::7}; fi
+          crane auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin <<< "$GITHUB_TOKEN"
+          crane push image.tar "$IMAGE:$tag-$ARCH"
+
+  manifest:
+    needs: image
+    if: github.event_name == 'push' || inputs.dry-run == false
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+
+      - name: Put crane on PATH
+        run: echo "$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#crane)/bin" >> "$GITHUB_PATH"
+
+      - name: Merge into one multi-arch manifest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            v=${GITHUB_REF_NAME#v}
+            tags=("$v" "${v%.*}" "${v%%.*}" latest)
+          else
+            tags=("sha-${GITHUB_SHA::7}")
+          fi
+          crane auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin <<< "$GITHUB_TOKEN"
+          crane index append -m "$IMAGE:${tags[0]}-amd64" -m "$IMAGE:${tags[0]}-arm64" -t "$IMAGE:${tags[0]}"
+          for t in "${tags[@]:1}"; do crane tag "$IMAGE:${tags[0]}" "$t"; done
+
+  release:
+    needs: manifest
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --verify-tag --generate-notes
