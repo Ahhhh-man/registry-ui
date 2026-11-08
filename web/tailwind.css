@@ -30,10 +30,10 @@
   --color-text: light-dark(#09090b, #fafafa);
   --color-muted: light-dark(#52525b, #a1a1aa);
   --color-faint: light-dark(#6e6e77, #8b8b94); /* #71717a was 4.4:1 on panel */
-  --color-accent: light-dark(#4f46e5, #818cf8);
+  --color-accent: light-dark(#426ba9, #7fa3d9); /* Distribution blue; lightened for dark */
   --color-accent-fg: light-dark(#ffffff, #09090b);
-  --color-accent-soft: light-dark(#eef2ff, rgb(129 140 248 / 0.13));
-  --color-accent-text: light-dark(#4338ca, #c7d2fe);
+  --color-accent-soft: light-dark(#edf2f9, rgb(66 107 169 / 0.22));
+  --color-accent-text: light-dark(#345588, #c4d5ef);
   --color-warn-bg: light-dark(#fef3c7, rgb(251 191 36 / 0.12));
   --color-warn-fg: light-dark(#92400e, #fcd34d);
   --color-info-bg: light-dark(#e0f2fe, rgb(56 189 248 / 0.12));
