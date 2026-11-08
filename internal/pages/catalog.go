@@ -1,9 +1,11 @@
 package pages
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,7 +20,10 @@ type catalogPage struct {
 	Host  string       // registry host, above the title
 	Total int          // repositories in the registry
 	Query string       // the ?q= filter
-	Rows  []catalogRow // repositories matching Query, A–Z
+	Sort  string       // the ?sort= order, "" for A–Z
+	Menu  sortMenu     // the sort menu
+	Note  string       // why the rows aren't in the Sort order, when they aren't
+	Rows  []catalogRow // repositories matching Query, in the Sort order
 }
 
 // catalogRow is one repository in the catalog: just its name until its
@@ -55,7 +60,9 @@ func (c catalogRow) Date() string { return format.Date(c.Created) }
 
 // Catalog serves the repository list. Rows start as bare names and fetch
 // their details (?fragment=row&repo=…) once scrolled into view, so the page
-// itself costs a single catalog call however large the registry is.
+// itself costs a single catalog call however large the registry is. The
+// created and tag-count sorts are the exception: they fetch every matching
+// row's details first, so those rows render loaded.
 func (s *Server) Catalog(w http.ResponseWriter, r *http.Request, _ web.Ref) {
 	if web.Fragment(r) == "row" {
 		s.catalogRow(w, r)
@@ -67,13 +74,47 @@ func (s *Server) Catalog(w http.ResponseWriter, r *http.Request, _ web.Ref) {
 		return
 	}
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	data := catalogPage{Host: s.PullHost, Total: len(repos), Query: q}
+	data := catalogPage{Host: s.PullHost, Total: len(repos), Query: q, Sort: pickSort(catalogSorts, r.URL.Query().Get("sort"))}
 	for _, name := range repos {
 		if strings.Contains(name, strings.ToLower(q)) {
 			data.Rows = append(data.Rows, catalogRow{Repo: name})
 		}
 	}
-	s.page(w, r, ui.Page{PageTitle: "Repositories", Query: q}, "catalog", data)
+	data.Note = s.sortRows(r.Context(), data.Rows, data.Sort)
+	data.Menu = newSortMenu(catalogSorts, data.Sort, func(sort string) string {
+		return pageURL(r.URL.EscapedPath(), "q", q, "sort", sort)
+	})
+	s.page(w, r, ui.Page{PageTitle: "Repositories", Query: q, Sort: data.Sort}, "catalog", data)
+}
+
+// sortRows puts rows, which arrive A–Z, in the order by. The created and
+// tag-count orders load every row's details first; if that takes too long
+// the rows stay A–Z and the returned note says so.
+func (s *Server) sortRows(ctx context.Context, rows []catalogRow, by string) string {
+	switch by {
+	case "name-desc":
+		slices.Reverse(rows)
+		return ""
+	case "created", "tags":
+	default:
+		return ""
+	}
+	err := fetchAll(ctx, len(rows), func(ctx context.Context, i int) {
+		if err := s.rowDetails(ctx, &rows[i]); err != nil {
+			slog.WarnContext(ctx, "catalog row details", "repo", rows[i].Repo, "err", err)
+			rows[i].Failed = true
+		}
+	})
+	if err != nil {
+		return "The registry took too long to describe every repository, so this list is A–Z instead."
+	}
+	slices.SortStableFunc(rows, func(a, b catalogRow) int {
+		if by == "tags" {
+			return cmp.Compare(b.Tags, a.Tags)
+		}
+		return newestFirst(a.Created, b.Created)
+	})
+	return ""
 }
 
 // catalogRow answers a row fragment. A failure only marks the row, so the

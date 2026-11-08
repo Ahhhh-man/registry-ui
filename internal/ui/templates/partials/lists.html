@@ -1,12 +1,11 @@
 {{/* Lists of things to open, such as the catalog's repositories. */}}
 
-{{/* list-header: a list's heading, with a hint such as the sort order.
-     dict "Title" string, "Hint" string (optional), "Icon" icon name for the
-          hint (optional). */}}
+{{/* list-header: a list's heading, with its sort menu.
+     dict "Title" string, "Sort" a pages.sortMenu (optional). */}}
 {{define "list-header" -}}
-<div class="mb-3 flex items-baseline justify-between gap-4">
+<div class="mb-3 flex items-center justify-between gap-4">
 <h2 class="min-w-0 truncate text-base font-semibold">{{.Title}}</h2>
-{{- with .Hint}}<span class="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted">{{with $.Icon}}{{icon .}}{{end}}{{.}}</span>{{end}}
+{{- with .Sort}}{{template "sort-menu" (dict "Menu" . "Align" "right-0")}}{{end}}
 </div>
 {{- end}}
 

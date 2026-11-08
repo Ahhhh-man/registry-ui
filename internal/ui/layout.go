@@ -18,6 +18,7 @@ type Page struct {
 	PageTitle string        // optional, shown before Title in <title>
 	Theme     string        // Theme(r)
 	Query     string        // current repo search, echoed in the search box
+	Sort      string        // the catalog's sort order, kept when the search is submitted
 	User      string        // signed-in username: shows the avatar and Log out
 	Login     string        // sign-in link for the header when not signed in, or ""
 	SignIn    bool          // the sign-in page: no search box or user menu

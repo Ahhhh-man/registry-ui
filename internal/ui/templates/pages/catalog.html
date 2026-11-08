@@ -1,4 +1,4 @@
-{{/* The catalog: every repository, A–Z. Data is pages.catalogPage. */}}
+{{/* The catalog: every repository, A–Z or as sorted. Data is pages.catalogPage. */}}
 {{define "catalog" -}}
 <div class="flex flex-col gap-8">
 <div class="flex flex-col items-start gap-3">
@@ -17,8 +17,9 @@
      type; data-repo-list marks the unfiltered list, whose rows add up to the
      Tags total, hidden until then. */}}
 {{define "catalog-list" -}}
-<section id="repo-list" hx-get="{{catalogURL}}" hx-trigger="input changed delay:200ms from:#search" hx-include="#search" hx-select="#repo-list" hx-swap="outerHTML" hx-replace-url="true" hx-sync="this:replace" hx-disinherit="*"{{if not .Query}} data-repo-list{{end}}>
-{{template "list-header" (dict "Title" (or (and .Query (printf "Matching “%s”" .Query)) "All repositories") "Hint" "A–Z" "Icon" "arrow-down-wide-narrow")}}
+<section id="repo-list" hx-get="{{catalogURL}}{{with .Sort}}?sort={{.}}{{end}}" hx-trigger="input changed delay:200ms from:#search" hx-include="#search" hx-select="#repo-list" hx-swap="outerHTML" hx-replace-url="true" hx-sync="this:replace" hx-disinherit="*"{{if not .Query}} data-repo-list{{end}}>
+{{template "list-header" (dict "Title" (or (and .Query (printf "Matching “%s”" .Query)) "All repositories") "Sort" .Menu)}}
+{{- with .Note}}<div class="mb-3">{{template "warning" .}}</div>{{end}}
 {{- if not .Total}}
 {{template "empty" (dict "Icon" "package" "Title" "No repositories yet" "Text" "Images pushed to this registry show up here.")}}
 {{- else if not .Rows}}

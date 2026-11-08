@@ -77,6 +77,24 @@
 </form>
 {{- end}}
 
+{{/* sort-menu: the order a list is in, opening to the other orders. Each is
+     a link that keeps the page's other query parameters. A <details>, so
+     it works without script; app.js closes it on Escape or a click outside.
+     dict "Menu" a pages.sortMenu ("Label" the current order, "Options" list
+          of "Label", "Href", "Current" bool), "Align" where the list opens,
+          e.g. "right-0". */}}
+{{define "sort-menu" -}}
+<details data-menu class="group relative">
+<summary class="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-md px-2 py-1 text-xs whitespace-nowrap text-muted hover:bg-panel hover:text-text group-open:bg-panel group-open:text-text [&::-webkit-details-marker]:hidden">
+{{- icon "arrow-down-wide-narrow"}}<span class="sr-only">Sort by </span>{{.Menu.Label}}{{icon "chevron-down" "group-open:rotate-180"}}</summary>
+<ul class="absolute {{.Align}} z-20 mt-1 flex flex-col rounded-md border border-border bg-surface p-1">
+{{- range .Menu.Options}}
+<li><a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}} class="flex items-center justify-between gap-4 rounded-sm px-3 py-1.5 text-sm whitespace-nowrap text-muted hover:bg-panel hover:text-text aria-[current]:font-medium aria-[current]:text-text">{{.Label}}{{if .Current}}{{icon "check" "text-accent"}}{{end}}</a></li>
+{{- end}}
+</ul>
+</details>
+{{- end}}
+
 {{/* filter: a search box that filters the list below it. Put it in the
      page's own GET form; "/" focuses it.
      dict "Name" query key, "Value" the current filter,

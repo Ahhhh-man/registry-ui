@@ -16,9 +16,10 @@
 <form method="get" action="{{repoURL .Repo}}" role="search" hx-get="{{repoURL .Repo}}" hx-trigger="input delay:250ms, submit" hx-target="#tags" hx-sync="this:replace" hx-vals='{"fragment": "tags"}' class="w-full sm:max-w-xs">
 {{- template "filter" (dict "Name" "q" "Value" .Query "Placeholder" "Filter tags" "Label" "Filter tags")}}
 {{- with .View}}<input type="hidden" name="view" value="{{.}}">{{end}}
+{{- with .Sort}}<input type="hidden" name="sort" value="{{.}}">{{end}}
 </form>
 <div class="flex flex-wrap items-center gap-3">
-<span class="inline-flex items-center gap-1.5 text-xs text-muted">{{icon "arrow-down-wide-narrow"}}Version, newest first</span>
+{{template "sort-menu" (dict "Menu" .Menu "Align" "left-0 sm:right-0 sm:left-auto")}}
 {{template "segmented" (dict "Label" "View" "Name" "view" "Options" (list (dict "Value" "cards" "Label" "Cards" "Icon" "layout-list" "Pressed" (not .List)) (dict "Value" "list" "Label" "List" "Icon" "list" "Pressed" .List)))}}
 </div>
 </div>
@@ -80,6 +81,7 @@
 {{- end}}
 
 {{define "repo-tags" -}}
+{{with .Note}}{{template "warning" .}}{{end}}
 {{if .List}}{{template "repo-selection" .}}{{end}}
 {{- if and .Cards .List}}
 {{- /* relative: the sr-only header text is absolute, and mustn't widen the page. */}}

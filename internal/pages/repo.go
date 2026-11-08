@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
@@ -47,7 +48,9 @@ type repoView struct {
 	Description           string
 	Pills                 []pill
 	TagCount              int    // every tag in the repo
-	Query, View           string // the tag filter and view, kept in links
+	Query, View, Sort     string // the tag filter, view and sort order, kept in links
+	Menu                  sortMenu
+	Note                  string // why the tags aren't in the Sort order, when they aren't
 	List                  bool   // the list view: ?view=list, or the view cookie without ?view=
 	Cards                 []tagCard
 	Page, Pages           int
@@ -98,7 +101,7 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 	format.SortTags(tags)
 
 	q := r.URL.Query()
-	v := repoView{Repo: ref.Repo, TagCount: len(tags), Query: strings.TrimSpace(q.Get("q")), View: q.Get("view")}
+	v := repoView{Repo: ref.Repo, TagCount: len(tags), Query: strings.TrimSpace(q.Get("q")), View: q.Get("view"), Sort: pickSort(tagSorts, q.Get("sort"))}
 	v.Namespace, v.Name = splitRepo(ref.Repo)
 	if v.Namespace != "" {
 		v.Prefix = v.Namespace + "/"
@@ -111,11 +114,9 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 		s.overview(w, r, &v, tags)
 		return
 	}
-	matches := tags
-	if v.Query != "" {
-		f := strings.ToLower(v.Query)
-		matches = slices.DeleteFunc(slices.Clone(tags), func(t string) bool { return !strings.Contains(strings.ToLower(t), f) })
-	}
+	f := strings.ToLower(v.Query)
+	matches := slices.DeleteFunc(slices.Clone(tags), func(t string) bool { return !strings.Contains(strings.ToLower(t), f) })
+	v.Note = s.sortTags(r.Context(), ref.Repo, matches, v.Sort)
 	v.Pages = max(1, (len(matches)+tagsPerPage-1)/tagsPerPage)
 	v.Page, _ = strconv.Atoi(q.Get("page"))
 	v.Page = min(max(v.Page, 1), v.Pages)
@@ -132,13 +133,89 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 		// The filter is typed into the page, so keep its URL in step without the fragment.
 		w.Header().Set("HX-Replace-Url", v.link(r))
 		v.cards(r, page, s.PullHost)
+		s.loadCards(r.Context(), &v, page)
 		s.fragment(w, r, "repo-tags", v)
 		return
 	}
 
 	s.header(r.Context(), &v, tags) // first, so cards knows a Helm repo
 	v.cards(r, page, s.PullHost)
+	s.loadCards(r.Context(), &v, page)
+	v.Menu = newSortMenu(tagSorts, v.Sort, func(sort string) string { return v.link(r, "sort", sort, "page", "") })
 	s.page(w, r, ui.Page{PageTitle: ref.Repo}, "repo", v)
+}
+
+// sortTags puts tags, which arrive newest version first, in the order by.
+// The created and size orders resolve every tag first; if that takes too
+// long the tags stay in version order and the returned note says so.
+func (s *Server) sortTags(ctx context.Context, repo string, tags []string, by string) string {
+	switch by {
+	case "version-asc":
+		slices.Reverse(tags)
+		if n := len(tags); n > 0 && tags[n-1] == "latest" { // still pinned first
+			copy(tags[1:], tags[:n-1])
+			tags[0] = "latest"
+		}
+		return ""
+	case "name":
+		slices.Sort(tags)
+		return ""
+	case "created", "size":
+	default:
+		return ""
+	}
+	type tagInfo struct {
+		tag     string
+		created time.Time
+		size    int64
+	}
+	infos := make([]tagInfo, len(tags))
+	err := fetchAll(ctx, len(tags), func(ctx context.Context, i int) {
+		infos[i].tag = tags[i]
+		m, err := s.Src.Resolve(ctx, repo, tags[i])
+		if err != nil {
+			return // sorts last, and its card shows the error
+		}
+		infos[i].size = m.Size
+		p, ok := mainPlatform(m)
+		if !ok {
+			return
+		}
+		infos[i].size = p.Size
+		if by == "created" {
+			if cfg, err := s.Src.Config(ctx, repo, p.Config); err == nil {
+				infos[i].created = cfg.Created
+			}
+		}
+	})
+	if err != nil {
+		return "The registry took too long to describe every tag, so this list is in version order instead."
+	}
+	slices.SortStableFunc(infos, func(a, b tagInfo) int {
+		if by == "size" {
+			return cmp.Compare(b.size, a.size)
+		}
+		return newestFirst(a.created, b.created)
+	})
+	for i, in := range infos {
+		tags[i] = in.tag
+	}
+	return ""
+}
+
+// loadCards fills in the page's cards up front after a sort that has
+// already fetched their details, so they don't each ask again. A card that
+// fails keeps loading on its own, to show its error.
+func (s *Server) loadCards(ctx context.Context, v *repoView, page []string) {
+	if (v.Sort != "created" && v.Sort != "size") || v.Note != "" {
+		return
+	}
+	ms, errs := s.resolveAll(ctx, v.Repo, page)
+	_ = fetchAll(ctx, len(page), func(ctx context.Context, i int) {
+		if c, err := s.tagDetails(ctx, v.Repo, page, ms, errs, i); err == nil {
+			v.Cards[i] = c
+		}
+	})
 }
 
 // header fills in the pills, labels and tile from the latest tag, or the
@@ -212,25 +289,14 @@ func (v *repoView) cards(r *http.Request, page []string, host string) {
 	}
 }
 
-// link returns this page's URL with the filter, view and page kept and kv
-// (key, value pairs) set on top.
+// link returns this page's URL with the filter, view, sort and page kept
+// and kv (key, value pairs) set on top; an empty value drops its key.
 func (v *repoView) link(r *http.Request, kv ...string) string {
-	q := url.Values{}
-	for k, val := range map[string]string{"q": v.Query, "view": v.View} {
-		if val != "" {
-			q.Set(k, val)
-		}
-	}
+	page := ""
 	if v.Page > 1 {
-		q.Set("page", strconv.Itoa(v.Page))
+		page = strconv.Itoa(v.Page)
 	}
-	for i := 0; i+1 < len(kv); i += 2 {
-		q.Set(kv[i], kv[i+1])
-	}
-	if len(q) == 0 {
-		return r.URL.EscapedPath()
-	}
-	return r.URL.EscapedPath() + "?" + q.Encode()
+	return pageURL(r.URL.EscapedPath(), append([]string{"q", v.Query, "view", v.View, "sort", v.Sort, "page", page}, kv...)...)
 }
 
 // repoCard answers one card's or row's details, rendered with the template
@@ -243,14 +309,23 @@ func (s *Server) repoCard(w http.ResponseWriter, r *http.Request, repo string, p
 		return
 	}
 	ms, errs := s.resolveAll(r.Context(), repo, page)
-	if errs[i] != nil {
-		web.Error(w, r, errs[i])
-		return
-	}
-	c, err := s.card(r.Context(), repo, tag, ms[i])
+	c, err := s.tagDetails(r.Context(), repo, page, ms, errs, i)
 	if err != nil {
 		web.Error(w, r, err)
 		return
+	}
+	s.fragment(w, r, name, c)
+}
+
+// tagDetails returns the card for page[i], given every tag on the page
+// resolved (ms and errs, from resolveAll) for its "Same as".
+func (s *Server) tagDetails(ctx context.Context, repo string, page []string, ms []registry.Manifest, errs []error, i int) (tagCard, error) {
+	if errs[i] != nil {
+		return tagCard{}, errs[i]
+	}
+	c, err := s.card(ctx, repo, page[i], ms[i])
+	if err != nil {
+		return c, err
 	}
 	for j, o := range ms {
 		if j != i && errs[j] == nil && o.Digest == c.Digest {
@@ -260,7 +335,7 @@ func (s *Server) repoCard(w http.ResponseWriter, r *http.Request, repo string, p
 	if n := len(c.SameAs); n > sameAsShown {
 		c.SameAs, c.MoreSameAs = c.SameAs[:sameAsShown], n-sameAsShown
 	}
-	s.fragment(w, r, name, c)
+	return c, nil
 }
 
 // card returns a tag's details from m, its manifest; all but SameAs.

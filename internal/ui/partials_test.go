@@ -120,7 +120,14 @@ var partialCases = []struct {
 		"error-state", `{{template "error-state" (dict "Title" "Can't reach the registry" "Text" "registry:5000 refused the connection." "Retry" "/")}}`,
 		[]string{"bg-danger-bg", "Can&#39;t reach the registry", `<a href="/" class=`, "Retry</a>"},
 	},
-	{"list-header", `{{template "list-header" (dict "Title" "All repositories" "Hint" "A–Z" "Icon" "arrow-down-wide-narrow")}}`, []string{"<h2 ", "All repositories</h2>", "</svg>A–Z</span>"}},
+	{"list-header", `{{template "list-header" (dict "Title" "All repositories")}}`, []string{"<h2 ", "All repositories</h2>"}},
+	{
+		"list-header sort", `{{template "list-header" (dict "Title" "All repositories" "Sort" (dict "Label" "Name A–Z" "Options" (list (dict "Label" "Name A–Z" "Href" "/" "Current" true) (dict "Label" "Most tags" "Href" "/?sort=tags"))))}}`,
+		[]string{
+			`<details data-menu class="group relative">`, `<span class="sr-only">Sort by </span>Name A–Z<svg`, `<ul class="absolute right-0 `,
+			`<li><a href="/" aria-current="true" class=`, `<li><a href="/?sort=tags" class=`, ">Most tags</a></li>",
+		},
+	},
 	{
 		"repo-row loading", `{{template "repo-row" (dict "Repo" "library/nginx" "Namespace" "library/" "Name" "nginx")}}`,
 		[]string{`<a href="/library/nginx" data-row aria-busy="true" hx-get="/?fragment=row&amp;repo=library/nginx" hx-trigger="intersect once" hx-swap="outerHTML"`, `<span class="font-medium text-faint">library/</span>nginx</div>`, "animate-pulse w-1/2"},

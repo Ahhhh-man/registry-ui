@@ -85,8 +85,8 @@
 
   // The catalog's Tags figure stays hidden until every row of the unfiltered
   // list has loaded its tag count (rows load as they scroll into view), then
-  // shows their sum.
-  document.addEventListener("htmx:afterSettle", () => {
+  // shows their sum. Sorted by tag count or date, the rows arrive loaded.
+  const tagTotal = () => {
     const list = document.querySelector("[data-repo-list]");
     const out = document.querySelector('[data-stat="tags"]');
     if (!list || !out || list.querySelector("[data-row]:not([data-tags])")) return;
@@ -94,6 +94,22 @@
     for (const row of list.querySelectorAll("[data-tags]")) total += Number(row.dataset.tags);
     out.textContent = total;
     out.closest("[hidden]")?.removeAttribute("hidden");
+  };
+  document.addEventListener("htmx:afterSettle", tagTotal);
+  tagTotal();
+
+  // Menus (<details data-menu>, the "sort-menu" partial) close on Escape,
+  // handing focus back to their button, or on a click outside them.
+  document.addEventListener("click", (e) => {
+    for (const menu of document.querySelectorAll("details[data-menu][open]")) {
+      if (!menu.contains(e.target)) menu.open = false;
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    const menu = e.key === "Escape" && e.target.closest?.("details[data-menu][open]");
+    if (!menu) return;
+    menu.open = false;
+    menu.querySelector("summary").focus();
   });
 
   // The Cards/List toggle remembers the choice in a cookie, which the server
