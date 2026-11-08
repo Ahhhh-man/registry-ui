@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+
+	"github.com/Ahhhh-man/registry-ui/internal/config"
 )
 
 var version = "dev"
@@ -37,8 +39,13 @@ func main() {
 }
 
 func serve() error {
-	// Placeholder until config (#3) and the router (#4) exist.
-	addr := ":8080"
-	slog.Info("starting registry-ui", "version", version, "addr", addr)
-	return http.ListenAndServe(addr, http.NotFoundHandler())
+	cfg, err := config.Load(os.Getenv)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid configuration:\n%v\n", err)
+		os.Exit(1)
+	}
+	slog.SetLogLoggerLevel(cfg.LogLevel)
+	slog.Info("starting registry-ui", "version", version, "config", cfg)
+	// Placeholder until the router (#4) exists.
+	return http.ListenAndServe(cfg.Listen, http.NotFoundHandler())
 }
