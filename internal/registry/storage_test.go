@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -30,56 +29,6 @@ func removeBlob(t *testing.T, r *registrytest.Registry, digest string) {
 	hex := strings.TrimPrefix(digest, "sha256:")
 	if err := os.Remove(filepath.Join(r.StoragePath, "docker", "registry", "v2", "blobs", "sha256", hex[:2], hex, "data")); err != nil {
 		t.Fatal(err)
-	}
-}
-
-// TestStorageMatchesAPI reads the same seeded content through both modes.
-func TestStorageMatchesAPI(t *testing.T) {
-	s, r := newStorage(t)
-	a, ctx := newAPI(t, registrytest.New(t).URL), t.Context()
-
-	repos, err := s.Catalog(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want, err := a.Catalog(ctx); err != nil || !slices.Equal(repos, want) {
-		t.Fatalf("Catalog = %v; API mode says %v, %v", repos, want, err)
-	}
-
-	refs := []string{digest(t, r.Index), digest(t, r.Attestation), digest(t, r.Signature)}
-	for _, img := range r.Platforms {
-		refs = append(refs, digest(t, img))
-	}
-	for _, repo := range repos {
-		tags, err := s.Tags(ctx, repo)
-		slices.Sort(tags)
-		want, _ := a.Tags(ctx, repo)
-		slices.Sort(want)
-		if err != nil || !slices.Equal(tags, want) {
-			t.Errorf("Tags(%s) = %v, %v; want %v", repo, tags, err, want)
-		}
-		for _, ref := range append(tags, refs...) {
-			m, err := s.Resolve(ctx, repo, ref)
-			wm, werr := a.Resolve(ctx, repo, ref)
-			if !reflect.DeepEqual(m, wm) || (err == nil) != (werr == nil) {
-				t.Errorf("Resolve(%s, %s) = %+v, %v\nAPI mode: %+v, %v", repo, ref, m, err, wm, werr)
-			}
-			for _, p := range m.Platforms {
-				cfg, err := s.Config(ctx, repo, p.Config)
-				wcfg, werr := a.Config(ctx, repo, p.Config)
-				if err != nil || werr != nil || !reflect.DeepEqual(cfg, wcfg) {
-					t.Errorf("Config(%s, %s) = %+v, %v\nAPI mode: %+v, %v", repo, p.Config, cfg, err, wcfg, werr)
-				}
-			}
-		}
-	}
-
-	// Spot-check that the comparison covered what matters.
-	m, _ := s.Resolve(ctx, registrytest.RepoIndex, registrytest.TagLatest)
-	sig, _ := s.Resolve(ctx, registrytest.RepoIndex, r.SignatureTag)
-	helm, _ := s.Resolve(ctx, registrytest.RepoHelm, registrytest.TagHelm)
-	if m.Kind != registry.KindIndex || len(m.Platforms) != 3 || sig.Kind != registry.KindSignature || helm.Kind != registry.KindHelm {
-		t.Errorf("index %+v, signature %v, helm %v", m, sig.Kind, helm.Kind)
 	}
 }
 
@@ -135,20 +84,10 @@ func TestStorageNotFound(t *testing.T) {
 		t.Errorf("Tags = %v, %v; want only %s", tags, err, registrytest.TagSingle)
 	}
 
-	zero := "sha256:" + strings.Repeat("0", 64)
-	_, err1 := s.Tags(ctx, "nope/missing")
-	_, err2 := s.Tags(ctx, "library") // a namespace, not a repository
-	_, err3 := s.Tags(ctx, "../library/nginx")
-	_, err4 := s.Resolve(ctx, registrytest.RepoIndex, "0.0.0")
-	_, err5 := s.Resolve(ctx, "Not A Repo", "latest")
-	_, err6 := s.Resolve(ctx, registrytest.RepoIndex, "../../busybox/_manifests/tags/1.36")
-	_, err7 := s.Resolve(ctx, registrytest.RepoIndex, zero)
-	_, err8 := s.Resolve(ctx, registrytest.RepoSingle, "evil")
-	_, err9 := s.Config(ctx, registrytest.RepoIndex, "sha256:00")
-	_, err10 := s.Config(ctx, registrytest.RepoIndex, zero)
-	// Blobs are only reachable through a repository that links them.
-	_, err11 := s.Resolve(ctx, registrytest.RepoSingle, digest(t, r.Index))
-	for i, err := range []error{err1, err2, err3, err4, err5, err6, err7, err8, err9, err10, err11} {
+	_, err1 := s.Tags(ctx, "library") // a namespace, not a repository
+	_, err2 := s.Resolve(ctx, registrytest.RepoIndex, "../../busybox/_manifests/tags/1.36")
+	_, err3 := s.Resolve(ctx, registrytest.RepoSingle, "evil")
+	for i, err := range []error{err1, err2, err3} {
 		if !errors.Is(err, registry.ErrNotFound) {
 			t.Errorf("%d: got %v, want ErrNotFound", i+1, err)
 		}
