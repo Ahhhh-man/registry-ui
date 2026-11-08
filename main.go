@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -43,8 +44,14 @@ func main() {
 			os.Exit(1)
 		}
 	case "healthcheck":
-		// Real check lands with the static assets (#15).
-		os.Exit(0)
+		cfg, err := config.Load(os.Getenv)
+		if err == nil {
+			err = healthcheck(cfg)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "unhealthy: %v\n", err)
+			os.Exit(1)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "usage: %s [serve|healthcheck]\n", os.Args[0])
 		os.Exit(2)
@@ -103,4 +110,26 @@ var newSource = func(cfg config.Config) (registry.Source, error) {
 		return registry.NewStorage(cfg.StoragePath)
 	}
 	return registry.NewAPI(cfg.RegistryURL.String(), cfg.RegistryInsecure)
+}
+
+// healthcheck fetches one embedded static asset from the UI's own listener.
+// It never talks to the registry, so a registry outage doesn't restart the UI.
+func healthcheck(cfg config.Config) error {
+	host, port, err := net.SplitHostPort(cfg.Listen)
+	if err != nil {
+		return err
+	}
+	if ip := net.ParseIP(host); host == "" || ip != nil && ip.IsUnspecified() {
+		host = "127.0.0.1"
+	}
+	url := "http://" + net.JoinHostPort(host, port) + cfg.BasePath + "-/static/" + ui.StaticName("htmx.min.js")
+	resp, err := (&http.Client{Timeout: 2 * time.Second}).Get(url)
+	if err != nil {
+		return err
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GET %s: %s", url, resp.Status)
+	}
+	return nil
 }

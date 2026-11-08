@@ -9,6 +9,7 @@
 !/go.sum
 !/main.go
 !/fake.go
+!/main_test.go
 !/*.nix
 !/flake.lock
 !/govendor.toml

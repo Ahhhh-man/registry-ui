@@ -9,4 +9,5 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /registry-ui .
 FROM gcr.io/distroless/static:nonroot
 COPY --from=build /registry-ui /registry-ui
 EXPOSE 8080
+HEALTHCHECK CMD ["/registry-ui", "healthcheck"]
 ENTRYPOINT ["/registry-ui"]

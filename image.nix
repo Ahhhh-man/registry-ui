@@ -19,6 +19,7 @@ pkgs.dockerTools.buildLayeredImage {
     Entrypoint = ["/registry-ui"];
     User = "65532:65532";
     ExposedPorts."8080/tcp" = {};
+    Healthcheck.Test = ["CMD" "/registry-ui" "healthcheck"];
     Env = ["SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"];
     Labels = {
       "org.opencontainers.image.source" = "https://github.com/Ahhhh-man/registry-ui";
