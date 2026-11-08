@@ -53,8 +53,8 @@ type repoView struct {
 }
 
 type pill struct {
-	Icon, Text string
-	Mono       bool
+	Icon, Text, Copy string // Copy: optional text for the pill's copy button
+	Mono             bool
 }
 
 type badge struct{ Label, Variant string }

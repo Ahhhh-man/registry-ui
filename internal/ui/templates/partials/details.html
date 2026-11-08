@@ -1,0 +1,32 @@
+{{/* Pieces of the tag page's detail panels. */}}
+
+{{/* fact: a labelled value in a small box; sit several in a grid.
+     dict "Icon" icon name, "Label" string, "Value" string,
+          "Mono" bool (digests, media types), "Note" dimmed text after
+          the value (optional), "Copy" string for a Copy button (optional). */}}
+{{define "fact" -}}
+<div class="min-w-0 rounded-md border border-border bg-bg px-3 py-3">
+<div class="mb-1.5 flex items-center gap-1.5 text-xs text-muted">{{icon .Icon "size-3 text-faint"}}{{.Label}}</div>
+<div class="flex items-center justify-between gap-2 font-medium">
+<span class="min-w-0 truncate{{if .Mono}} font-mono text-xs{{end}}" title="{{.Value}}">{{.Value}}{{with .Note}} <span class="font-normal text-muted">{{.}}</span>{{end}}</span>
+{{- with .Copy}}{{template "copy" (dict "Text" . "Label" (print "Copy " $.Label))}}{{end}}
+</div>
+</div>
+{{- end}}
+
+{{/* platform-list: an image's platforms with their sizes, the current one
+     highlighted. Each is a link that htmx turns into a swap of Target
+     (outerHTML) with the "platform" fragment of the same URL.
+     dict "Target" a CSS selector, "Platforms" list of dict "Label"
+          ("linux/arm64"), "Size" ("67.0 MB"), "Href", "Current" bool. */}}
+{{define "platform-list" -}}
+<nav aria-label="Platforms" class="rounded-md border border-border bg-surface p-2">
+<p class="px-2.5 pt-2 pb-1.5 text-xs font-medium tracking-wide text-faint uppercase">Platforms</p>
+<ul>
+{{- range $i, $p := .Platforms}}
+<li><a id="platform-{{$i}}" href="{{.Href}}" hx-get="{{.Href}}&amp;fragment=platform" hx-target="{{$.Target}}" hx-swap="outerHTML" hx-push-url="{{.Href}}"{{if .Current}} aria-current="true"{{end}} class="group flex items-center gap-2.5 rounded-sm px-2.5 py-2 hover:bg-panel aria-[current=true]:bg-accent-soft aria-[current=true]:font-medium aria-[current=true]:text-accent-text">
+{{- icon "cpu" "text-faint group-aria-[current=true]:text-accent"}}<span class="min-w-0 truncate">{{.Label}}</span><span class="ml-auto text-xs whitespace-nowrap text-muted tabular-nums group-aria-[current=true]:text-accent-text">{{.Size}}</span></a></li>
+{{- end}}
+</ul>
+</nav>
+{{- end}}

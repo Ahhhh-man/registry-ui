@@ -14,10 +14,13 @@
 {{- end}}
 
 {{/* pill: an icon and short text, for metadata under a page title.
-     dict "Icon" icon name, "Text" string, "Mono" bool (for digests). */}}
+     dict "Icon" icon name, "Text" string, "Mono" bool (for digests),
+          "Copy" string for an icon-only copy button (optional, a digest). */}}
 {{define "pill" -}}
 <span class="inline-flex max-w-full items-center gap-1.5 rounded-sm border border-border bg-surface px-2.5 py-1 text-xs text-muted">
-{{- icon .Icon "text-faint"}}<span class="truncate{{if .Mono}} font-mono{{end}}">{{.Text}}</span></span>
+{{- icon .Icon "text-faint"}}<span class="truncate{{if .Mono}} font-mono{{end}}">{{.Text}}</span>
+{{- with .Copy}}<button type="button" data-copy="{{.}}" aria-label="Copy digest" title="Copy digest" class="group -my-1 -mr-1.5 grid size-6 shrink-0 place-items-center rounded-sm text-faint hover:text-accent-text data-copied:text-accent-text">{{icon "copy" "size-3 group-data-copied:hidden"}}{{icon "check" "hidden size-3 group-data-copied:block"}}</button>{{end -}}
+</span>
 {{- end}}
 
 {{/* breadcrumbs: links back up the hierarchy, then the current page.

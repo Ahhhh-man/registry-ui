@@ -69,6 +69,19 @@ var partialCases = []struct {
 	{"badge helm", `{{template "badge" (dict "Label" "helm chart" "Variant" "helm")}}`, []string{"bg-info-bg text-info-fg", "</svg>helm chart</span>"}},
 	{"pill", `{{template "pill" (dict "Icon" "hash" "Text" "3f2a9c1b7e44" "Mono" true)}}`, []string{"rounded-sm border", `<span class="truncate font-mono">3f2a9c1b7e44</span>`}},
 	{
+		"pill copy", `{{template "pill" (dict "Icon" "hash" "Text" "3f2a9c1b7e44" "Mono" true "Copy" "sha256:3f2a")}}`,
+		[]string{`data-copy="sha256:3f2a" aria-label="Copy digest"`, "group-data-copied:block"},
+	},
+	{
+		"fact", `{{template "fact" (dict "Icon" "hash" "Label" "Digest" "Value" "sha256:3f2a" "Mono" true "Copy" "sha256:3f2a")}}`,
+		[]string{"Digest</div>", `title="sha256:3f2a">sha256:3f2a</span>`, `aria-label="Copy Digest"`},
+	},
+	{"fact note", `{{template "fact" (dict "Icon" "calendar" "Label" "Created" "Value" "2 days ago" "Note" "2026-11-06")}}`, []string{`2 days ago <span class="font-normal text-muted">2026-11-06</span>`}},
+	{
+		"platform-list", `{{template "platform-list" (dict "Target" "#platforms" "Platforms" (list (dict "Label" "linux/amd64" "Size" "69.0 MB" "Href" "/x?platform=linux/amd64" "Current" true)))}}`,
+		[]string{`<nav aria-label="Platforms"`, `hx-get="/x?platform=linux/amd64&amp;fragment=platform" hx-target="#platforms"`, `aria-current="true"`, ">linux/amd64</span>"},
+	},
+	{
 		"breadcrumbs", `{{template "breadcrumbs" (dict "Trail" (list (dict "Label" "Repositories" "Href" "/") (dict "Label" "library")) "Current" "nginx")}}`,
 		[]string{`<nav aria-label="Breadcrumb">`, `<a href="/" class="hover:text-text">Repositories</a>`, "<span>library</span>", `aria-current="page">nginx</li>`},
 	},
