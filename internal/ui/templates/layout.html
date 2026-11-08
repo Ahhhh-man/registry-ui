@@ -12,8 +12,9 @@
 {{template "htmx"}}
 </head>
 <body>
-<header class="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-border bg-surface px-4 py-3 sm:flex-nowrap sm:px-6">
-  <a href="{{catalogURL}}" class="flex min-w-0 items-center gap-3 rounded-md">
+{{/* From sm up, equal side columns centre the search on the page, whatever the brand and controls measure. */}}
+<header class="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-border bg-surface px-4 py-3 sm:flex-nowrap sm:px-6{{if not .SignIn}} sm:grid sm:grid-cols-[minmax(9rem,1fr)_minmax(0,var(--container-md))_1fr]{{end}}">
+  <a href="{{catalogURL}}" class="flex min-w-0 items-center gap-3 rounded-md sm:max-w-full sm:justify-self-start">
     <span class="grid size-9 shrink-0 place-items-center rounded-md bg-accent text-accent-fg">{{icon "package" "size-5"}}</span>
     <span class="min-w-0 leading-tight">
       <span class="block truncate font-semibold">{{.Title}}</span>
@@ -21,14 +22,14 @@
     </span>
   </a>
   {{- if not .SignIn}}
-  <form action="{{catalogURL}}" method="get" role="search" class="relative order-last w-full sm:order-none sm:ml-4 sm:max-w-md sm:flex-1">
+  <form action="{{catalogURL}}" method="get" role="search" class="relative order-last w-full sm:order-none">
     <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-faint">{{icon "search"}}</span>
     <input type="search" id="search" name="q" value="{{.Query}}" placeholder="Search repositories…" aria-label="Search repositories" autocomplete="off" data-hotkey="/"
       class="peer w-full rounded-md border border-transparent bg-panel py-2 pr-10 pl-10 text-text placeholder:text-muted focus:border-accent focus:bg-surface">
     <kbd class="pointer-events-none absolute top-1/2 right-2.5 hidden -translate-y-1/2 bg-surface text-faint sm:block sm:peer-focus:hidden" aria-hidden="true">/</kbd>
   </form>
   {{- end}}
-  <div class="ml-auto flex items-center gap-1">
+  <div class="ml-auto flex items-center gap-1 sm:col-start-3">
     <button type="button" data-theme-toggle class="grid size-9 place-items-center rounded-md text-muted hover:bg-panel hover:text-text" aria-label="Toggle theme" title="Toggle theme">
       <span class="dark:hidden">{{icon "moon" "size-5"}}</span>
       <span class="hidden dark:block">{{icon "sun" "size-5"}}</span>
