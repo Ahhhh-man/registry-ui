@@ -50,8 +50,8 @@ type Manifest struct {
 	// MediaType of the manifest, e.g. "application/vnd.oci.image.index.v1+json".
 	MediaType string
 	Kind      Kind
-	// Size is the compressed size of the layers. Zero for an index; use the
-	// per-platform sizes instead.
+	// Size is the compressed size: the config plus the layers. Zero for an
+	// index; use the per-platform sizes instead.
 	Size int64
 	// Platforms lists the runnable images. An index has one entry per
 	// platform; a single-platform image has one entry whose Digest equals
@@ -69,8 +69,18 @@ type Platform struct {
 	// Config is the digest of this platform's image config; pass it to
 	// Source.Config.
 	Config string
-	// Size is the sum of the compressed layer sizes.
+	// Size is the compressed size: the config plus the layers.
 	Size int64
+}
+
+type credentialsKey struct{}
+
+type credentials struct{ user, pass string }
+
+// WithCredentials returns a copy of ctx whose registry requests sign in as
+// user. Requests made without it are anonymous.
+func WithCredentials(ctx context.Context, user, pass string) context.Context {
+	return context.WithValue(ctx, credentialsKey{}, credentials{user, pass})
 }
 
 // ImageConfig holds the parts of an image config the UI shows.
