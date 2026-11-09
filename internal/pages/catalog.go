@@ -3,6 +3,7 @@ package pages
 import (
 	"cmp"
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -19,6 +20,7 @@ import (
 type catalogPage struct {
 	Host  string       // registry host, above the title
 	Total int          // repositories in the registry
+	Disk  bool         // the source can tell disk usage, so the stats load it: storage mode
 	Query string       // the ?q= filter
 	Sort  string       // the ?sort= order, "" for A–Z
 	Type  string       // the ?type= filter, "" for all
@@ -71,8 +73,12 @@ func (c catalogRow) Date() string { return format.Date(c.Created) }
 // row's details first, so those rows render loaded, and so does a type
 // filter, which needs every row's latest tag.
 func (s *Server) Catalog(w http.ResponseWriter, r *http.Request, _ web.Ref) {
-	if web.Fragment(r) == "row" {
+	switch web.Fragment(r) {
+	case "row":
 		s.catalogRow(w, r)
+		return
+	case "disk":
+		s.catalogDisk(w, r)
 		return
 	}
 	repos, err := s.Src.Catalog(r.Context())
@@ -82,7 +88,7 @@ func (s *Server) Catalog(w http.ResponseWriter, r *http.Request, _ web.Ref) {
 	}
 	q, path := strings.TrimSpace(r.URL.Query().Get("q")), r.URL.EscapedPath()
 	choices := sorts(catalogSorts, s.tagTimes(r.Context()))
-	data := catalogPage{Host: s.PullHost, Total: len(repos), Query: q, Sort: pickSort(choices, r.URL.Query().Get("sort")), Type: pickSort(contentTypes, r.URL.Query().Get("type"))}
+	data := catalogPage{Host: s.PullHost, Total: len(repos), Disk: s.diskUsage(r.Context()), Query: q, Sort: pickSort(choices, r.URL.Query().Get("sort")), Type: pickSort(contentTypes, r.URL.Query().Get("type"))}
 	for _, name := range repos {
 		if strings.Contains(name, strings.ToLower(q)) {
 			data.Rows = append(data.Rows, catalogRow{Repo: name})
@@ -197,6 +203,26 @@ func (s *Server) catalogRow(w http.ResponseWriter, r *http.Request) {
 		row.Failed = true
 	}
 	s.fragment(w, r, "repo-row", row)
+}
+
+// diskUsage reports whether the source can tell how much disk it uses, as
+// storage mode can. "/" names no repository, so storage refuses it without
+// walking anything.
+func (s *Server) diskUsage(ctx context.Context) bool {
+	_, err := s.Src.DiskUsage(ctx, "/")
+	return !errors.Is(err, errors.ErrUnsupported)
+}
+
+// catalogDisk answers the On disk stat's fragment, which loads after the
+// page because it walks the whole blob store. The figure is decoration, so
+// a failure just leaves the stat out.
+func (s *Server) catalogDisk(w http.ResponseWriter, r *http.Request) {
+	n, err := s.Src.DiskUsage(r.Context(), "")
+	if err != nil {
+		slog.WarnContext(r.Context(), "registry disk usage", "err", err)
+		return
+	}
+	s.fragment(w, r, "disk-stat", format.Size(n))
 }
 
 // rowDetails fills in row's tag count, then the description, platforms and

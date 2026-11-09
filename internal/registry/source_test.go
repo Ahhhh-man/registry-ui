@@ -145,6 +145,11 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 	if r.StoragePath == "" && !errors.Is(err, errors.ErrUnsupported) || r.StoragePath != "" && err != nil {
 		t.Errorf("TagTime error = %v", err)
 	}
+	// Likewise disk usage; TestStorageDiskUsage checks the sums.
+	_, err = s.DiskUsage(ctx, "")
+	if r.StoragePath == "" && !errors.Is(err, errors.ErrUnsupported) || r.StoragePath != "" && err != nil {
+		t.Errorf("DiskUsage error = %v", err)
+	}
 
 	zero := "sha256:" + strings.Repeat("0", 64)
 	for _, tc := range []struct {

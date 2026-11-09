@@ -271,6 +271,12 @@ func (a *API) TagTime(context.Context, string, string) (time.Time, error) {
 	return time.Time{}, errors.ErrUnsupported
 }
 
+// DiskUsage implements Source. Only every manifest in the registry would
+// tell, which is too many requests.
+func (a *API) DiskUsage(context.Context, string) (int64, error) {
+	return 0, errors.ErrUnsupported
+}
+
 func config(ctx context.Context, p *remote.Puller, repo name.Repository, digest string) (*v1.ConfigFile, error) {
 	if !digestRef.MatchString(digest) {
 		return nil, ErrNotFound

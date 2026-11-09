@@ -214,6 +214,73 @@ func (s *Storage) TagTime(_ context.Context, repo, tag string) (time.Time, error
 	return fi.ModTime(), nil
 }
 
+// DiskUsage implements Source. The registry is every blob on disk, including
+// any garbage collection would free; a repository is the distinct blobs it
+// links to, where a link to a blob that isn't on disk counts as nothing.
+func (s *Storage) DiskUsage(ctx context.Context, repo string) (int64, error) {
+	var total int64
+	if repo == "" {
+		top := filepath.Join(s.root, "blobs", "sha256")
+		err := filepath.WalkDir(top, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				if errors.Is(err, fs.ErrNotExist) && path == top {
+					return fs.SkipAll // nothing pushed yet
+				}
+				return err
+			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if d.Name() != "data" || !d.Type().IsRegular() {
+				return nil
+			}
+			fi, err := d.Info()
+			if err == nil {
+				total += fi.Size()
+			}
+			return err
+		})
+		if err != nil {
+			return 0, s.fail("disk usage", err)
+		}
+		return total, nil
+	}
+
+	if !repoName.MatchString(repo) {
+		return 0, fmt.Errorf("repository %s: %w", repo, ErrNotFound)
+	}
+	what := "disk usage of " + repo
+	if _, err := os.Stat(s.repoPath(repo, "_manifests")); err != nil {
+		return 0, s.fail(what, err)
+	}
+	seen := map[string]bool{}
+	for _, dir := range [][]string{{"_layers"}, {"_manifests", "revisions"}} {
+		entries, err := os.ReadDir(s.repoPath(repo, append(dir, "sha256")...))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return 0, s.fail(what, err)
+		}
+		for _, e := range entries {
+			if err := ctx.Err(); err != nil {
+				return 0, err
+			}
+			path, err := s.blobPath(repo, "sha256:"+e.Name(), dir...)
+			if errors.Is(err, ErrNotFound) || seen[path] {
+				continue
+			}
+			if err != nil {
+				return 0, s.fail(what, err)
+			}
+			fi, err := os.Stat(path)
+			if err != nil {
+				return 0, s.fail(what, err)
+			}
+			seen[path] = true
+			total += fi.Size()
+		}
+	}
+	return total, nil
+}
+
 // tag returns the digest a tag points at, if that manifest is stored.
 func (s *Storage) tag(repo, tag string) (string, error) {
 	link, err := os.ReadFile(s.repoPath(repo, "_manifests", "tags", tag, "current", "link"))

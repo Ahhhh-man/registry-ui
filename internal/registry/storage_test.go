@@ -1,7 +1,9 @@
 package registry_test
 
 import (
+	"context"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,6 +11,8 @@ import (
 	"testing"
 	"testing/synctest"
 	"time"
+
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
 	"github.com/Ahhhh-man/registry-ui/internal/registry/registrytest"
@@ -121,6 +125,96 @@ func TestStorageTagTime(t *testing.T) {
 			}
 		}
 	})
+}
+
+// blobSizes adds the size of each of img's blobs to sizes, by digest.
+func blobSizes(t *testing.T, sizes map[string]int64, img v1.Image) {
+	t.Helper()
+	m, err := img.Manifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range append(m.Layers, m.Config) {
+		sizes[d.Digest.String()] = d.Size
+	}
+	raw, err := img.RawManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sizes[digest(t, img)] = int64(len(raw))
+}
+
+func sum(sizes map[string]int64) (n int64) {
+	for _, s := range sizes {
+		n += s
+	}
+	return n
+}
+
+func TestStorageDiskUsage(t *testing.T) {
+	s, r := newStorage(t)
+	ctx := t.Context()
+	usage := func(repo string) int64 {
+		t.Helper()
+		n, err := s.DiskUsage(ctx, repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	single := map[string]int64{}
+	blobSizes(t, single, r.Single)
+	all := maps.Clone(single)
+	for _, img := range append(r.Platforms, r.Attestation, r.Signature, r.Helm) {
+		blobSizes(t, all, img)
+	}
+	raw, err := r.Index.RawManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	all[digest(t, r.Index)] = int64(len(raw))
+
+	// Single's blobs are shared by three repositories, and test/paged links
+	// them under ten tags: each repository counts them once, and so does the
+	// registry.
+	for _, repo := range []string{registrytest.RepoSingle, registrytest.RepoNested, registrytest.RepoPaged} {
+		if got := usage(repo); got != sum(single) {
+			t.Errorf("DiskUsage(%s) = %d, want %d", repo, got, sum(single))
+		}
+	}
+	if got := usage(""); got != sum(all) {
+		t.Errorf("DiskUsage of the registry = %d, want %d", got, sum(all))
+	}
+
+	// A pull-through cache may hold a link before (or without) its blob.
+	layers, err := r.Single.Layers()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone := digest(t, layers[0])
+	removeBlob(t, r, gone)
+	if got, want := usage(registrytest.RepoSingle), sum(single)-single[gone]; got != want {
+		t.Errorf("with a blob missing: DiskUsage = %d, want %d", got, want)
+	}
+	if got, want := usage(""), sum(all)-single[gone]; got != want {
+		t.Errorf("with a blob missing: registry DiskUsage = %d, want %d", got, want)
+	}
+
+	for _, repo := range []string{"nope/missing", "Not A Repo", "../library"} {
+		if _, err := s.DiskUsage(ctx, repo); !errors.Is(err, registry.ErrNotFound) {
+			t.Errorf("DiskUsage(%s): got %v, want ErrNotFound", repo, err)
+		}
+	}
+
+	// A cancelled request stops the walk.
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	for _, repo := range []string{"", registrytest.RepoSingle} {
+		if _, err := s.DiskUsage(cancelled, repo); !errors.Is(err, context.Canceled) {
+			t.Errorf("DiskUsage(%q) after cancel: got %v, want context.Canceled", repo, err)
+		}
+	}
 }
 
 func TestStorageUncached(t *testing.T) {

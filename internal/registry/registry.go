@@ -31,6 +31,13 @@ type Source interface {
 	// cache, on every pull by tag. It returns errors.ErrUnsupported when
 	// the source can't tell, as the registry API can't.
 	TagTime(ctx context.Context, repo, tag string) (time.Time, error)
+
+	// DiskUsage returns the bytes repo's blobs take up on disk, or the whole
+	// registry's when repo is "". Layers are stored once however many
+	// repositories link to them, so a shared blob counts in each repository
+	// but once in the registry. It returns errors.ErrUnsupported when the
+	// source can't tell, as the registry API can't.
+	DiskUsage(ctx context.Context, repo string) (int64, error)
 }
 
 // Kind says what a manifest holds, so pages can pick how to show it.

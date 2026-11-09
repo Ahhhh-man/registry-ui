@@ -8,10 +8,14 @@
 <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
 {{template "stat" (dict "Icon" "package" "Label" "Repositories" "Value" (printf "%d" .Total))}}
 {{if .Total}}<div hidden>{{template "stat" (dict "Icon" "tag" "Label" "Tags" "Name" "tags")}}</div>{{else}}{{template "stat" (dict "Icon" "tag" "Label" "Tags" "Value" "0")}}{{end}}
+{{if .Disk}}<div hx-get="{{catalogURL}}?fragment=disk" hx-trigger="load" hx-swap="outerHTML" aria-busy="true">{{template "disk-stat" ""}}</div>{{end}}
 </div>
 {{template "catalog-list" .}}
 </div>
 {{- end}}
+
+{{/* disk-stat: the On disk figure, a size, or "" while it loads. */}}
+{{define "disk-stat"}}{{template "stat" (dict "Icon" "hard-drive" "Label" "On disk" "Value" .)}}{{end}}
 
 {{/* catalog-list: the rows. It reloads itself from the header search as you
      type, keeping the sort and type; data-repo-list marks the unfiltered list, whose rows add up to the

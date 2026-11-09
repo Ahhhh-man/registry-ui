@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Ahhhh-man/registry-ui/internal/format"
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
+	"github.com/Ahhhh-man/registry-ui/internal/registry/registrytest"
 	"github.com/Ahhhh-man/registry-ui/internal/web"
 )
 
@@ -179,6 +181,50 @@ func TestNewestTag(t *testing.T) {
 	} {
 		if got := newestTag(c.tags); got != c.want {
 			t.Errorf("newestTag(%q) = %q, want %q", c.tags, got, c.want)
+		}
+	}
+}
+
+// TestDiskUsage runs storage mode, which can measure the blob store.
+func TestDiskUsage(t *testing.T) {
+	src, err := registry.NewStorage(registrytest.NewStorage(t).StoragePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newTestServer(t, "/")
+	s.Src = src
+	usage := func(repo string) string {
+		t.Helper()
+		n, err := src.DiskUsage(t.Context(), repo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return format.Size(n)
+	}
+
+	// The page doesn't wait for the walk: the stat loads after it.
+	contains(t, get(t, s, "/", "/", false).Body.String(), `hx-get="/?fragment=disk" hx-trigger="load"`)
+	contains(t, get(t, s, "/", "/?fragment=disk", true).Body.String(), ">"+usage("")+"</div>", ">On disk</div>")
+
+	for _, path := range []string{"/" + registrytest.RepoSingle, "/" + registrytest.RepoSingle + "?tab=tags"} {
+		contains(t, get(t, s, "/", path, false).Body.String(),
+			">"+usage(registrytest.RepoSingle)+" on disk<",
+			`title="Layers shared with other repositories count in each of them, so repository totals add up to more than the registry total."`)
+	}
+}
+
+// The registry API can't tell disk usage, so nothing about it shows.
+func TestNoDiskUsageInAPIMode(t *testing.T) {
+	api, err := registry.NewAPI(registrytest.New(t).URL, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newTestServer(t, "/")
+	s.Src = api
+	for _, path := range []string{"/", "/" + registrytest.RepoSingle, "/" + registrytest.RepoSingle + "?tab=tags"} {
+		body := get(t, s, "/", path, false).Body.String()
+		if strings.Contains(strings.ToLower(body), "on disk") || strings.Contains(body, "fragment=disk") {
+			t.Errorf("%s mentions disk usage:\n%s", path, body)
 		}
 	}
 }

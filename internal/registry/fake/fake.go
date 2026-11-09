@@ -271,6 +271,12 @@ func (s *Source) TagTime(context.Context, string, string) (time.Time, error) {
 	return time.Time{}, errors.ErrUnsupported
 }
 
+// DiskUsage implements registry.Source. Like the registry API, the fake
+// can't tell.
+func (s *Source) DiskUsage(context.Context, string) (int64, error) {
+	return 0, errors.ErrUnsupported
+}
+
 func (s *Source) repo(name string) (*repo, error) {
 	r, ok := s.repos[name]
 	if !ok {

@@ -306,6 +306,9 @@ func (s *Server) loadCards(ctx context.Context, v *repoView, page []string) {
 // just leaves them out; its card shows the error.
 func (s *Server) header(ctx context.Context, v *repoView, tags []string) {
 	pills := []pill{{Icon: "tag", Text: plural(len(tags), "tag")}}
+	if n, err := s.Src.DiskUsage(ctx, v.Repo); err == nil {
+		pills = append(pills, pill{Icon: "hard-drive", Text: format.Size(n) + " on disk", Title: "Layers shared with other repositories count in each of them, so repository totals add up to more than the registry total."})
+	}
 	defer func() { v.Pills = pills }()
 	i := labelTag(tags)
 	if i < 0 {

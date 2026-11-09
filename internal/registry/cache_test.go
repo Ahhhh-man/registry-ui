@@ -55,6 +55,11 @@ func (s *counter) TagTime(ctx context.Context, _, _ string) (time.Time, error) {
 	return time.Unix(0, 0), err
 }
 
+func (s *counter) DiskUsage(ctx context.Context, _ string) (int64, error) {
+	_, err := s.call(ctx)
+	return 1, err
+}
+
 const testDigest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 func (s *counter) want(t *testing.T, n int32) {
@@ -78,22 +83,23 @@ func TestCacheTTL(t *testing.T) {
 			_, _ = c.Resolve(ctx, "repo", testDigest)
 			_, _ = c.Config(ctx, "repo", testDigest)
 			_, _ = c.TagTime(ctx, "repo", "latest")
+			_, _ = c.DiskUsage(ctx, "")
 		}
 
 		fetch()
-		src.want(t, 6)
+		src.want(t, 7)
 		time.Sleep(cacheTTL - time.Second)
 		fetch()
-		src.want(t, 6)
+		src.want(t, 7)
 
-		// Catalog, tags, the tag lookup and the tag time expire; digest
-		// lookups don't.
+		// Catalog, tags, the tag lookup, the tag time and disk usage expire;
+		// digest lookups don't.
 		time.Sleep(time.Second)
 		fetch()
-		src.want(t, 10)
+		src.want(t, 12)
 		time.Sleep(365 * 24 * time.Hour)
 		fetch()
-		src.want(t, 14)
+		src.want(t, 17)
 	})
 }
 
