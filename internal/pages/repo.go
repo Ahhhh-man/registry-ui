@@ -72,8 +72,9 @@ type repoView struct {
 }
 
 type pill struct {
-	Icon, Text, Copy string // Copy: optional text for the pill's copy button
-	Title            string // optional hover text
+	Icon, Text, Copy string    // Copy: optional text for the pill's copy button
+	Title            string    // optional hover text
+	Time             time.Time // optional: Text goes before its age, and Title's {} is where the time goes
 	Mono             bool
 	Links            []link // optional, after Text
 }
@@ -352,7 +353,7 @@ func (s *Server) header(ctx context.Context, v *repoView, tags []string) {
 		v.Source = src
 	}
 	if !cfg.Created.IsZero() {
-		pills = append(pills, pill{Icon: "clock", Text: "Created " + format.Age(cfg.Created)})
+		pills = append(pills, pill{Icon: "clock", Text: "Created ", Time: cfg.Created})
 	}
 }
 

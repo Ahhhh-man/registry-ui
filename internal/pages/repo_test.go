@@ -50,7 +50,7 @@ func TestRepoPage(t *testing.T) {
 		"<title>library/nginx · registry.example.com</title>",
 		`<span class="font-medium text-faint">library/</span>nginx</span>`,
 		"Official build of Nginx",
-		">15 tags</span>", ">6 platforms</span>", ">Created 2 days ago</span>",
+		">15 tags</span>", ">6 platforms</span>", `<time datetime="`, `UTC">Created 2 days ago</time>`,
 		`aria-current="page">nginx</li>`,
 		`data-hotkey="/"`, `hx-vals='{"fragment": "tags"}'`,
 		"Version, newest first",
@@ -134,7 +134,7 @@ func TestRepoCard(t *testing.T) {
 
 	body := card("library/nginx", "1.27.3")
 	for _, want := range []string{
-		"Created 2 days ago", "Same as", ">latest</a>, ", ">mainline</a>, ", ">1.27</a>",
+		`<time datetime="`, `UTC">Created 2 days ago</time>`, "Same as", ">latest</a>, ", ">mainline</a>, ", ">1.27</a>",
 		"docker pull registry.example.com/library/nginx:1.27.3",
 		"linux/amd64", "linux/arm/v7", "3 more platforms", "group-has-[[open]]/platforms:table-row",
 		`href="/library/nginx@sha256:`,
@@ -228,7 +228,7 @@ func TestRepoListView(t *testing.T) {
 	body = rec.Body.String()
 	for _, want := range []string{
 		`<tr data-tag="1.27.3" data-pull="docker pull registry.example.com/library/nginx:1.27.3">`,
-		`href="/library/nginx@` + m.Digest + `"`, ">6 platforms</span>", ">69.0 MB</td>", "2 days ago",
+		`href="/library/nginx@` + m.Digest + `"`, ">6 platforms</span>", ">69.0 MB</td>", `<time datetime="`, `UTC">2 days ago</time>`,
 		`data-copy="docker pull registry.example.com/library/nginx:1.27.3" aria-label="Copy pull command for 1.27.3"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -276,7 +276,7 @@ func TestRepoOverview(t *testing.T) {
 		"Read from the OCI labels on latest.",
 		`hx-get="/library/nginx" hx-trigger="change" hx-target="#summary"`,
 		`<option value="latest" selected>latest</option>`, `<option value="1.9.15">`,
-		"<dd>Multi-platform image</dd>", "linux/amd64</span>", "<dt>Platforms</dt><dd>6 platforms</dd>", "2 days ago",
+		"<dd>Multi-platform image</dd>", "linux/amd64</span>", "<dt>Platforms</dt><dd>6 platforms</dd>", `<dt>Created</dt><dd><time datetime="`, `UTC">2 days ago</time>`,
 		"docker pull registry.example.com/library/nginx:latest",
 		"<noscript>",
 	} {

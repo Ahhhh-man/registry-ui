@@ -10,6 +10,7 @@
           "Text" a sentence under the heading (optional),
           "Facts" list of dict "Label", "Value", "Href" (optional link),
                   "Mono" bool, "Title" hover text (optional),
+                  "Time" time.Time shown in place of Value (optional),
           "Copies" list of "copy" partial dicts (optional). */}}
 {{define "fact-card" -}}
 <article{{with .ID}} id="{{.}}"{{end}}{{if .Current}} aria-current="true"{{end}} class="flex min-w-0 flex-col gap-4 rounded-lg border border-border p-5 aria-[current=true]:border-accent aria-[current=true]:ring-1 aria-[current=true]:ring-accent {{if .Missing}}border-dashed bg-panel text-muted{{else}}bg-surface{{end}}">
@@ -22,7 +23,7 @@
 {{- end}}
 <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2">
 {{- range .Facts}}
-<dt class="text-muted">{{.Label}}</dt><dd class="min-w-0 truncate{{if .Mono}} font-mono text-xs leading-5{{end}}"{{with .Title}} title="{{.}}"{{end}}>{{if .Href}}<a href="{{.Href}}" class="text-accent-text hover:underline">{{.Value}}</a>{{else}}{{.Value}}{{end}}</dd>
+<dt class="text-muted">{{.Label}}</dt><dd class="min-w-0 truncate{{if .Mono}} font-mono text-xs leading-5{{end}}"{{with .Title}} title="{{.}}"{{end}}>{{if .Href}}<a href="{{.Href}}" class="text-accent-text hover:underline">{{.Value}}</a>{{else if .Time}}{{time .Time}}{{else}}{{.Value}}{{end}}</dd>
 {{- end}}
 </dl>
 {{- with .Copies}}

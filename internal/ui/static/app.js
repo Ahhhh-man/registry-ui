@@ -78,6 +78,22 @@
   // The tag page's ?platform= link: bring the highlighted card into view.
   document.querySelector('article[aria-current="true"]')?.scrollIntoView({ block: "center" });
 
+  // Dates (<time datetime>, format.Time) say on hover when exactly. The
+  // server wrote that in UTC; here it becomes the viewer's own zone and
+  // locale, "7 Nov 2026, 10:30:00 GMT+11". data-title is a sentence with {}
+  // where the time goes.
+  const localTime = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "long" });
+  const localTimes = () => {
+    for (const el of document.querySelectorAll("time[datetime]")) {
+      const at = new Date(el.dateTime);
+      if (isNaN(at)) continue;
+      const text = localTime.format(at);
+      el.title = el.dataset.title ? el.dataset.title.replace("{}", text) : text;
+    }
+  };
+  document.addEventListener("htmx:afterSettle", localTimes);
+  localTimes();
+
   // "/" focuses the header search ([data-hotkey="/"]) on every page. Esc in
   // any search field clears it, then leaves it; the input event lets an htmx
   // filter catch up.

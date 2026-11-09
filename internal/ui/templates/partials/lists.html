@@ -16,8 +16,8 @@
      empty repository: dimmed, with a "no tags" badge for its details.
      Data: "Repo" string, "Namespace" ("library/" or ""), "Name" string,
            "Loaded" bool, "Failed" bool, "Tags" int, "Description" string,
-           "Platforms" string ("3 platforms (1 missing)"), "Helm" bool, "Age" and "Date" strings for when
-           the latest tag was created ("2 days ago", "2024-11-06"). */}}
+           "Platforms" string ("3 platforms (1 missing)"), "Helm" bool, "Created" time.Time, when
+           the latest tag was created. */}}
 {{define "repo-row" -}}
 {{$empty := and .Loaded (not .Tags) -}}
 <a href="{{repoURL .Repo}}" data-row
@@ -40,8 +40,8 @@
 {{- if .Helm}}<span class="inline-flex items-center gap-1.5">{{icon "anchor" "text-faint"}}Helm chart</span>
 {{- else if .Platforms}}<span class="inline-flex items-center gap-1.5">{{icon "cpu" "text-faint"}}{{.Platforms}}</span>{{end}}
 <span class="inline-flex items-center gap-1.5">{{icon "tag" "text-faint"}}{{.Tags}} tag{{if ne .Tags 1}}s{{end}}</span>
-{{- with .Age}}
-<span class="inline-flex items-center gap-1.5" title="Latest created {{$.Date}}">{{icon "clock" "text-faint"}}{{.}}</span>{{end}}
+{{- if not .Created.IsZero}}
+<span class="inline-flex items-center gap-1.5">{{icon "clock" "text-faint"}}{{time .Created "" "Latest created {}"}}</span>{{end}}
 {{- else if not .Failed}}{{template "skeleton" "w-16"}}{{template "skeleton" "w-12"}}{{template "skeleton" "w-16"}}{{end}}
 </div>
 {{icon "chevron-right" "text-faint group-hover:text-accent"}}

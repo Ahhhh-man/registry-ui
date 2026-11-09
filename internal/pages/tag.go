@@ -143,11 +143,11 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, repo, tag, ref
 
 	if !created.IsZero() {
 		v.Created = created.UTC().Format("2006-01-02 15:04:05 UTC")
-		v.Pills = append(v.Pills, pill{Icon: "clock", Text: "Created " + format.Age(created), Title: format.Date(created)})
+		v.Pills = append(v.Pills, pill{Icon: "clock", Text: "Created ", Time: created})
 	}
 	if tag != "" {
 		if t, err := s.Src.TagTime(ctx, repo, tag); err == nil {
-			v.Pills = append(v.Pills, pill{Icon: "history", Text: "Updated " + format.Age(t), Title: format.Date(t) + ": when this tag was last pushed or, on a pull-through cache, last pulled"})
+			v.Pills = append(v.Pills, pill{Icon: "history", Text: "Updated ", Time: t, Title: "{}: when this tag was last pushed or, on a pull-through cache, last pulled"})
 		}
 	}
 	if len(m.Platforms) > 0 {
@@ -227,7 +227,7 @@ func (s *Server) platformCards(ctx context.Context, r *http.Request, v *tagView)
 			"Icon": "cpu", "Title": name, "Size": format.Size(p.Size),
 			"Facts": []map[string]any{
 				{"Label": "Digest", "Value": format.ShortDigest(p.Digest), "Mono": true, "Title": p.Digest, "Href": s.BasePath + v.Repo + "@" + p.Digest},
-				{"Label": "Created", "Value": cmp.Or(format.Age(created[i]), "Unknown"), "Title": format.Date(created[i])},
+				createdFact(created[i]),
 				{"Label": "Type", "Value": manifestType(p.MediaType)},
 			},
 			"Copies": []map[string]any{
@@ -281,4 +281,12 @@ func (s *Server) sameAs(ctx context.Context, repo, tag, digest string) []string 
 	_ = g.Wait() // the goroutines never fail
 	format.SortTags(same)
 	return same
+}
+
+// createdFact is a platform card's Created row: the time, or "Unknown".
+func createdFact(t time.Time) map[string]any {
+	if t.IsZero() {
+		return map[string]any{"Label": "Created", "Value": "Unknown"}
+	}
+	return map[string]any{"Label": "Created", "Time": t}
 }

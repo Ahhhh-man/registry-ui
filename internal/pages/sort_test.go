@@ -237,13 +237,13 @@ func TestUpdatedSorts(t *testing.T) {
 	}
 
 	card := get(t, s, "/", "/"+registrytest.RepoPaged+"?fragment=card&tag=v3", true).Body.String()
-	contains(t, card, "Updated today")
+	contains(t, card, `<time datetime="`, `UTC">Updated today</time>`)
 	list := get(t, s, "/", "/"+registrytest.RepoPaged+"?view=list", false).Body.String()
 	contains(t, list, ">Updated</th>")
 	row := get(t, s, "/", "/"+registrytest.RepoPaged+"?view=list&fragment=row&tag=v7", true).Body.String()
-	contains(t, row, `<span title="`+format.Date(now.Add(-3*time.Hour))+`">today</span>`)
+	contains(t, row, string(format.Time(now.Add(-3*time.Hour))))
 	tag := get(t, s, "/", "/"+registrytest.RepoSingle+":"+registrytest.TagSingle, false).Body.String()
-	contains(t, tag, "Updated today", "last pulled")
+	contains(t, tag, `<time datetime="`, ` UTC: when this tag was last pushed or, on a pull-through cache, last pulled" data-title="{}: when this tag was last pushed or, on a pull-through cache, last pulled">Updated today</time>`)
 }
 
 // The registry API has no tag times, so nothing about them shows.

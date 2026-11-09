@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Ahhhh-man/registry-ui/internal/format"
 	"github.com/Ahhhh-man/registry-ui/internal/web"
@@ -93,14 +94,18 @@ var partialCases = []struct {
 		[]string{`data-copy="sha256:3f2a" aria-label="Copy digest"`, "group-data-copied:block"},
 	},
 	{
+		"pill time", `{{template "pill" (dict "Icon" "history" "Text" "Updated " "Time" . "Title" "{}: when it was pushed")}}`,
+		[]string{`<span class="inline-flex`, `<span class="truncate"><time datetime="2024-11-06T23:30:00Z" title="2024-11-06 23:30 UTC: when it was pushed" data-title="{}: when it was pushed">Updated `},
+	},
+	{
 		"pill links", `{{template "pill" (dict "Icon" "link" "Text" "Same as" "Title" "hover" "Links" (list (dict "Label" "latest" "Href" "/n:latest") (dict "Label" "1.27" "Href" "/n:1.27")))}}`,
 		[]string{`<span title="hover" class=`, `<span class="min-w-0">Same as <a href="/n:latest" class="`, `>latest</a>, <a href="/n:1.27"`},
 	},
 	{
-		"fact-card", `{{template "fact-card" (dict "ID" "platform-linux-amd64" "Current" true "Icon" "cpu" "Title" "linux/amd64" "Size" "69.0 MB" "Text" "About it." "Facts" (list (dict "Label" "Digest" "Value" "3f2a9c1b7e44" "Mono" true "Title" "sha256:3f2a" "Href" "/n@sha256:3f2a") (dict "Label" "Type" "Value" "OCI image manifest")) "Copies" (list (dict "Text" "sha256:3f2a" "Caption" "Copy digest")))}}`,
+		"fact-card", `{{template "fact-card" (dict "ID" "platform-linux-amd64" "Current" true "Icon" "cpu" "Title" "linux/amd64" "Size" "69.0 MB" "Text" "About it." "Facts" (list (dict "Label" "Digest" "Value" "3f2a9c1b7e44" "Mono" true "Title" "sha256:3f2a" "Href" "/n@sha256:3f2a") (dict "Label" "Type" "Value" "OCI image manifest") (dict "Label" "Created" "Time" .)) "Copies" (list (dict "Text" "sha256:3f2a" "Caption" "Copy digest")))}}`,
 		[]string{
 			`<article id="platform-linux-amd64" aria-current="true"`, "aria-[current=true]:border-accent", "</svg><span", ">linux/amd64</span></h3>", ">69.0 MB</span>", "About it.</p>",
-			`<dt class="text-muted">Digest</dt>`, `title="sha256:3f2a"><a href="/n@sha256:3f2a"`, ">3f2a9c1b7e44</a></dd>", ">OCI image manifest</dd>",
+			`<dt class="text-muted">Digest</dt>`, `title="sha256:3f2a"><a href="/n@sha256:3f2a"`, ">3f2a9c1b7e44</a></dd>", ">OCI image manifest</dd>", `<dd class="min-w-0 truncate"><time datetime="2024-11-06T23:30:00Z" title="2024-11-06 23:30 UTC">`,
 			`data-copy="sha256:3f2a"`, `aria-live="polite">Copy digest</span>`,
 		},
 	},
@@ -152,8 +157,8 @@ var partialCases = []struct {
 		[]string{`<a href="/library/nginx" data-row aria-busy="true" hx-get="/?fragment=row&amp;repo=library/nginx" hx-trigger="intersect once" hx-swap="outerHTML"`, `<span class="font-medium text-faint">library/</span>nginx</div>`, "animate-pulse w-1/2"},
 	},
 	{
-		"repo-row loaded", `{{template "repo-row" (dict "Repo" "charts/podinfo" "Namespace" "charts/" "Name" "podinfo" "Loaded" true "Helm" true "Tags" 1 "Age" "2 days ago" "Date" "2024-11-06")}}`,
-		[]string{`data-row data-tags="1"`, "No description label", "</svg>Helm chart</span>", "</svg>1 tag</span>", `title="Latest created 2024-11-06"`, "</svg>2 days ago</span>"},
+		"repo-row loaded", `{{template "repo-row" (dict "Repo" "charts/podinfo" "Namespace" "charts/" "Name" "podinfo" "Loaded" true "Helm" true "Tags" 1 "Created" .)}}`,
+		[]string{`data-row data-tags="1"`, "No description label", "</svg>Helm chart</span>", "</svg>1 tag</span>", `</svg><time datetime="2024-11-06T23:30:00Z" title="Latest created 2024-11-06 23:30 UTC" data-title="Latest created {}">`},
 	},
 	{"repo-row failed", `{{template "repo-row" (dict "Repo" "x/y" "Namespace" "x/" "Name" "y" "Failed" true)}}`, []string{"Couldn't load details"}},
 	{"note", `{{template "note" "Layers and build history come later."}}`, []string{`role="note"`, "bg-accent-soft", "Layers and build history come later."}},
@@ -192,7 +197,8 @@ func TestPartials(t *testing.T) {
 	for _, theme := range []string{"light", "dark"} {
 		for _, c := range partialCases {
 			var body strings.Builder
-			if err := tpl.ExecuteTemplate(&body, "case-"+c.name, nil); err != nil {
+			// The data is a time, for the cases that show one.
+			if err := tpl.ExecuteTemplate(&body, "case-"+c.name, time.Date(2024, 11, 6, 23, 30, 0, 0, time.UTC)); err != nil {
 				t.Fatalf("%s: %v", c.name, err)
 			}
 			var page strings.Builder

@@ -131,7 +131,7 @@ func TestCatalogRow(t *testing.T) {
 	if strings.Contains(body, "<!doctype") || strings.Contains(body, "hx-get") || strings.Contains(body, "aria-busy") {
 		t.Errorf("want a loaded row alone, got\n%s", body)
 	}
-	contains(t, body, `<a href="/library/nginx" data-row data-tags="15"`, "Official build of Nginx", "6 platforms", "15 tags", "2 days ago", "Latest created ")
+	contains(t, body, `<a href="/library/nginx" data-row data-tags="15"`, "Official build of Nginx", "6 platforms", "15 tags", `<time datetime="`, ` UTC" data-title="Latest created {}">2 days ago</time>`)
 	if src.catalog != 0 || src.tags != 1 || src.resolve != 1 || src.config != 1 {
 		t.Errorf("calls: catalog %d, tags %d, resolve %d, config %d", src.catalog, src.tags, src.resolve, src.config)
 	}

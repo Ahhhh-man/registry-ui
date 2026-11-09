@@ -17,12 +17,16 @@
 {{/* pill: an icon and short text, for metadata under a page title.
      dict "Icon" icon name, "Text" string, "Mono" bool (for digests),
           "Title" hover text (optional),
+          "Time" time.Time (optional): Text then goes before its age, and
+          Title is the hover sentence with {} where the time goes,
           "Links" list of dict "Label", "Href" shown after Text, comma
           separated; the pill then wraps instead of truncating,
           "Copy" string for an icon-only copy button (optional, a digest). */}}
 {{define "pill" -}}
-<span{{with .Title}} title="{{.}}"{{end}} class="inline-flex max-w-full items-center gap-1.5 rounded-sm border border-border bg-surface px-2.5 py-1 text-xs text-muted">
-{{- icon .Icon "text-faint"}}<span class="{{if .Links}}min-w-0{{else}}truncate{{end}}{{if .Mono}} font-mono{{end}}">{{.Text}}
+{{- /* A pill is a struct or a dict, so Time is a zero time or missing. */ -}}
+{{- $time := and .Time (not .Time.IsZero) -}}
+<span{{if not $time}}{{with .Title}} title="{{.}}"{{end}}{{end}} class="inline-flex max-w-full items-center gap-1.5 rounded-sm border border-border bg-surface px-2.5 py-1 text-xs text-muted">
+{{- icon .Icon "text-faint"}}<span class="{{if .Links}}min-w-0{{else}}truncate{{end}}{{if .Mono}} font-mono{{end}}">{{if $time}}{{time .Time .Text .Title}}{{else}}{{.Text}}{{end}}
 {{- range $i, $l := .Links}}{{if $i}},{{end}} <a href="{{$l.Href}}" class="font-medium text-accent-text hover:underline">{{$l.Label}}</a>{{end}}</span>
 {{- with .Copy}}<button type="button" data-copy="{{.}}" aria-label="Copy digest" title="Copy digest" class="group -my-1 -mr-1.5 grid size-6 shrink-0 place-items-center rounded-sm text-faint hover:text-accent-text data-copied:text-accent-text">{{icon "copy" "size-3 group-data-copied:hidden"}}{{icon "check" "hidden size-3 group-data-copied:block"}}</button>{{end -}}
 </span>

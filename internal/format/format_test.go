@@ -67,21 +67,41 @@ func TestAge(t *testing.T) {
 	}
 }
 
-func TestDate(t *testing.T) {
+func TestDateTime(t *testing.T) {
 	for _, tc := range []struct {
 		in   time.Time
 		want string
 	}{
 		{time.Time{}, ""},
-		{time.Date(2026, 11, 6, 23, 59, 0, 0, time.UTC), "2026-11-06"},
+		{time.Date(2026, 11, 6, 23, 30, 59, 0, time.UTC), "2026-11-06 23:30 UTC"},
 		// Shown in UTC, not the server's zone.
-		{time.Date(2026, 11, 7, 1, 0, 0, 0, time.FixedZone("CET", 3600*2)), "2026-11-06"},
-		{time.Date(2999, 12, 31, 0, 0, 0, 0, time.UTC), "2999-12-31"},
-		{time.Unix(0, 0), "1970-01-01"},
+		{time.Date(2026, 11, 7, 10, 30, 0, 0, time.FixedZone("AEDT", 3600*11)), "2026-11-06 23:30 UTC"},
+		{time.Date(2999, 12, 31, 0, 0, 0, 0, time.UTC), "2999-12-31 00:00 UTC"},
+		{time.Unix(0, 0), "1970-01-01 00:00 UTC"},
 	} {
-		if got := Date(tc.in); got != tc.want {
-			t.Errorf("Date(%v) = %q, want %q", tc.in, got, tc.want)
+		if got := DateTime(tc.in); got != tc.want {
+			t.Errorf("DateTime(%v) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestTime(t *testing.T) {
+	at := time.Date(2020, 1, 2, 10, 30, 0, 0, time.FixedZone("AEDT", 3600*11))
+	for _, tc := range []struct {
+		opts []string
+		want string
+	}{
+		{nil, `<time datetime="2020-01-01T23:30:00Z" title="2020-01-01 23:30 UTC">` + Age(at) + `</time>`},
+		{[]string{"Created "}, `<time datetime="2020-01-01T23:30:00Z" title="2020-01-01 23:30 UTC">Created ` + Age(at) + `</time>`},
+		// The sentence is kept beside the title, for app.js to fill in again.
+		{[]string{"", `"Latest" created {}`}, `<time datetime="2020-01-01T23:30:00Z" title="&#34;Latest&#34; created 2020-01-01 23:30 UTC" data-title="&#34;Latest&#34; created {}">` + Age(at) + `</time>`},
+	} {
+		if got := string(Time(at, tc.opts...)); got != tc.want {
+			t.Errorf("Time(%q)\n got %s\nwant %s", tc.opts, got, tc.want)
+		}
+	}
+	if got := Time(time.Time{}, "Created "); got != "" {
+		t.Errorf("zero time: got %q", got)
 	}
 }
 
@@ -167,7 +187,7 @@ func TestSortTags(t *testing.T) {
 
 func TestFuncs(t *testing.T) {
 	tmpl := template.Must(template.New("").Funcs(Funcs()).Parse(
-		`{{size .Size}} {{shortDigest .Digest}} {{platform .P}} {{shortPlatform .P}} {{date .T}} {{age .T}}`))
+		`{{size .Size}} {{shortDigest .Digest}} {{platform .P}} {{shortPlatform .P}} {{time .T}} {{age .T}}`))
 	var b bytes.Buffer
 	err := tmpl.Execute(&b, map[string]any{
 		"Size":   int64(2048),
@@ -178,7 +198,7 @@ func TestFuncs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := b.String(), "2.0 KB 0123456789ab linux/arm64/v8 arm64 2020-01-02 "; !strings.HasPrefix(got, want) || strings.HasSuffix(got, " ") {
+	if got, want := b.String(), `2.0 KB 0123456789ab linux/arm64/v8 arm64 <time datetime="2020-01-02T00:00:00Z" title="2020-01-02 00:00 UTC">`; !strings.HasPrefix(got, want) || strings.HasSuffix(got, " ") {
 		t.Errorf("got %q, want %q followed by an age", got, want)
 	}
 }

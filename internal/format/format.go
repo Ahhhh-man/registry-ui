@@ -14,7 +14,7 @@ func Funcs() template.FuncMap {
 	return template.FuncMap{
 		"size":          Size,
 		"age":           Age,
-		"date":          Date,
+		"time":          Time,
 		"shortDigest":   ShortDigest,
 		"platform":      Platform,
 		"shortPlatform": ShortPlatform,
@@ -75,13 +75,31 @@ func ago(n int, unit string) string {
 	return fmt.Sprintf("%d %ss ago", n, unit)
 }
 
-// Date formats t as a UTC calendar date, e.g. "2026-11-06". A zero time
-// gives "".
-func Date(t time.Time) string {
+// DateTime formats t as a date and time in UTC, with the zone named, e.g.
+// "2026-11-06 23:30 UTC". A zero time gives "".
+func DateTime(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.UTC().Format(time.DateOnly)
+	return t.UTC().Format("2006-01-02 15:04 UTC")
+}
+
+// Time draws t as a <time> element: its age as the text and the exact time
+// on hover, in UTC until app.js rewrites it to the viewer's own zone. opts
+// are a prefix for the text ("Created ") and then a sentence for the hover
+// text, with {} where the time goes ("Latest created {}"). A zero time
+// gives "".
+func Time(t time.Time, opts ...string) template.HTML {
+	if t.IsZero() {
+		return ""
+	}
+	opts = append(opts, "", "")
+	esc := template.HTMLEscapeString
+	title, slot := DateTime(t), ""
+	if s := opts[1]; s != "" {
+		title, slot = strings.Replace(s, "{}", title, 1), ` data-title="`+esc(s)+`"`
+	}
+	return template.HTML(`<time datetime="` + t.UTC().Format(time.RFC3339) + `" title="` + esc(title) + `"` + slot + `>` + esc(opts[0]+Age(t)) + `</time>`) //nolint:gosec // everything variable is escaped
 }
 
 // ShortDigest returns the first 12 hex characters of a digest, without its

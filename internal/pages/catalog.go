@@ -55,17 +55,6 @@ func (c catalogRow) Namespace() string { return c.Repo[:strings.LastIndexByte(c.
 // Name is Repo without its namespace.
 func (c catalogRow) Name() string { return c.Repo[strings.LastIndexByte(c.Repo, '/')+1:] }
 
-// Age is how long ago Created was, or "" when unknown.
-func (c catalogRow) Age() string {
-	if c.Created.IsZero() {
-		return ""
-	}
-	return format.Age(c.Created)
-}
-
-// Date is Created as a date.
-func (c catalogRow) Date() string { return format.Date(c.Created) }
-
 // Catalog serves the repository list. Rows start as bare names and fetch
 // their details (?fragment=row&repo=…) once scrolled into view, so the page
 // itself costs a single catalog call however large the registry is. The

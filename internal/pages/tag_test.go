@@ -68,8 +68,10 @@ func TestTagPage(t *testing.T) {
 				"<title>library/nginx:1.27.3 · registry.example.com</title>",
 				`<span class="font-medium text-faint">nginx:</span>1.27.3</span>`,
 				`<a href="/library/nginx" class="hover:text-text">nginx</a>`,
-				// The pills: created with the date on hover, platforms with the main one's size, same-as links.
-				`<span title="` + format.Date(created.Created) + `" class=`, ">Created 2 days ago</span>",
+				// The pills: created with the time on hover, platforms with the main one's size, same-as links.
+				`<span class="truncate">` + string(format.Time(created.Created, "Created ")) + "</span>", `UTC">Created 2 days ago</time>`,
+				// Each platform card says when it was created.
+				`<dt class="text-muted">Created</dt><dd class="min-w-0 truncate"><time datetime="`,
 				">6 platforms · " + format.Size(amd64.Size) + " on amd64</span>",
 				`>Same as <a href="/library/nginx:latest" class="font-medium text-accent-text hover:underline">latest</a>, <a href="/library/nginx:mainline"`,
 				// The pull command, whole, with its Copy button.
@@ -115,7 +117,7 @@ func TestTagPage(t *testing.T) {
 		},
 		{
 			name: "single-platform", path: "/myteam/api:main", status: 200, cards: 1,
-			want: []string{">1 platform · ", ">Created today</span>", "docker pull registry.example.com/myteam/api:main</code>", "docker pull registry.example.com/myteam/api@" + single.Digest, "Digest</dt>"},
+			want: []string{">1 platform · ", `UTC">Created today</time>`, "docker pull registry.example.com/myteam/api:main</code>", "docker pull registry.example.com/myteam/api@" + single.Digest, "Digest</dt>"},
 			not:  []string{"Same as", "Index digest"},
 		},
 		{
@@ -348,7 +350,7 @@ func TestMissingPlatformsInRegistry(t *testing.T) {
 		s := newTestServer(t, "/")
 		s.Src = src
 		for repo, want := range map[string][]string{
-			registrytest.RepoSomeMissing: {"2 platforms (1 missing)", `title="Latest created `},
+			registrytest.RepoSomeMissing: {"2 platforms (1 missing)", `<time datetime="`, ` UTC" data-title="Latest created {}">`},
 			registrytest.RepoAllMissing:  {"3 platforms, all missing"},
 		} {
 			req := httptest.NewRequest("GET", "/?fragment=row&repo="+repo, nil)
@@ -418,7 +420,7 @@ func TestMissingManifestInRegistry(t *testing.T) {
 		list := get(t, s, "/", repo+"?view=list&fragment=row&tag="+tag, true).Body.String()
 		check("list row", list, []string{`data-tag="latest" data-pull=""`, `aria-label="Select latest"`, "</svg>manifest missing</span>"}, []string{"sha256:", "data-copy", "Unknown"})
 		if name == "storage" {
-			check("list row", list, []string{`<span title="` + format.Date(updated) + `">today</span>`}, nil)
+			check("list row", list, []string{string(format.Time(updated))}, nil)
 		}
 		// "Same as" leaves it out.
 		other := get(t, s, "/", repo+"?fragment=card&tag="+registrytest.TagVersion, true).Body.String()
