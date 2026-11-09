@@ -14,14 +14,15 @@ import (
 // ends with a note instead of hanging. A var so tests can shorten it.
 var sortTimeout = 10 * time.Second
 
-// sortChoice is one order a list can be sorted in. The first of a page's
-// choices is its default, with Value "" so default URLs stay clean.
+// sortChoice is one order a list can be sorted in. A page's default has
+// Value "" so default URLs stay clean: the catalog's first, and whichever
+// of the tags' withDefault picks.
 type sortChoice struct{ Value, Label string }
 
 var (
 	// "updated" is only offered when the source has tag times; see sorts.
 	catalogSorts = []sortChoice{{"", "Name A–Z"}, {"name-desc", "Name Z–A"}, {"created", "Recently created"}, {"updated", "Recently updated"}, {"tags", "Most tags"}}
-	tagSorts     = []sortChoice{{"", "Version, newest first"}, {"version-asc", "Version, oldest first"}, {"name", "Name A–Z"}, {"created", "Recently created"}, {"updated", "Recently updated"}, {"size", "Largest first"}}
+	tagSorts     = []sortChoice{{"version", "Version, newest first"}, {"version-asc", "Version, oldest first"}, {"name", "Name A–Z"}, {"created", "Recently created"}, {"updated", "Recently updated"}, {"size", "Largest first"}}
 )
 
 // tagTimes reports whether the source knows when tags last changed, as
@@ -38,6 +39,18 @@ func sorts(choices []sortChoice, tagTimes bool) []sortChoice {
 		return choices
 	}
 	return slices.DeleteFunc(slices.Clone(choices), func(c sortChoice) bool { return c.Value == "updated" })
+}
+
+// withDefault is choices with the one named def made the default: its Value
+// is "", so its links carry no sort and its own name falls back to it.
+func withDefault(choices []sortChoice, def string) []sortChoice {
+	choices = slices.Clone(choices)
+	for i, c := range choices {
+		if c.Value == def {
+			choices[i].Value = ""
+		}
+	}
+	return choices
 }
 
 // sortMenu is the data for the "sort-menu" template.

@@ -85,7 +85,7 @@ func serve() error {
 	if err != nil {
 		return err
 	}
-	p := &pages.Server{Src: src, Templates: tmpl, Title: cfg.Title, PullHost: cfg.PullURL, BasePath: cfg.BasePath, Sessions: sessions, Storage: cfg.StoragePath != ""}
+	p := &pages.Server{Src: src, Templates: tmpl, Title: cfg.Title, PullHost: cfg.PullURL, BasePath: cfg.BasePath, Sessions: sessions, Storage: cfg.StoragePath != "", TagSort: cfg.TagSort, TagsPerPage: cfg.TagsPerPage}
 	if check != nil {
 		p.Check = check.Check
 	}

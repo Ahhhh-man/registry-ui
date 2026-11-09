@@ -22,7 +22,6 @@ import (
 )
 
 const (
-	tagsPerPage = 100
 	// resolveLimit caps the manifest lookups one page makes at once.
 	resolveLimit = 8
 	// sameAsShown is how many "Same as" tags a card names before "+N".
@@ -50,7 +49,8 @@ type repoView struct {
 	Description           string
 	Pills                 []pill
 	TagCount              int    // every tag in the repo
-	Query, View, Sort     string // the tag filter, view and sort order, kept in links
+	Query, View, Sort     string // the tag filter, view and ?sort=, kept in links; Sort is "" for the default order
+	order                 string // the order the tags are in: Sort, or the default's name
 	Type                  string // the ?type= filter, also kept
 	Menu                  sortMenu
 	Chips                 []typeChip
@@ -129,8 +129,10 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 		Repo: ref.Repo, TagCount: len(tags), Query: strings.TrimSpace(q.Get("q")), View: q.Get("view"),
 		Type: pickSort(contentTypes, q.Get("type")), TagTimes: s.tagTimes(r.Context()), Storage: s.Storage,
 	}
-	choices := sorts(tagSorts, v.TagTimes)
+	def := cmp.Or(s.TagSort, "version")
+	choices := withDefault(sorts(tagSorts, v.TagTimes), def)
 	v.Sort = pickSort(choices, q.Get("sort"))
+	v.order = cmp.Or(v.Sort, def)
 	v.Namespace, v.Name = splitRepo(ref.Repo)
 	if v.Namespace != "" {
 		v.Prefix = v.Namespace + "/"
@@ -146,11 +148,12 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 	f := strings.ToLower(v.Query)
 	matches := slices.DeleteFunc(slices.Clone(tags), func(t string) bool { return !strings.Contains(strings.ToLower(t), f) })
 	matches, counts, note := s.filterTags(r.Context(), ref.Repo, matches, v.Type)
-	v.Note = cmp.Or(s.sortTags(r.Context(), ref.Repo, matches, v.Sort), note)
-	v.Pages = max(1, (len(matches)+tagsPerPage-1)/tagsPerPage)
+	v.Note = cmp.Or(s.sortTags(r.Context(), ref.Repo, matches, v.order), note)
+	per := cmp.Or(s.TagsPerPage, 100)
+	v.Pages = max(1, (len(matches)+per-1)/per)
 	v.Page, _ = strconv.Atoi(q.Get("page"))
 	v.Page = min(max(v.Page, 1), v.Pages)
-	page := matches[(v.Page-1)*tagsPerPage : min(v.Page*tagsPerPage, len(matches))]
+	page := matches[(v.Page-1)*per : min(v.Page*per, len(matches))]
 
 	switch web.Fragment(r) {
 	case "card":
@@ -302,7 +305,7 @@ func (s *Server) sortTags(ctx context.Context, repo string, tags []string, by st
 // already fetched their details, so they don't each ask again. A card that
 // fails keeps loading on its own, to show its error.
 func (s *Server) loadCards(ctx context.Context, v *repoView, page []string) {
-	if (v.Sort != "created" && v.Sort != "size") || v.Note != "" {
+	if (v.order != "created" && v.order != "size") || v.Note != "" {
 		return
 	}
 	ms, errs := s.resolveAll(ctx, v.Repo, page)

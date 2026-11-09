@@ -18,7 +18,7 @@ import (
 )
 
 // sameAsLimit caps the tags resolved to find "Same as" tags, the same
-// bound as the repo page's 100 tags per page.
+// bound as the repo page's default tags per page.
 const sameAsLimit = 100
 
 // tagView is the data for the "tag", "tag-band" and "tag-not-found" templates.

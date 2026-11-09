@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -37,7 +38,16 @@ type Config struct {
 	// StoragePath, when set, is an existing directory holding the registry's
 	// filesystem storage (storage mode).
 	StoragePath string
+	// TagSort is the order a repository's tags are listed in when the URL
+	// doesn't say, one of tagSorts.
+	TagSort string
+	// TagsPerPage is how many tags a repository's page lists.
+	TagsPerPage int
 }
+
+// tagSorts are the values of REGISTRY_UI_TAG_SORT: the repo page's ?sort=
+// values, plus "version" for the order that has none.
+var tagSorts = []string{"version", "version-asc", "name", "created", "updated", "size"}
 
 // Load reads the REGISTRY_UI_* variables through getenv (usually os.Getenv).
 // An empty value counts as unset. Every invalid value is reported in the
@@ -120,6 +130,26 @@ func Load(getenv func(string) string) (Config, error) {
 		}
 	}
 
+	c.TagSort = "version"
+	if v := getenv("REGISTRY_UI_TAG_SORT"); v != "" {
+		c.TagSort = v
+		if !slices.Contains(tagSorts, v) {
+			bad("REGISTRY_UI_TAG_SORT", "%q is not one of version, version-asc, name, created, updated or size", v)
+		} else if v == "updated" && c.StoragePath == "" {
+			bad("REGISTRY_UI_TAG_SORT", "%q needs REGISTRY_UI_STORAGE_PATH: only the registry's storage records when a tag was updated", v)
+		}
+	}
+
+	c.TagsPerPage = 100
+	if v := getenv("REGISTRY_UI_TAGS_PER_PAGE"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 10 || n > 500 {
+			bad("REGISTRY_UI_TAGS_PER_PAGE", "%q is not a number from 10 to 500", v)
+		} else {
+			c.TagsPerPage = n
+		}
+	}
+
 	return c, errors.Join(errs...)
 }
 
@@ -140,5 +170,7 @@ func (c Config) LogValue() slog.Value {
 		slog.Bool("registry_insecure", c.RegistryInsecure),
 		slog.String("log_level", c.LogLevel.String()),
 		slog.String("storage_path", c.StoragePath),
+		slog.String("tag_sort", c.TagSort),
+		slog.Int("tags_per_page", c.TagsPerPage),
 	)
 }

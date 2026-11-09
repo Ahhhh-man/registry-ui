@@ -73,8 +73,12 @@ Everything is an environment variable. There are no config files or flags, and a
 | `REGISTRY_UI_REGISTRY_INSECURE` | `false` | Skip TLS verification when talking to the registry. |
 | `REGISTRY_UI_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. |
 | `REGISTRY_UI_STORAGE_PATH` | unset | Read the registry's storage folder directly instead of its API. See [Pull-through caches](#pull-through-caches). |
+| `REGISTRY_UI_TAG_SORT` | `version` | The order a repository's tags are listed in until someone picks another: `version` (newest first), `version-asc`, `name`, `created`, `updated` (storage mode only) or `size`. |
+| `REGISTRY_UI_TAGS_PER_PAGE` | `100` | Tags per page, from 10 to 500. |
 
 If a value is invalid, the UI won't start, and it prints one line per problem.
+
+The `created` and `size` orders have to read every tag's details before the list can be drawn. On a repository with thousands of tags in API mode, that makes the first visit slow. If it takes more than 10 seconds, the list falls back to version order and says so.
 
 ### TLS and reverse proxies
 

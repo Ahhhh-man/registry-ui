@@ -268,3 +268,102 @@ func TestNoUpdatedInAPIMode(t *testing.T) {
 		}
 	}
 }
+
+// A configured default order is the one with clean URLs; version order
+// then has a name like the rest.
+func TestRepoDefaultSort(t *testing.T) {
+	s := newTestServer(t, "/")
+	s.TagSort = "name"
+	const byName = "1.10.3 1.25.5 1.26 "
+
+	body := get(t, s, "/", "/library/nginx?tab=tags", false).Body.String()
+	if got := strings.Join(cardTags(body), " "); !strings.HasPrefix(got, byName) {
+		t.Errorf("default order = %s, want by name", got)
+	}
+	contains(t, body,
+		`<span class="sr-only">Sort by </span>Name A–Z<svg`,
+		`<a href="/library/nginx?tab=tags" aria-current="true"`,
+		`<a href="/library/nginx?sort=version&amp;tab=tags" class=`,
+		`<a href="/library/nginx?sort=size&amp;tab=tags" class=`,
+	)
+	if strings.Contains(body, `name="sort"`) || strings.Contains(body, "sort=name") {
+		t.Error("the default order shouldn't be named in a field or a link")
+	}
+
+	body = get(t, s, "/", "/library/nginx?sort=version", false).Body.String()
+	if got := strings.Join(cardTags(body), " "); !strings.HasPrefix(got, "latest stable ") || !strings.HasSuffix(got, " 1.10.3 1.9.15") {
+		t.Errorf("?sort=version = %s, want version order", got)
+	}
+	contains(t, body,
+		`<span class="sr-only">Sort by </span>Version, newest first<svg`,
+		`<a href="/library/nginx?sort=version&amp;tab=tags" aria-current="true"`,
+		`<input type="hidden" name="sort" value="version">`,
+	)
+
+	// The default's own name, and one that isn't an order, give the default.
+	for _, sort := range []string{"name", "nope"} {
+		if got := strings.Join(cardTags(get(t, s, "/", "/library/nginx?sort="+sort, false).Body.String()), " "); !strings.HasPrefix(got, byName) {
+			t.Errorf("?sort=%s = %s, want by name", sort, got)
+		}
+	}
+	// The list view and the tags fragment follow the default too.
+	for _, path := range []string{"/library/nginx?view=list", "/library/nginx?fragment=tags"} {
+		if got := strings.Join(cardTags(get(t, s, "/", path, strings.Contains(path, "fragment")).Body.String()), " "); !strings.HasPrefix(got, byName) {
+			t.Errorf("%s = %s, want by name", path, got)
+		}
+	}
+	// The Overview tab's dropdown stays in version order.
+	body = get(t, s, "/", "/library/nginx", false).Body.String()
+	if i, j := strings.Index(body, ">1.10.3</option>"), strings.Index(body, ">1.9.15</option>"); i < 0 || j < i {
+		t.Errorf("overview dropdown: 1.10.3 at %d, 1.9.15 at %d, want version order", i, j)
+	}
+
+	// A detail order as the default renders its cards loaded, like ?sort=created.
+	s.TagSort = "created"
+	body = get(t, s, "/", "/library/nginx?tab=tags", false).Body.String()
+	if got := strings.Join(cardTags(body), " "); strings.Contains(body, "aria-busy") || !strings.HasPrefix(got, "latest mainline ") {
+		t.Errorf("default created = %s, or its cards aren't loaded", got)
+	}
+
+	// With the default left alone, ?sort=version is still accepted.
+	s.TagSort = ""
+	body = get(t, s, "/", "/library/nginx?sort=version", false).Body.String()
+	if got := strings.Join(cardTags(body), " "); !strings.HasPrefix(got, "latest stable ") || strings.Contains(body, `name="sort"`) {
+		t.Errorf("?sort=version as the default = %s", got)
+	}
+}
+
+func TestRepoTagsPerPage(t *testing.T) {
+	s := newTestServer(t, "/")
+	s.Src = &manyTags{Source: s.Src, n: 25}
+	s.TagsPerPage = 10
+
+	body := get(t, s, "/", "/many?tab=tags", false).Body.String()
+	if tags := cardTags(body); len(tags) != 10 || tags[0] != "v25" || tags[9] != "v16" {
+		t.Errorf("page 1 = %v", tags)
+	}
+	contains(t, body, "Page 1 of 3", `href="/many?page=2&amp;tab=tags"`)
+
+	body = get(t, s, "/", "/many?page=2&tab=tags", false).Body.String()
+	if tags := cardTags(body); len(tags) != 10 || tags[0] != "v15" {
+		t.Errorf("page 2 = %v", tags)
+	}
+	contains(t, body, "Page 2 of 3", `href="/many?tab=tags"`, `href="/many?page=3&amp;tab=tags"`)
+
+	// The last page, also where a page past the end lands.
+	for _, page := range []string{"3", "9"} {
+		body = get(t, s, "/", "/many?tab=tags&page="+page, false).Body.String()
+		if tags := cardTags(body); len(tags) != 5 || tags[4] != "v1" || strings.Contains(body, ">Next<") {
+			t.Errorf("page %s = %v", page, tags)
+		}
+		contains(t, body, "Page 3 of 3", `href="/many?page=2&amp;tab=tags"`)
+	}
+
+	// A card's details are looked up on its own, smaller page.
+	if rec := get(t, s, "/", "/many?fragment=card&page=2&tag=v15", true); rec.Code != 200 {
+		t.Errorf("card on page 2: status %d", rec.Code)
+	}
+	if rec := get(t, s, "/", "/many?fragment=card&tag=v15", true); rec.Code != 404 {
+		t.Errorf("page 2's card asked of page 1: status %d", rec.Code)
+	}
+}

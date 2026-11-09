@@ -137,6 +137,56 @@ func TestLoadErrors(t *testing.T) {
 	}
 }
 
+func TestLoadTagSortAndPageSize(t *testing.T) {
+	dir := t.TempDir()
+	api := func(k, v string) map[string]string {
+		return map[string]string{"REGISTRY_UI_REGISTRY_URL": "http://registry:5000", k: v}
+	}
+	storage := func(k, v string) map[string]string {
+		return map[string]string{"REGISTRY_UI_STORAGE_PATH": dir, "REGISTRY_UI_PULL_URL": "cache.example.com", k: v}
+	}
+	tests := []struct {
+		name string
+		env  map[string]string
+		sort string
+		per  int
+		err  string // "" if the environment is valid
+	}{
+		{name: "defaults", env: api("", ""), sort: "version", per: 100},
+		{name: "version", env: api("REGISTRY_UI_TAG_SORT", "version"), sort: "version", per: 100},
+		{name: "version-asc", env: api("REGISTRY_UI_TAG_SORT", "version-asc"), sort: "version-asc", per: 100},
+		{name: "name", env: api("REGISTRY_UI_TAG_SORT", "name"), sort: "name", per: 100},
+		{name: "created", env: api("REGISTRY_UI_TAG_SORT", "created"), sort: "created", per: 100},
+		{name: "size", env: api("REGISTRY_UI_TAG_SORT", "size"), sort: "size", per: 100},
+		{name: "updated in storage mode", env: storage("REGISTRY_UI_TAG_SORT", "updated"), sort: "updated", per: 100},
+		{name: "updated without storage mode", env: api("REGISTRY_UI_TAG_SORT", "updated"), err: `REGISTRY_UI_TAG_SORT: "updated" needs REGISTRY_UI_STORAGE_PATH`},
+		{name: "unknown sort", env: api("REGISTRY_UI_TAG_SORT", "newest"), err: `REGISTRY_UI_TAG_SORT: "newest" is not one of version, version-asc, name, created, updated or size`},
+		{name: "catalog-only sort", env: api("REGISTRY_UI_TAG_SORT", "tags"), err: "REGISTRY_UI_TAG_SORT:"},
+		{name: "smallest page", env: api("REGISTRY_UI_TAGS_PER_PAGE", "10"), sort: "version", per: 10},
+		{name: "largest page", env: api("REGISTRY_UI_TAGS_PER_PAGE", "500"), sort: "version", per: 500},
+		{name: "page too small", env: api("REGISTRY_UI_TAGS_PER_PAGE", "9"), err: `REGISTRY_UI_TAGS_PER_PAGE: "9" is not a number from 10 to 500`},
+		{name: "page too large", env: api("REGISTRY_UI_TAGS_PER_PAGE", "501"), err: "REGISTRY_UI_TAGS_PER_PAGE:"},
+		{name: "page not a number", env: api("REGISTRY_UI_TAGS_PER_PAGE", "lots"), err: "REGISTRY_UI_TAGS_PER_PAGE:"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, err := load(tt.env)
+			if tt.err != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.err) {
+					t.Errorf("got %v, want an error containing %q", err, tt.err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if c.TagSort != tt.sort || c.TagsPerPage != tt.per {
+				t.Errorf("got %q, %d; want %q, %d", c.TagSort, c.TagsPerPage, tt.sort, tt.per)
+			}
+		})
+	}
+}
+
 func TestLoadReportsEveryError(t *testing.T) {
 	_, err := load(map[string]string{
 		"REGISTRY_UI_LISTEN":    "nope",

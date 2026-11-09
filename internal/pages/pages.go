@@ -26,6 +26,11 @@ type Server struct {
 	// Storage is set in storage mode, where a platform missing from an
 	// index is one nobody has pulled through the cache yet.
 	Storage bool
+	// TagSort is the order a repository's tags are in when the URL has no
+	// ?sort=, one of the tag sorts' names; "" means "version". TagsPerPage
+	// is how many tags a page lists; 0 means 100.
+	TagSort     string
+	TagsPerPage int
 
 	// Sessions and Check enable /-/login and /-/logout, and signing pages'
 	// registry requests in as the session's user. Check asks the registry,
