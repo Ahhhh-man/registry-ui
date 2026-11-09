@@ -78,8 +78,13 @@ func (s *Server) Catalog(w http.ResponseWriter, r *http.Request, _ web.Ref) {
 	q, path := strings.TrimSpace(r.URL.Query().Get("q")), r.URL.EscapedPath()
 	choices := sorts(catalogSorts, s.tagTimes(r.Context()))
 	data := catalogPage{Host: s.PullHost, Total: len(repos), Disk: s.diskUsage(r.Context()), Query: q, Sort: pickSort(choices, r.URL.Query().Get("sort")), Type: pickSort(contentTypes, r.URL.Query().Get("type"))}
+	// A query ending in "/" is a namespace: it matches from the start of the name.
+	match := strings.Contains
+	if strings.HasSuffix(q, "/") {
+		match = strings.HasPrefix
+	}
 	for _, name := range repos {
-		if strings.Contains(name, strings.ToLower(q)) {
+		if match(name, strings.ToLower(q)) {
 			data.Rows = append(data.Rows, catalogRow{Repo: name})
 		}
 	}

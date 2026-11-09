@@ -2,7 +2,7 @@
 
 {{define "tag-breadcrumbs" -}}
 {{$trail := list (dict "Label" "Repositories" "Href" catalogURL) (dict "Label" .Name "Href" (repoURL .Repo))}}
-{{- with .Namespace}}{{$trail = list (dict "Label" "Repositories" "Href" catalogURL) (dict "Label" .) (dict "Label" $.Name "Href" (repoURL $.Repo))}}{{end}}
+{{- with .Namespace}}{{$trail = list (dict "Label" "Repositories" "Href" catalogURL) (dict "Label" . "Href" (print catalogURL "?q=" . "/")) (dict "Label" $.Name "Href" (repoURL $.Repo))}}{{end}}
 {{- template "breadcrumbs" (dict "Trail" $trail "Current" .Title)}}
 {{- end}}
 

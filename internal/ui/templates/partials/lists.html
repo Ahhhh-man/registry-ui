@@ -9,7 +9,9 @@
 </div>
 {{- end}}
 
-{{/* repo-row: a catalog row linking to a repository. Until Loaded or
+{{/* repo-row: a catalog row linking to a repository. The name's link is
+     stretched over the whole row, and the namespace's link, to the catalog
+     filtered to it, sits above that. Until Loaded or
      Failed it shows skeletons and, once scrolled into view, replaces itself
      with the catalog's row fragment for Repo. Loaded rows carry
      data-tags for app.js's tag total. A loaded row without tags is an
@@ -20,13 +22,14 @@
            the latest tag was created. */}}
 {{define "repo-row" -}}
 {{$empty := and .Loaded (not .Tags) -}}
-<a href="{{repoURL .Repo}}" data-row
+<div data-row
 {{- if .Loaded}} data-tags="{{.Tags}}"{{else if not .Failed}} aria-busy="true" hx-get="{{catalogURL}}?fragment=row&amp;repo={{.Repo}}" hx-trigger="intersect once" hx-swap="outerHTML"{{end}}
- class="group flex items-center gap-4 rounded-md border border-border bg-surface px-4 py-3 hover:border-accent/50">
+ class="group relative flex items-center gap-4 rounded-md border border-border bg-surface px-4 py-3 hover:border-accent/50">
 {{- if $empty}}<span class="shrink-0 opacity-50">{{template "repo-tile" (dict "Repo" .Repo)}}</span>
 {{- else}}{{template "repo-tile" (dict "Repo" .Repo "Helm" .Helm)}}{{end}}
 <div class="min-w-0 flex-1">
-<div class="truncate text-base font-semibold{{if $empty}} text-muted{{end}}">{{with .Namespace}}<span class="font-medium text-faint">{{.}}</span>{{end}}{{.Name}}</div>
+{{- /* The padding leaves room for the namespace's focus ring inside the truncation. */}}
+<div class="-mx-1 truncate px-1 text-base font-semibold{{if $empty}} text-muted{{end}}">{{with .Namespace}}<a href="{{print catalogURL "?q=" .}}" aria-label="Repositories in {{.}}" class="relative z-10 rounded-sm font-medium text-faint outline-offset-0 hover:underline">{{.}}</a>{{end}}<a href="{{repoURL .Repo}}" class="after:absolute after:-inset-px after:rounded-md focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-accent">{{.Name}}</a></div>
 <div class="mt-0.5 truncate text-muted">
 {{- if .Failed}}<span class="text-faint">Couldn't load details</span>
 {{- else if not .Loaded}}{{template "skeleton" "w-1/2"}}
@@ -41,9 +44,10 @@
 {{- else if .Platforms}}<span class="inline-flex items-center gap-1.5">{{icon "cpu" "text-faint"}}{{.Platforms}}</span>{{end}}
 <span class="inline-flex items-center gap-1.5">{{icon "tag" "text-faint"}}{{.Tags}} tag{{if ne .Tags 1}}s{{end}}</span>
 {{- if not .Created.IsZero}}
-<span class="inline-flex items-center gap-1.5">{{icon "clock" "text-faint"}}{{time .Created "" "Latest created {}"}}</span>{{end}}
+{{- /* Above the row's stretched link, so hovering the date shows when exactly. */}}
+<span class="relative z-10 inline-flex items-center gap-1.5">{{icon "clock" "text-faint"}}{{time .Created "" "Latest created {}"}}</span>{{end}}
 {{- else if not .Failed}}{{template "skeleton" "w-16"}}{{template "skeleton" "w-12"}}{{template "skeleton" "w-16"}}{{end}}
 </div>
 {{icon "chevron-right" "text-faint group-hover:text-accent"}}
-</a>
+</div>
 {{- end}}

@@ -84,8 +84,11 @@ func TestCatalogPage(t *testing.T) {
 		`data-stat="tags"`,
 		"All repositories", // unfiltered
 		"data-repo-list",   // so the rows add up to the total
-		`<a href="/library/nginx" data-row aria-busy="true" hx-get="/?fragment=row&amp;repo=library/nginx" hx-trigger="intersect once"`,
-		`<span class="font-medium text-faint">myteam/web/</span>frontend`,
+		`<div data-row aria-busy="true" hx-get="/?fragment=row&amp;repo=library/nginx" hx-trigger="intersect once"`,
+		`<a href="/library/nginx" class=`,
+		// A nested namespace is one link.
+		`<a href="/?q=myteam/web/" aria-label="Repositories in myteam/web/" class=`,
+		`>myteam/web/</a><a href="/myteam/web/frontend" class=`,
 	)
 	if n := strings.Count(body, "data-row"); n != 8 {
 		t.Errorf("%d rows, want 8", n)
@@ -113,6 +116,40 @@ func TestCatalogFilter(t *testing.T) {
 	}
 }
 
+// A query ending in "/" is a namespace, matched from the start of the name.
+func TestCatalogNamespaceFilter(t *testing.T) {
+	repos := []string{"library/nginx", "library/redis/exporter", "mirror/library/nginx", "my-library/app", "team/apps/api"}
+	for q, want := range map[string]string{
+		"library/":    "[library/nginx library/redis/exporter]",
+		"Library/":    "[library/nginx library/redis/exporter]",
+		"team/apps/":  "[team/apps/api]",
+		"apps/":       "[]", // only in the middle
+		"library":     "[library/nginx library/redis/exporter mirror/library/nginx my-library/app]",
+		"library/ngi": "[library/nginx mirror/library/nginx]",
+	} {
+		rec, _ := getCatalog(t, "/", "/?q="+q, false, func(c *countingSource) { c.repos = repos })
+		if got := fmt.Sprint(rowRepos(rec.Body.String())); got != want {
+			t.Errorf("?q=%s: %s, want %s", q, got, want)
+		}
+	}
+}
+
+// A row's namespace and name are links side by side, never one in the other.
+func TestCatalogRowLinks(t *testing.T) {
+	for repo, links := range map[string]int{"library/nginx": 2, "gone/away": 2, "solo": 1} {
+		rec, _ := getCatalog(t, "/", "/?fragment=row&repo="+repo, true, nil)
+		parts := strings.Split(rec.Body.String(), "<a ")
+		if len(parts)-1 != links {
+			t.Errorf("%s: %d links, want %d", repo, len(parts)-1, links)
+		}
+		for _, p := range parts[1:] {
+			if !strings.Contains(p, "</a>") {
+				t.Errorf("%s: a link inside a link: %s", repo, p)
+			}
+		}
+	}
+}
+
 func TestCatalogEmpty(t *testing.T) {
 	rec, _ := getCatalog(t, "/", "/?q=zzz", false, nil)
 	contains(t, rec.Body.String(), "No repositories match “zzz”", "Show all repositories")
@@ -131,7 +168,7 @@ func TestCatalogRow(t *testing.T) {
 	if strings.Contains(body, "<!doctype") || strings.Contains(body, "hx-get") || strings.Contains(body, "aria-busy") {
 		t.Errorf("want a loaded row alone, got\n%s", body)
 	}
-	contains(t, body, `<a href="/library/nginx" data-row data-tags="15"`, "Official build of Nginx", "6 platforms", "15 tags", `<time datetime="`, ` UTC" data-title="Latest created {}">2 days ago</time>`)
+	contains(t, body, `<div data-row data-tags="15"`, `<a href="/library/nginx" class=`, "Official build of Nginx", "6 platforms", "15 tags", `<time datetime="`, ` UTC" data-title="Latest created {}">2 days ago</time>`)
 	if src.catalog != 0 || src.tags != 1 || src.resolve != 1 || src.config != 1 {
 		t.Errorf("calls: catalog %d, tags %d, resolve %d, config %d", src.catalog, src.tags, src.resolve, src.config)
 	}
@@ -144,7 +181,7 @@ func TestCatalogRow(t *testing.T) {
 
 	rec, _ = getCatalog(t, "/", "/?fragment=row&repo=gone/away", true, nil)
 	body = rec.Body.String()
-	contains(t, body, `<a href="/gone/away" data-row`, "Couldn't load details")
+	contains(t, body, `<div data-row`, `<a href="/?q=gone/"`, `<a href="/gone/away" class=`, "Couldn't load details")
 	if strings.Contains(body, "data-tags") {
 		t.Error("a failed row must not count towards the tag total")
 	}
@@ -162,7 +199,9 @@ func TestCatalogError(t *testing.T) {
 func TestCatalogBasePath(t *testing.T) {
 	rec, _ := getCatalog(t, "/registry/", "/registry/", false, nil)
 	contains(t, rec.Body.String(),
-		`<a href="/registry/library/nginx" data-row aria-busy="true" hx-get="/registry/?fragment=row&amp;repo=library/nginx"`,
+		`<div data-row aria-busy="true" hx-get="/registry/?fragment=row&amp;repo=library/nginx"`,
+		`<a href="/registry/?q=library/" aria-label="Repositories in library/" class=`,
+		`<a href="/registry/library/nginx" class=`,
 		`<section id="repo-list" hx-get="/registry/"`,
 	)
 	rec, _ = getCatalog(t, "/registry/", "/registry/?q=zzz", false, nil)

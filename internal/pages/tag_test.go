@@ -245,12 +245,13 @@ func TestTagPageBasePath(t *testing.T) {
 	s := newTestServer(t, "/registry/")
 	for path, wants := range map[string][]string{
 		"/registry/library/nginx:1.27.3": {
-			`<a href="/registry/" class="hover:text-text">Repositories</a>`,
+			`<a href="/registry/" class="hover:text-text">Repositories</a>`, `<a href="/registry/?q=library/" class="hover:text-text">library</a>`,
 			`<a href="/registry/library/nginx" class="hover:text-text">nginx</a>`,
 			`<a href="/registry/library/nginx:latest" class=`,
 			`<a href="/registry/library/nginx@` + nginx.Platforms[1].Digest + `" class=`,
 		},
-		"/registry/library/nginx:" + sig: {`<a href="/registry/library/nginx@` + nginx.Digest + `" class=`},
+		"/registry/library/nginx:" + sig:          {`<a href="/registry/library/nginx@` + nginx.Digest + `" class=`},
+		"/registry/library/nginx@" + nginx.Digest: {`<a href="/registry/?q=library/" class="hover:text-text">library</a>`},
 	} {
 		_, body := getPage(t, s, "/registry/", path, false)
 		for _, w := range wants {

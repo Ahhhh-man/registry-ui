@@ -16,7 +16,7 @@ import (
 // rowRepos returns the repositories of the catalog rows in body, in order.
 func rowRepos(body string) []string {
 	var repos []string
-	for _, m := range regexp.MustCompile(`<a href="/([^"]+)" data-row`).FindAllStringSubmatch(body, -1) {
+	for _, m := range regexp.MustCompile(`<a href="/([^"]+)" class="after:absolute`).FindAllStringSubmatch(body, -1) {
 		repos = append(repos, m[1])
 	}
 	return repos

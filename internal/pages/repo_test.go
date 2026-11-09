@@ -405,7 +405,7 @@ func TestRepoNotFound(t *testing.T) {
 func TestRepoBasePath(t *testing.T) {
 	s := newTestServer(t, "/registry/")
 	body := get(t, s, "/registry/", "/registry/library/nginx?tab=tags", false).Body.String()
-	for _, want := range []string{`href="/registry/library/nginx:1.27.3"`, `hx-get="/registry/library/nginx?fragment=card&amp;tag=1.27.3"`, `action="/registry/library/nginx"`, `<a href="/registry/" class="hover:text-text">Repositories</a>`} {
+	for _, want := range []string{`href="/registry/library/nginx:1.27.3"`, `hx-get="/registry/library/nginx?fragment=card&amp;tag=1.27.3"`, `action="/registry/library/nginx"`, `<a href="/registry/" class="hover:text-text">Repositories</a>`, `<a href="/registry/?q=library/" class="hover:text-text">library</a>`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page lacks %s", want)
 		}

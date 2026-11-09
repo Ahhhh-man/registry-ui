@@ -154,7 +154,7 @@ var partialCases = []struct {
 	},
 	{
 		"repo-row loading", `{{template "repo-row" (dict "Repo" "library/nginx" "Namespace" "library/" "Name" "nginx")}}`,
-		[]string{`<a href="/library/nginx" data-row aria-busy="true" hx-get="/?fragment=row&amp;repo=library/nginx" hx-trigger="intersect once" hx-swap="outerHTML"`, `<span class="font-medium text-faint">library/</span>nginx</div>`, "animate-pulse w-1/2"},
+		[]string{`<div data-row aria-busy="true" hx-get="/?fragment=row&amp;repo=library/nginx" hx-trigger="intersect once" hx-swap="outerHTML"`, `<a href="/?q=library/" aria-label="Repositories in library/" class=`, `>library/</a><a href="/library/nginx" class=`, `>nginx</a></div>`, "animate-pulse w-1/2"},
 	},
 	{
 		"repo-row loaded", `{{template "repo-row" (dict "Repo" "charts/podinfo" "Namespace" "charts/" "Name" "podinfo" "Loaded" true "Helm" true "Tags" 1 "Created" .)}}`,

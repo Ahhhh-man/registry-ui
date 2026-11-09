@@ -3,7 +3,7 @@
      pages.tagCard) in the cards and list views. */}}
 {{define "repo" -}}
 {{$trail := list (dict "Label" "Repositories" "Href" catalogURL)}}
-{{- with .Namespace}}{{$trail = list (dict "Label" "Repositories" "Href" catalogURL) (dict "Label" .)}}{{end -}}
+{{- with .Namespace}}{{$trail = list (dict "Label" "Repositories" "Href" catalogURL) (dict "Label" . "Href" (print catalogURL "?q=" . "/"))}}{{end -}}
 <div class="flex flex-col gap-5">
 {{template "breadcrumbs" (dict "Trail" $trail "Current" .Name)}}
 {{template "page-header" (dict "Repo" .Repo "Helm" .Helm "Prefix" .Prefix "Title" .Name "Description" .Description "Pills" .Pills)}}
