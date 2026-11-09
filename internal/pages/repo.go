@@ -95,10 +95,20 @@ type tagCard struct {
 	Command          string   // pull or verify command; "" when there's none
 	Type             string   // what a tag without platforms holds, e.g. "Helm chart"
 	Size             int64
-	Main             string // the platform Size and Created are from, when there are several
-	Platforms        []registry.Platform
-	Updated          time.Time // when the tag last changed on the registry; zero if unknown
-	TagTimes         bool      // the source has tag times, so a list row has an Updated cell
+	Unknown          bool                // every platform is missing, so Size and Created aren't known
+	Main             string              // the platform Size and Created are from, when there are several
+	Platforms        []registry.Platform // missing ones last
+	Updated          time.Time           // when the tag last changed on the registry; zero if unknown
+	TagTimes         bool                // the source has tag times, so a list row has an Updated cell
+}
+
+// PlatformCount is how many platforms the tag has, e.g. "3 platforms (1 missing)".
+func (c tagCard) PlatformCount() string { return platformCount(c.Platforms) }
+
+// MorePlatforms labels the platforms a card hides behind its first three,
+// e.g. "1 more platform (2 missing)".
+func (c tagCard) MorePlatforms() string {
+	return strings.Replace(platformCount(c.Platforms[min(3, len(c.Platforms)):]), " platform", " more platform", 1)
 }
 
 // Repo serves a repository's page: the Tags tab in the cards or list view,
@@ -320,11 +330,13 @@ func (s *Server) header(ctx context.Context, v *repoView, tags []string) {
 		return
 	}
 	v.Helm, v.kind = m.Kind == registry.KindHelm, typeOf(m.Kind)
+	if len(m.Platforms) > 0 {
+		pills = append(pills, pill{Icon: "cpu", Text: platformCount(m.Platforms)})
+	}
 	p, ok := mainPlatform(m)
 	if !ok {
 		return
 	}
-	pills = append(pills, pill{Icon: "cpu", Text: plural(len(m.Platforms), "platform")})
 	cfg, err := s.Src.Config(ctx, v.Repo, p.Config)
 	if err != nil {
 		return
@@ -439,7 +451,7 @@ func (s *Server) tagDetails(ctx context.Context, repo string, page []string, ms 
 
 // card returns a tag's details from m, its manifest; all but SameAs.
 func (s *Server) card(ctx context.Context, repo, tag string, m registry.Manifest) (tagCard, error) {
-	c := tagCard{Repo: repo, Tag: tag, Label: tagLabel(tag), Badges: latestBadge(tag), Digest: m.Digest, Size: m.Size, Platforms: m.Platforms}
+	c := tagCard{Repo: repo, Tag: tag, Label: tagLabel(tag), Badges: latestBadge(tag), Digest: m.Digest, Size: m.Size, Platforms: availableFirst(m.Platforms)}
 	c.Command = command(s.PullHost, repo, tag, m.Kind)
 	var err error
 	c.Updated, err = s.Src.TagTime(ctx, repo, tag) // decoration: an error just leaves it out
@@ -470,6 +482,8 @@ func (s *Server) card(ctx context.Context, repo, tag string, m registry.Manifest
 		if len(m.Platforms) > 1 {
 			c.Main = format.Platform(p)
 		}
+	} else if len(m.Platforms) > 0 {
+		c.Unknown = true
 	}
 	return c, nil
 }
@@ -543,17 +557,53 @@ func (s *Server) resolveAll(ctx context.Context, repo string, tags []string) ([]
 }
 
 // mainPlatform is the platform that speaks for a tag: linux/amd64, or the
-// first. It reports false for tags without platforms, such as Helm charts.
+// first. A missing platform has no size or config, so it never speaks. It
+// reports false for tags without platforms, such as Helm charts, and for
+// indexes whose platforms are all missing.
 func mainPlatform(m registry.Manifest) (registry.Platform, bool) {
-	for _, p := range m.Platforms {
-		if p.OS == "linux" && p.Arch == "amd64" {
-			return p, true
-		}
+	i := slices.IndexFunc(m.Platforms, func(p registry.Platform) bool { return !p.Missing && p.OS == "linux" && p.Arch == "amd64" })
+	if i < 0 {
+		i = slices.IndexFunc(m.Platforms, func(p registry.Platform) bool { return !p.Missing })
 	}
-	if len(m.Platforms) == 0 {
+	if i < 0 {
 		return registry.Platform{}, false
 	}
-	return m.Platforms[0], true
+	return m.Platforms[i], true
+}
+
+// platformCount counts the platforms in the registry and adds how many
+// more the index lists, so four platforms with one missing don't quietly
+// read as three: "3 platforms (1 missing)", or "4 platforms, all missing".
+func platformCount(ps []registry.Platform) string {
+	missing := 0
+	for _, p := range ps {
+		if p.Missing {
+			missing++
+		}
+	}
+	switch n := len(ps) - missing; {
+	case missing == 0:
+		return plural(n, "platform")
+	case n == 0:
+		return plural(missing, "platform") + ", all missing"
+	default:
+		return plural(n, "platform") + " (" + strconv.Itoa(missing) + " missing)"
+	}
+}
+
+// availableFirst is ps with the missing platforms moved to the end.
+func availableFirst(ps []registry.Platform) []registry.Platform {
+	ps = slices.Clone(ps)
+	slices.SortStableFunc(ps, func(a, b registry.Platform) int {
+		switch {
+		case a.Missing == b.Missing:
+			return 0
+		case a.Missing:
+			return 1
+		}
+		return -1
+	})
+	return ps
 }
 
 // tagLabel shortens cosign tags, "sha256-<64 hex>.sig", to their first 12

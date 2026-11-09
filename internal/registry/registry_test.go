@@ -33,7 +33,7 @@ func TestHarness(t *testing.T) {
 		t.Fatal(err)
 	}
 	repos, err := remote.Catalog(ctx, reg)
-	want := []string{registrytest.RepoHelm, registrytest.RepoSingle, registrytest.RepoIndex, registrytest.RepoNested, registrytest.RepoPaged}
+	want := []string{registrytest.RepoHelm, registrytest.RepoSingle, registrytest.RepoIndex, registrytest.RepoAllMissing, registrytest.RepoSomeMissing, registrytest.RepoNested, registrytest.RepoPaged}
 	if err != nil || !slices.Equal(repos, want) {
 		t.Errorf("catalog = %v, %v; want %v", repos, err, want)
 	}

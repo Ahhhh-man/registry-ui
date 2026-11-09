@@ -29,8 +29,8 @@ const (
 type Cache struct {
 	src   Source
 	group singleflight.Group
-	// partial is set for storage mode, where an index lists only the
-	// platforms on disk, so even a lookup by digest can grow and must expire.
+	// partial is set for storage mode, where an index's platforms stop being
+	// missing as they're pulled, so even a lookup by digest must expire.
 	partial bool
 
 	mu    sync.Mutex

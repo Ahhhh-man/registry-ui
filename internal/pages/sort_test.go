@@ -222,10 +222,10 @@ func TestUpdatedSorts(t *testing.T) {
 		r.SetTagTime(t, tt.repo, tt.tag, now.Add(-tt.ago))
 	}
 
-	// A repo goes by its newest tag; ties stay A–Z, and nginx is oldest.
+	// A repo goes by its newest tag; ties stay A–Z, and the rest are a year old.
 	body := get(t, s, "/", "/?sort=updated", false).Body.String()
 	contains(t, body, `<span class="sr-only">Sort by </span>Recently updated<svg`)
-	want := strings.Join([]string{registrytest.RepoSingle, registrytest.RepoPaged, registrytest.RepoHelm, registrytest.RepoNested, registrytest.RepoIndex}, " ")
+	want := strings.Join([]string{registrytest.RepoSingle, registrytest.RepoPaged, registrytest.RepoHelm, registrytest.RepoNested, registrytest.RepoIndex, registrytest.RepoAllMissing, registrytest.RepoSomeMissing}, " ")
 	if got := strings.Join(rowRepos(body), " "); got != want {
 		t.Errorf("catalog:\n got %s\nwant %s", got, want)
 	}

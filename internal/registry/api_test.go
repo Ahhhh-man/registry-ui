@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"testing"
 
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
@@ -145,6 +147,31 @@ func TestNewAPI(t *testing.T) {
 	for _, u := range []string{"http://registry:5000", "https://registry.example.com/"} {
 		if _, err := registry.NewAPI(u, true); err != nil {
 			t.Errorf("NewAPI(%q): %v", u, err)
+		}
+	}
+}
+
+// Only a 404 marks a platform missing. Any other failure to fetch one fails
+// the whole lookup, rather than passing the platform off as missing.
+func TestAPIPlatformErrors(t *testing.T) {
+	r := registrytest.New(t)
+	up, err := url.Parse(r.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arm64 := digest(t, r.Platforms[1])
+	for _, code := range []int{http.StatusInternalServerError, http.StatusUnauthorized} {
+		proxy := httputil.NewSingleHostReverseProxy(up)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.URL.Path == "/v2/"+registrytest.RepoIndex+"/manifests/"+arm64 {
+				w.WriteHeader(code)
+				return
+			}
+			proxy.ServeHTTP(w, req)
+		}))
+		t.Cleanup(srv.Close)
+		if m, err := newAPI(t, srv.URL).Resolve(t.Context(), registrytest.RepoIndex, registrytest.TagVersion); err == nil || errors.Is(err, registry.ErrNotFound) {
+			t.Errorf("%d on a platform: got %+v, %v; want an error other than ErrNotFound", code, m, err)
 		}
 	}
 }

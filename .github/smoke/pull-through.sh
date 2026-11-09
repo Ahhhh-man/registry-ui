@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Pull-through cache smoke test for storage mode.
 #
-# An upstream registry holds three tags; a registry:3 proxy in front of it
-# pulls two, a couple of seconds apart. registry-ui then reads the proxy's
-# storage, read-only, and must show only those tags, the later pull first
-# when sorted by "Recently updated", without a single request reaching the
-# proxy or the upstream. A proxy answers tags/list from upstream and fetches uncached tags
+# An upstream registry holds a few tags, one a two-platform image; a
+# registry:3 proxy in front of it pulls two tags a couple of seconds apart,
+# and one platform of the two-platform image. registry-ui then reads the
+# proxy's storage, read-only, and must show only those tags, the later pull
+# first when sorted by "Recently updated" and the other platform not cached,
+# without a single request reaching the proxy or the upstream. A proxy answers tags/list from upstream and fetches uncached tags
 # on demand, so any API call would show up in their access logs.
 #
 # Needs docker, curl and crane. Run it from the dev shell after loading the
@@ -50,27 +51,31 @@ requests() { docker logs "$1" 2>&1 | grep -c 'HTTP/1\.1"' || true; }
 docker network create "$p" >/dev/null
 docker volume create "$p" >/dev/null
 
-echo "== upstream with tags t-cached, t-again, t-upstream"
+echo "== upstream with tags t-cached, t-again, t-upstream and t-arch (amd64 and arm64)"
 docker run -d --name "$p-upstream" --network "$p" -p 127.0.0.1::5000 "$registry" >/dev/null
 up=$(port "$p-upstream" 5000)
-for t in t-cached t-again t-upstream; do
+for t in t-cached t-again t-upstream t-upstream-arm64; do
 	echo "$t" >"$tmp/$t"
 	tar -cf "$tmp/$t.tar" -C "$tmp" "$t"
 	crane append --insecure -f "$tmp/$t.tar" -t "$up/$repo:$t" >/dev/null
-	crane mutate --insecure --set-platform linux/amd64 -t "$up/$repo:$t" "$up/$repo:$t" >/dev/null
+	platform=linux/amd64
+	[ "$t" = t-upstream-arm64 ] && platform=linux/arm64
+	crane mutate --insecure --set-platform "$platform" -t "$up/$repo:$t" "$up/$repo:$t" >/dev/null
 done
+crane index append --insecure -m "$up/$repo:t-upstream" -m "$up/$repo:t-upstream-arm64" -t "$up/$repo:t-arch" >/dev/null
 
-echo "== proxy, pulling t-cached and then t-again through it"
+echo "== proxy, pulling t-cached and the arm64 half of t-arch, then t-again, through it"
 docker run -d --name "$p-proxy" --network "$p" -p 127.0.0.1::5000 \
 	-v "$p:/var/lib/registry" \
 	-e REGISTRY_PROXY_REMOTEURL="http://$p-upstream:5000" \
 	"$registry" >/dev/null
 px=$(port "$p-proxy" 5000)
 crane pull --insecure "$px/$repo:t-cached" "$tmp/pulled.tar"
+crane pull --insecure --platform linux/arm64 "$px/$repo:t-arch" "$tmp/arch.tar"
 sleep 2 # the proxy writes each tag's link as it's pulled; the UI sorts by its mtime
 crane pull --insecure "$px/$repo:t-again" "$tmp/pulled.tar"
 cached=$(docker exec "$p-proxy" ls /var/lib/registry/docker/registry/v2/repositories/$repo/_manifests/tags | xargs)
-[ "$cached" = "t-again t-cached" ] || fail "the proxy should have cached only t-again and t-cached, has: $cached"
+[ "$cached" = "t-again t-arch t-cached" ] || fail "the proxy should have cached only t-again, t-arch and t-cached, has: $cached"
 
 echo "== registry-ui in storage mode"
 # The registry URL points at the proxy, so if storage mode ever fell back to
@@ -107,6 +112,11 @@ page "$repo?sort=updated" 200
 [ "$(firsttag)" = t-again ] || fail "\"Recently updated\" should put t-again, pulled last, first; got $(firsttag)"
 page "$repo:t-cached" 200
 grep -q "Updated today" "$tmp/body" || fail "the tag page doesn't say when t-cached was updated"
+page "$repo:t-arch" 200
+grep -q '1 platform (1 missing)' "$tmp/body" || fail "t-arch's page doesn't count linux/amd64 as missing"
+grep -q 'id="platform-linux-arm64" class="[^"]*bg-surface' "$tmp/body" || fail "t-arch's page doesn't show linux/arm64 as cached"
+grep -q 'id="platform-linux-amd64" class="[^"]*border-dashed' "$tmp/body" || fail "t-arch's page doesn't dim linux/amd64"
+[ "$(grep -c 'Not cached. Nobody has pulled this platform' "$tmp/body")" = 1 ] || fail "t-arch's page should show one platform as not cached"
 page "$repo:t-upstream" 404
 
 sleep 1 # let the registries flush their logs

@@ -24,8 +24,8 @@ import (
 // reads, so the storage can be mounted read-only. Credentials are ignored.
 //
 // Only content that is actually on disk is shown: a tag or digest counts when
-// its link and its blob both exist, and an index lists only the platforms
-// whose manifests are cached.
+// its link and its blob both exist, and an index's platforms whose manifests
+// aren't cached are marked Missing.
 type Storage struct {
 	root string // <storage root>/docker/registry/v2
 }
@@ -148,20 +148,19 @@ func (s *Storage) resolve(repo, ref string) (Manifest, error) {
 			if !d.MediaType.IsImage() || isAttestation(d) {
 				continue
 			}
+			pl := indexed(d)
 			raw, err := s.manifest(repo, d.Digest.String())
-			if errors.Is(err, ErrNotFound) {
-				continue // a pull-through cache only holds the platforms someone pulled
-			}
-			if err != nil {
+			switch {
+			case errors.Is(err, ErrNotFound):
+				pl.Missing = true // a pull-through cache only holds the platforms someone pulled
+			case err != nil:
 				return Manifest{}, err
-			}
-			mf, err := v1.ParseManifest(bytes.NewReader(raw))
-			if err != nil {
-				return Manifest{}, err
-			}
-			pl := Platform{Digest: d.Digest.String(), MediaType: string(d.MediaType), Config: mf.Config.Digest.String(), Size: size(mf)}
-			if d.Platform != nil {
-				pl.OS, pl.Arch, pl.Variant = d.Platform.OS, d.Platform.Architecture, d.Platform.Variant
+			default:
+				mf, err := v1.ParseManifest(bytes.NewReader(raw))
+				if err != nil {
+					return Manifest{}, err
+				}
+				pl.Config, pl.Size = mf.Config.Digest.String(), size(mf)
 			}
 			m.Platforms = append(m.Platforms, pl)
 		}

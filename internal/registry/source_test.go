@@ -70,7 +70,7 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 	ctx := t.Context()
 
 	repos, err := s.Catalog(ctx)
-	wantRepos := []string{registrytest.RepoHelm, registrytest.RepoSingle, registrytest.RepoIndex, registrytest.RepoNested, registrytest.RepoPaged}
+	wantRepos := []string{registrytest.RepoHelm, registrytest.RepoSingle, registrytest.RepoIndex, registrytest.RepoAllMissing, registrytest.RepoSomeMissing, registrytest.RepoNested, registrytest.RepoPaged}
 	if err != nil || !slices.Equal(repos, wantRepos) {
 		t.Errorf("Catalog = %v, %v; want %v", repos, err, wantRepos)
 	}
@@ -81,6 +81,9 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 		registrytest.RepoHelm:   {registrytest.TagHelm},
 		registrytest.RepoNested: {registrytest.TagNested},
 		registrytest.RepoPaged:  registrytest.PagedTags,
+
+		registrytest.RepoSomeMissing: {registrytest.TagVersion},
+		registrytest.RepoAllMissing:  {registrytest.TagVersion},
 	} {
 		got, err := s.Tags(ctx, repo)
 		if err != nil || !slices.Equal(slices.Sorted(slices.Values(got)), slices.Sorted(slices.Values(tags))) {
@@ -104,6 +107,13 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 		return registry.Manifest{Digest: p.Digest, MediaType: string(types.OCIManifestSchema1), Kind: kind, Size: p.Size}
 	}
 	signature := artifact(r.Signature, registry.KindSignature)
+	// A platform the registry lacks keeps what the index says, in its place.
+	missing := func(p registry.Platform) registry.Platform {
+		return registry.Platform{OS: p.OS, Arch: p.Arch, Variant: p.Variant, Digest: p.Digest, MediaType: p.MediaType, Missing: true}
+	}
+	someMissing, allMissing := index, index
+	someMissing.Platforms = []registry.Platform{platforms[0], missing(platforms[1]), platforms[2]}
+	allMissing.Platforms = []registry.Platform{missing(platforms[0]), missing(platforms[1]), missing(platforms[2])}
 	for _, tc := range []struct {
 		name, repo, ref string
 		want            registry.Manifest
@@ -121,6 +131,8 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 		{"signature by digest", registrytest.RepoIndex, signature.Digest, signature},
 		{"attestation by digest", registrytest.RepoIndex, digest(t, r.Attestation), artifact(r.Attestation, registry.KindSignature)},
 		{"helm", registrytest.RepoHelm, registrytest.TagHelm, artifact(r.Helm, registry.KindHelm)},
+		{"index with a platform missing", registrytest.RepoSomeMissing, registrytest.TagVersion, someMissing},
+		{"index with every platform missing", registrytest.RepoAllMissing, registrytest.TagVersion, allMissing},
 	} {
 		m, err := s.Resolve(ctx, tc.repo, tc.ref)
 		if err != nil || !manifestEqual(m, tc.want) {
@@ -163,6 +175,7 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 		{"resolve in invalid name", func() error { _, err := s.Resolve(ctx, "Not A Repo", registrytest.TagLatest); return err }},
 		{"unknown digest", func() error { _, err := s.Resolve(ctx, registrytest.RepoIndex, zero); return err }},
 		{"digest from another repo", func() error { _, err := s.Resolve(ctx, registrytest.RepoSingle, index.Digest); return err }},
+		{"missing platform by digest", func() error { _, err := s.Resolve(ctx, registrytest.RepoSomeMissing, platforms[1].Digest); return err }},
 		{"malformed config digest", func() error { _, err := s.Config(ctx, registrytest.RepoIndex, "sha256:00"); return err }},
 		{"unknown config digest", func() error { _, err := s.Config(ctx, registrytest.RepoIndex, zero); return err }},
 	} {

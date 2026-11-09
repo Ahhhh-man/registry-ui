@@ -231,9 +231,15 @@ func resolve(ctx context.Context, p *remote.Puller, repo name.Repository, ref na
 	return m, nil
 }
 
-// platform summarises one image listed in an index.
+// platform summarises one image listed in an index. One the registry
+// doesn't have (404) is marked missing; any other error fails.
 func platform(ctx context.Context, p *remote.Puller, repo name.Repository, d v1.Descriptor) (Platform, error) {
+	pl := indexed(d)
 	desc, err := p.Get(ctx, repo.Digest(d.Digest.String()))
+	if te := (*transport.Error)(nil); errors.As(err, &te) && te.StatusCode == http.StatusNotFound {
+		pl.Missing = true
+		return pl, nil
+	}
 	if err != nil {
 		return Platform{}, err
 	}
@@ -241,11 +247,17 @@ func platform(ctx context.Context, p *remote.Puller, repo name.Repository, d v1.
 	if err != nil {
 		return Platform{}, err
 	}
-	pl := Platform{Digest: d.Digest.String(), MediaType: string(d.MediaType), Config: mf.Config.Digest.String(), Size: size(mf)}
+	pl.Config, pl.Size = mf.Config.Digest.String(), size(mf)
+	return pl, nil
+}
+
+// indexed is what an index's entry says about a platform.
+func indexed(d v1.Descriptor) Platform {
+	pl := Platform{Digest: d.Digest.String(), MediaType: string(d.MediaType)}
 	if d.Platform != nil {
 		pl.OS, pl.Arch, pl.Variant = d.Platform.OS, d.Platform.Architecture, d.Platform.Variant
 	}
-	return pl, nil
+	return pl
 }
 
 // Config implements Source.

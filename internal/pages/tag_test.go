@@ -45,6 +45,7 @@ func TestTagPage(t *testing.T) {
 	kafka := resolve(t, "bitnami/kafka", "latest")
 	single := resolve(t, "myteam/api", "main")
 	chart := resolve(t, "charts/podinfo", "6.7.1")
+	redis := resolve(t, "library/redis", "7.2.6")
 	sig := "sha256-" + strings.TrimPrefix(nginx.Digest, "sha256:") + ".sig"
 	pull := "docker pull registry.example.com/library/nginx"
 	created, err := fake.New().Config(t.Context(), "library/nginx", amd64.Config)
@@ -144,9 +145,25 @@ func TestTagPage(t *testing.T) {
 			not: []string{"docker pull", "Platforms</h2>"},
 		},
 		{
-			name: "index with nothing cached", path: "/library/redis:7.0.15", status: 200,
-			want: []string{"None of this image&#39;s platforms are stored yet", "Platforms</h2>", ">docker pull registry.example.com/library/redis:7.0.15</code>"},
-			not:  []string{">artifact<", "Created"},
+			name: "some platforms missing", path: "/library/redis:7.2.6", status: 200, cards: 6,
+			want: []string{
+				// The count says what's missing, and arm64 speaks for the tag instead of amd64.
+				">4 platforms (2 missing) · " + format.Size(redis.Platforms[1].Size) + " on arm64</span>", "Created 2 months ago",
+				// Missing platforms come last, dimmed, with a note and only their digest to copy.
+				`<article id="platform-linux-ppc64le" class="flex min-w-0 flex-col gap-4 rounded-lg border border-border p-5 aria-[current=true]:border-accent aria-[current=true]:ring-1 aria-[current=true]:ring-accent bg-surface">`,
+				`<article id="platform-linux-amd64" class="flex min-w-0 flex-col gap-4 rounded-lg border border-border p-5 aria-[current=true]:border-accent aria-[current=true]:ring-1 aria-[current=true]:ring-accent border-dashed bg-panel text-muted">`,
+				"This platform&#39;s manifest isn&#39;t in the registry.", `aria-label="Copy digest of linux/amd64"`,
+			},
+			not: []string{"docker pull registry.example.com/library/redis@" + redis.Platforms[0].Digest, `href="/library/redis@` + redis.Platforms[0].Digest, "Not cached"},
+		},
+		{
+			name: "missing platform highlighted", path: "/library/redis:7.2.6?platform=linux/amd64", status: 200, cards: 6,
+			want: []string{`<article id="platform-linux-amd64" aria-current="true"`, "isn&#39;t in the registry"},
+		},
+		{
+			name: "every platform missing", path: "/library/redis:7.0.15", status: 200, cards: 2,
+			want: []string{">2 platforms, all missing</span>", "Platforms</h2>", ">docker pull registry.example.com/library/redis:7.0.15</code>", "border-dashed"},
+			not:  []string{">artifact<", "Created", " B</span>", "docker pull registry.example.com/library/redis@"},
 		},
 		{
 			name: "unknown tag", path: "/library/nginx:9.9.9", status: 404,
@@ -241,6 +258,8 @@ func TestTagPageCalls(t *testing.T) {
 		"/library/nginx:1.27.3":                       6,
 		"/library/nginx:1.27.3?platform=linux/arm/v7": 6,
 		"/myteam/api:main":                            1,
+		"/library/redis:7.2.6":                        4, // none for the missing platforms
+		"/library/redis:7.0.15":                       0,
 		"/charts/podinfo:6.7.1":                       0,
 	} {
 		s := newTestServer(t, "/")
@@ -297,5 +316,52 @@ func TestTagPageHidesAttestations(t *testing.T) {
 	status, body := getPage(t, s, "/", "/"+registrytest.RepoIndex+":"+registrytest.TagVersion, false)
 	if status != http.StatusOK || !strings.Contains(body, ">3 platforms · ") || strings.Count(body, "<article ") != 3 || strings.Contains(body, "unknown") || strings.Contains(body, att.String()) {
 		t.Errorf("status %d; want 3 platforms and no attestation in\n%s", status, body)
+	}
+}
+
+// In storage mode, a missing platform is one nobody pulled through the cache.
+func TestTagPageNotCached(t *testing.T) {
+	s := newTestServer(t, "/")
+	s.Storage = true
+	_, body := getPage(t, s, "/", "/library/redis:7.2.6", false)
+	if strings.Count(body, "Not cached. Nobody has pulled this platform through the cache yet.") != 2 || strings.Contains(body, "isn&#39;t in the registry") {
+		t.Errorf("want two not-cached notes in\n%s", body)
+	}
+}
+
+// Against a real registry, in both modes, a platform the registry lacks is
+// counted as missing rather than failing the tag.
+func TestMissingPlatformsInRegistry(t *testing.T) {
+	r := registrytest.New(t)
+	api, err := registry.NewAPI(r.URL, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := registrytest.NewStorage(t)
+	storage, err := registry.NewStorage(st.StoragePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, src := range map[string]registry.Source{"api": api, "storage": storage} {
+		s := newTestServer(t, "/")
+		s.Src = src
+		for repo, want := range map[string][]string{
+			registrytest.RepoSomeMissing: {"2 platforms (1 missing)", `title="Latest created `},
+			registrytest.RepoAllMissing:  {"3 platforms, all missing"},
+		} {
+			req := httptest.NewRequest("GET", "/?fragment=row&repo="+repo, nil)
+			req.Header.Set("HX-Request", "true")
+			rec := httptest.NewRecorder()
+			s.Catalog(rec, req, web.Ref{})
+			for _, w := range want {
+				if body := rec.Body.String(); !strings.Contains(body, w) || strings.Contains(body, "Couldn&#39;t load") {
+					t.Errorf("%s: catalog row for %s lacks %q:\n%s", name, repo, w, body)
+				}
+			}
+			status, body := getPage(t, s, "/", "/"+repo+":"+registrytest.TagVersion, false)
+			if status != http.StatusOK || strings.Count(body, "<article ") != 3 || !strings.Contains(body, want[0]) {
+				t.Errorf("%s: tag page for %s: status %d\n%s", name, repo, status, body)
+			}
+		}
 	}
 }

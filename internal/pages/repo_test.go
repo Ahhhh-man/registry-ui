@@ -7,10 +7,12 @@ import (
 	"net/http/httptest"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 
+	"github.com/Ahhhh-man/registry-ui/internal/format"
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
 	"github.com/Ahhhh-man/registry-ui/internal/web"
 )
@@ -273,7 +275,7 @@ func TestRepoOverview(t *testing.T) {
 		"Read from the OCI labels on latest.",
 		`hx-get="/library/nginx" hx-trigger="change" hx-target="#summary"`,
 		`<option value="latest" selected>latest</option>`, `<option value="1.9.15">`,
-		"<dd>Multi-platform image</dd>", "linux/amd64</span>", "<dt>Platforms</dt><dd>6</dd>", "2 days ago",
+		"<dd>Multi-platform image</dd>", "linux/amd64</span>", "<dt>Platforms</dt><dd>6 platforms</dd>", "2 days ago",
 		"docker pull registry.example.com/library/nginx:latest",
 		"<noscript>",
 	} {
@@ -403,4 +405,64 @@ func checkMarkup(t *testing.T, body string) {
 			}
 		}
 	}
+}
+
+// noAmd64 is a registry that lacks every index's linux/amd64 manifest.
+type noAmd64 struct{ registry.Source }
+
+func (s noAmd64) Resolve(ctx context.Context, repo, ref string) (registry.Manifest, error) {
+	m, err := s.Source.Resolve(ctx, repo, ref)
+	for i, p := range m.Platforms {
+		if m.Kind == registry.KindIndex && p.OS == "linux" && p.Arch == "amd64" {
+			m.Platforms[i] = registry.Platform{OS: p.OS, Arch: p.Arch, Digest: p.Digest, MediaType: p.MediaType, Missing: true}
+		}
+	}
+	return m, err
+}
+
+// A missing platform has no size or config, so the sorts go by the next
+// platform instead: arm64, which in the fake is the same age and a fixed
+// share of the size, so the order doesn't change.
+func TestSortsSkipMissingPlatforms(t *testing.T) {
+	for _, sort := range []string{"created", "size"} {
+		s := newTestServer(t, "/")
+		want := cardTags(get(t, s, "/", "/library/nginx?sort="+sort, false).Body.String())
+		s.Src = noAmd64{s.Src}
+		if got := cardTags(get(t, s, "/", "/library/nginx?sort="+sort, false).Body.String()); !slices.Equal(got, want) {
+			t.Errorf("sort %q without amd64:\n got %v\nwant %v", sort, got, want)
+		}
+	}
+}
+
+// In the fake, redis:7.2.6 lacks linux/amd64 and linux/s390x, and 7.0.15
+// lacks both of its platforms.
+func TestRepoMissingPlatforms(t *testing.T) {
+	s := newTestServer(t, "/")
+	m := resolve(t, "library/redis", "7.2.6")
+	arm64, amd64 := m.Platforms[1], m.Platforms[0]
+
+	// The size sort goes by arm64 for 7.2.6; 7.0.15 has no size, so it's last.
+	if got := strings.Join(cardTags(get(t, s, "/", "/library/redis?sort=size", false).Body.String()), " "); got != "latest 7.4.1 7.2.6 7.4.1-alpine 7.0.15" {
+		t.Errorf("size sort = %s", got)
+	}
+
+	body := get(t, s, "/", "/library/redis?fragment=row&tag=7.2.6", true).Body.String()
+	contains(t, body, "linux/amd64 (missing),", ">4 platforms (2 missing)</span>", `title="linux/arm64">`+format.Size(arm64.Size)+"</td>", "2 months ago")
+	body = get(t, s, "/", "/library/redis?fragment=row&tag=7.0.15", true).Body.String()
+	contains(t, body, ">2 platforms, all missing</span>", ">Unknown</td>")
+
+	// Cards list the missing platforms last, dimmed and without a link.
+	body = get(t, s, "/", "/library/redis?fragment=card&tag=7.2.6", true).Body.String()
+	if strings.Index(body, ">linux/amd64</span>") < strings.Index(body, ">linux/ppc64le</span>") || strings.Count(body, ">Missing</span>") != 2 || strings.Contains(body, amd64.Digest) || !strings.Contains(body, ">1 more platform (2 missing)</span>") {
+		t.Errorf("card for 7.2.6:\n%s", body)
+	}
+	body = get(t, s, "/", "/library/redis?fragment=card&tag=7.0.15", true).Body.String()
+	if strings.Count(body, ">Missing</span>") != 2 || strings.Contains(body, "OCI artifact") {
+		t.Errorf("card for 7.0.15:\n%s", body)
+	}
+
+	body = get(t, s, "/", "/library/redis?tab=overview&tag=7.2.6", false).Body.String()
+	contains(t, body, "<dd>Multi-platform image</dd>", "<dt>Platforms</dt><dd>4 platforms (2 missing)</dd>", "linux/arm64</span>")
+	body = get(t, s, "/", "/library/redis?tab=overview&tag=7.0.15", false).Body.String()
+	contains(t, body, "<dd>Multi-platform image</dd>", "<dd><span>Unknown</span></dd>", "<dt>Platforms</dt><dd>2 platforms, all missing</dd>")
 }

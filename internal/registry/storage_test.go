@@ -42,9 +42,9 @@ func blobPath(r *registrytest.Registry, digest string) string {
 	return filepath.Join(r.StoragePath, "docker", "registry", "v2", "blobs", "sha256", hex[:2], hex, "data")
 }
 
-// In storage mode an index lists only the platforms on disk, so the cache
-// must pick up a platform pulled after the index was first looked up, even
-// by digest.
+// In storage mode an index marks the platforms not on disk missing, so the
+// cache must pick up a platform pulled after the index was first looked up,
+// even by digest.
 func TestCacheRefreshesStorageIndex(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s, r := newStorage(t)
@@ -56,7 +56,7 @@ func TestCacheRefreshesStorageIndex(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			return len(m.Platforms)
+			return len(slices.DeleteFunc(m.Platforms, func(p registry.Platform) bool { return p.Missing }))
 		}
 
 		blob := blobPath(r, arm64)
@@ -221,11 +221,11 @@ func TestStorageUncached(t *testing.T) {
 	s, r := newStorage(t)
 	ctx := t.Context()
 
-	// An index child that was never pulled is left out.
+	// An index child whose blob was never stored is missing.
 	arm64 := digest(t, r.Platforms[1])
 	removeBlob(t, r, arm64)
 	m, err := s.Resolve(ctx, registrytest.RepoIndex, registrytest.TagVersion)
-	if err != nil || len(m.Platforms) != 2 || slices.ContainsFunc(m.Platforms, func(p registry.Platform) bool { return p.Digest == arm64 }) {
+	if err != nil || len(m.Platforms) != 3 || m.Platforms[1].Digest != arm64 || !m.Platforms[1].Missing || m.Platforms[0].Missing {
 		t.Errorf("index without arm64 = %+v, %v", m, err)
 	}
 	if _, err := s.Resolve(ctx, registrytest.RepoIndex, arm64); !errors.Is(err, registry.ErrNotFound) {

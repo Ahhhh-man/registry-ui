@@ -3,16 +3,18 @@
 {{/* fact-card: one platform of an image, or a chart, signature or other
      artifact: a heading with its size, a few labelled facts and copy
      buttons. Sit several in a grid. Current highlights it, for ?platform=.
+     Missing dims it, for a platform the registry doesn't hold.
      dict "ID" element id (optional), "Current" bool, "Icon" icon name,
           "Title" string ("linux/amd64"), "Size" string ("72.4 MB"),
+          "Missing" bool,
           "Text" a sentence under the heading (optional),
           "Facts" list of dict "Label", "Value", "Href" (optional link),
                   "Mono" bool, "Title" hover text (optional),
           "Copies" list of "copy" partial dicts (optional). */}}
 {{define "fact-card" -}}
-<article{{with .ID}} id="{{.}}"{{end}}{{if .Current}} aria-current="true"{{end}} class="flex min-w-0 flex-col gap-4 rounded-lg border border-border bg-surface p-5 aria-[current=true]:border-accent aria-[current=true]:ring-1 aria-[current=true]:ring-accent">
+<article{{with .ID}} id="{{.}}"{{end}}{{if .Current}} aria-current="true"{{end}} class="flex min-w-0 flex-col gap-4 rounded-lg border border-border p-5 aria-[current=true]:border-accent aria-[current=true]:ring-1 aria-[current=true]:ring-accent {{if .Missing}}border-dashed bg-panel text-muted{{else}}bg-surface{{end}}">
 <div class="flex items-center justify-between gap-3">
-<h3 class="flex min-w-0 items-center gap-2 text-base font-semibold">{{icon .Icon "text-accent"}}<span class="min-w-0 break-words">{{.Title}}</span></h3>
+<h3 class="flex min-w-0 items-center gap-2 text-base font-semibold">{{if .Missing}}{{icon .Icon "text-faint"}}{{else}}{{icon .Icon "text-accent"}}{{end}}<span class="min-w-0 break-words">{{.Title}}</span></h3>
 {{- with .Size}}<span class="shrink-0 text-base font-semibold tabular-nums">{{.}}</span>{{end}}
 </div>
 {{- with .Text}}

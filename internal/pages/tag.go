@@ -145,8 +145,12 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, repo, tag, ref
 			v.Pills = append(v.Pills, pill{Icon: "history", Text: "Updated " + format.Age(t), Title: format.Date(t) + ": when this tag was last pushed or, on a pull-through cache, last pulled"})
 		}
 	}
-	if p, ok := mainPlatform(m); ok {
-		v.Pills = append(v.Pills, pill{Icon: "cpu", Text: plural(len(m.Platforms), "platform") + " · " + format.Size(p.Size) + " on " + format.ShortPlatform(p)})
+	if len(m.Platforms) > 0 {
+		text := platformCount(m.Platforms)
+		if p, ok := mainPlatform(m); ok {
+			text += " · " + format.Size(p.Size) + " on " + format.ShortPlatform(p)
+		}
+		v.Pills = append(v.Pills, pill{Icon: "cpu", Text: text})
 	}
 	if same := s.sameAs(ctx, repo, tag, m.Digest); len(same) > 0 {
 		links := make([]link, len(same))
@@ -162,9 +166,10 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, repo, tag, ref
 // platformCards adds a card per platform to v, fetching each platform's
 // config for its created time, and returns the main platform's. A config
 // the registry lacks (a pull-through cache holds only what was pulled)
-// leaves it unknown rather than failing the page.
+// leaves it unknown rather than failing the page. Missing platforms come
+// last, dimmed, with a note on why they're missing and no pull command.
 func (s *Server) platformCards(ctx context.Context, r *http.Request, v *tagView) (time.Time, error) {
-	ps := v.Manifest.Platforms
+	ps := availableFirst(v.Manifest.Platforms)
 	if len(ps) == 0 {
 		return time.Time{}, nil
 	}
@@ -172,6 +177,9 @@ func (s *Server) platformCards(ctx context.Context, r *http.Request, v *tagView)
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(8)
 	for i, p := range ps {
+		if p.Missing {
+			continue
+		}
 		g.Go(func() error {
 			c, err := s.Src.Config(gctx, v.Repo, p.Config)
 			if errors.Is(err, registry.ErrNotFound) {
@@ -187,14 +195,30 @@ func (s *Server) platformCards(ctx context.Context, r *http.Request, v *tagView)
 
 	var main time.Time
 	want := r.URL.Query().Get("platform")
-	mp, _ := mainPlatform(v.Manifest)
+	mp, ok := mainPlatform(v.Manifest)
+	note := "This platform's manifest isn't in the registry. A mirror may not have fetched it, or garbage collection may have removed it."
+	if s.Storage {
+		note = "Not cached. Nobody has pulled this platform through the cache yet."
+	}
 	for i, p := range ps {
-		if p.Digest == mp.Digest {
+		if ok && p.Digest == mp.Digest {
 			main = created[i]
 		}
 		name := format.Platform(p)
+		id := "platform-" + strings.ReplaceAll(name, "/", "-")
+		if p.Missing {
+			v.Cards = append(v.Cards, map[string]any{
+				"ID": id, "Current": name == want, "Missing": true, "Icon": "cpu", "Title": name, "Text": note,
+				"Facts": []map[string]any{
+					{"Label": "Digest", "Value": format.ShortDigest(p.Digest), "Mono": true, "Title": p.Digest},
+					{"Label": "Type", "Value": manifestType(p.MediaType)},
+				},
+				"Copies": []map[string]any{{"Text": p.Digest, "Caption": "Copy digest", "Label": "Copy digest of " + name}},
+			})
+			continue
+		}
 		v.Cards = append(v.Cards, map[string]any{
-			"ID": "platform-" + strings.ReplaceAll(name, "/", "-"), "Current": name == want,
+			"ID": id, "Current": name == want,
 			"Icon": "cpu", "Title": name, "Size": format.Size(p.Size),
 			"Facts": []map[string]any{
 				{"Label": "Digest", "Value": format.ShortDigest(p.Digest), "Mono": true, "Title": p.Digest, "Href": s.BasePath + v.Repo + "@" + p.Digest},

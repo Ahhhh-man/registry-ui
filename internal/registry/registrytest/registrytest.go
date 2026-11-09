@@ -65,6 +65,13 @@ const (
 	// RepoPaged holds Single under each of PagedTags.
 	RepoPaged = "test/paged"
 
+	// RepoSomeMissing holds Index under TagVersion, without its linux/arm64
+	// manifest, like a mirror that only fetched the platforms asked for.
+	RepoSomeMissing = "missing/some"
+	// RepoAllMissing holds Index under TagVersion without any of the
+	// manifests it lists.
+	RepoAllMissing = "missing/all"
+
 	// PageSize is the most names one catalog or tag-list page returns.
 	PageSize = 3
 
@@ -150,6 +157,13 @@ func start(t testing.TB, user, pass string) *Registry {
 				err = remote.Write(ref, obj, opts...)
 			}
 		}
+		// The registry won't take an index without its manifests, so they
+		// go in with it and are deleted after, like garbage collection does.
+		for _, h := range c.missing {
+			if err == nil {
+				err = remote.Delete(ref.Digest(h.String()), opts...)
+			}
+		}
 		if err != nil {
 			t.Fatalf("registrytest: push %s:%s: %v", c.repo, c.tag, err)
 		}
@@ -199,7 +213,9 @@ func NewStorage(t testing.TB) *Registry {
 		switch obj := c.obj.(type) {
 		case v1.ImageIndex:
 			for _, d := range must(obj.IndexManifest()).Manifests {
-				image(c.repo, must(obj.Image(d.Digest)))
+				if !slices.Contains(c.missing, d.Digest) {
+					image(c.repo, must(obj.Image(d.Digest)))
+				}
 			}
 			h = blob(c.repo, "_manifests/revisions", must(obj.RawManifest()))
 		case v1.Image:
@@ -225,22 +241,29 @@ func (r *Registry) SetTagTime(t testing.TB, repo, tag string, when time.Time) {
 // content lists every tag in the seeded registry, in push order.
 func (r *Registry) content() []tagged {
 	c := []tagged{
-		{RepoIndex, TagVersion, r.Index},
-		{RepoIndex, TagLatest, r.Index},
-		{RepoIndex, r.SignatureTag, r.Signature},
-		{RepoSingle, TagSingle, r.Single},
-		{RepoHelm, TagHelm, r.Helm},
-		{RepoNested, TagNested, r.Single},
+		{repo: RepoIndex, tag: TagVersion, obj: r.Index},
+		{repo: RepoIndex, tag: TagLatest, obj: r.Index},
+		{repo: RepoIndex, tag: r.SignatureTag, obj: r.Signature},
+		{repo: RepoSingle, tag: TagSingle, obj: r.Single},
+		{repo: RepoHelm, tag: TagHelm, obj: r.Helm},
+		{repo: RepoNested, tag: TagNested, obj: r.Single},
 	}
 	for _, tag := range PagedTags {
-		c = append(c, tagged{RepoPaged, tag, r.Single})
+		c = append(c, tagged{repo: RepoPaged, tag: tag, obj: r.Single})
 	}
+	children := must(r.Index.IndexManifest()).Manifests
+	c = append(c,
+		tagged{repo: RepoSomeMissing, tag: TagVersion, obj: r.Index, missing: []v1.Hash{children[1].Digest}},
+		tagged{repo: RepoAllMissing, tag: TagVersion, obj: r.Index, missing: []v1.Hash{children[0].Digest, children[1].Digest, children[2].Digest, children[3].Digest}},
+	)
 	return c
 }
 
 type tagged struct {
 	repo, tag string
 	obj       any // v1.Image or v1.ImageIndex
+	// missing are manifests of an index left out of the registry.
+	missing []v1.Hash
 }
 
 // must panics on an error building fixtures from in-memory images, which

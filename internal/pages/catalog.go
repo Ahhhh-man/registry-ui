@@ -42,7 +42,7 @@ type catalogRow struct {
 	// newest) tag.
 	Tags        int
 	Description string
-	Platforms   int
+	Platforms   string // e.g. "3 platforms (1 missing)"; "" without any
 	Helm        bool
 	Type        string // its ?type=, "" for a repository without tags
 	Created     time.Time
@@ -244,16 +244,13 @@ func (s *Server) rowDetails(ctx context.Context, row *catalogRow) error {
 	if err != nil {
 		return err
 	}
-	row.Helm, row.Type, row.Platforms = m.Kind == registry.KindHelm, typeOf(m.Kind), len(m.Platforms)
-	if len(m.Platforms) == 0 {
-		return nil
+	row.Helm, row.Type = m.Kind == registry.KindHelm, typeOf(m.Kind)
+	if len(m.Platforms) > 0 {
+		row.Platforms = platformCount(m.Platforms)
 	}
-	p := m.Platforms[0]
-	for _, pl := range m.Platforms {
-		if pl.OS == "linux" && pl.Arch == "amd64" {
-			p = pl
-			break
-		}
+	p, ok := mainPlatform(m)
+	if !ok {
+		return nil
 	}
 	cfg, err := s.Src.Config(ctx, row.Repo, p.Config)
 	if err != nil {

@@ -67,8 +67,10 @@ type Manifest struct {
 	// index; use the per-platform sizes instead.
 	Size int64
 	// Platforms lists the runnable images. An index has one entry per
-	// platform; a single-platform image has one entry whose Digest equals
-	// the manifest's. Signatures and other artifacts have none.
+	// platform, in the index's order; a single-platform image has one entry
+	// whose Digest equals the manifest's. Signatures and other artifacts
+	// have none. A platform the index lists but the registry doesn't hold
+	// is still there, marked Missing.
 	Platforms []Platform
 }
 
@@ -86,6 +88,11 @@ type Platform struct {
 	Config string
 	// Size is the compressed size: the config plus the layers.
 	Size int64
+	// Missing means the index lists this platform but its manifest isn't in
+	// the registry: a mirror never fetched it, or garbage collection removed
+	// it. Only what the index says is set: OS, Arch, Variant, Digest and
+	// MediaType. There's no Config or Size.
+	Missing bool
 }
 
 type credentialsKey struct{}

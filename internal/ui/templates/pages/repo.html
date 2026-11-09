@@ -72,11 +72,11 @@
 {{/* repo-summary: one tag's facts and pull command (a pages.tagCard). */}}
 {{define "repo-summary" -}}
 <dl class="mt-1 mb-5 [&_dd]:mt-1 [&_dd]:flex [&_dd]:min-h-6 [&_dd]:items-center [&_dd]:justify-between [&_dd]:gap-2 [&_dd]:font-medium [&_dt]:mt-4 [&_dt]:text-xs [&_dt]:text-muted">
-<dt>Content type</dt><dd>{{if .Platforms}}{{if .Main}}Multi-platform image{{else}}Image{{end}}{{else}}{{.Type}}{{end}}</dd>
+<dt>Content type</dt><dd>{{if .Platforms}}{{if gt (len .Platforms) 1}}Multi-platform image{{else}}Image{{end}}{{else}}{{.Type}}{{end}}</dd>
 <dt>Digest</dt><dd><a href="{{digestURL .Repo .Digest}}" class="min-w-0 truncate font-mono text-xs hover:text-accent-text" title="{{.Digest}}">{{.Digest}}</a>{{template "copy" (dict "Text" .Digest "Label" "Copy digest")}}</dd>
-<dt>Size</dt><dd><span>{{size .Size}}{{with .Main}} <span class="font-normal text-muted">{{.}}</span>{{end}}</span></dd>
+<dt>Size</dt><dd><span>{{if .Unknown}}Unknown{{else}}{{size .Size}}{{end}}{{with .Main}} <span class="font-normal text-muted">{{.}}</span>{{end}}</span></dd>
 {{- if not .Created.IsZero}}<dt>Created</dt><dd><span title="{{date .Created}}">{{age .Created}}</span></dd>{{end}}
-{{- with .Platforms}}<dt>Platforms</dt><dd>{{len .}}</dd>{{end}}
+{{- if .Platforms}}<dt>Platforms</dt><dd>{{.PlatformCount}}</dd>{{end}}
 </dl>
 {{- with .Command}}{{template "copy-field" .}}{{end}}
 {{- end}}
@@ -147,8 +147,8 @@
 <td class="hidden md:table-cell">{{template "skeleton" "w-16"}}</td><td class="hidden md:table-cell">{{template "skeleton" "w-16"}}</td><td class="text-right">{{template "skeleton" "w-12"}}</td><td class="hidden text-right sm:table-cell">{{template "skeleton" "w-16"}}</td>{{if .TagTimes}}<td class="hidden text-right sm:table-cell">{{template "skeleton" "w-16"}}</td>{{end}}<td></td>
 {{- else}}
 <td class="hidden md:table-cell"><a href="{{digestURL .Repo .Digest}}" class="font-mono text-xs hover:text-accent-text">{{shortDigest .Digest}}</a></td>
-<td class="hidden whitespace-nowrap text-muted md:table-cell">{{if .Main}}<span title="{{range $i, $p := .Platforms}}{{if $i}}, {{end}}{{platform $p}}{{end}}">{{len .Platforms}} platforms</span>{{else if .Platforms}}{{platform (index .Platforms 0)}}{{else}}{{.Type}}{{end}}</td>
-<td class="text-right whitespace-nowrap tabular-nums"{{with .Main}} title="{{.}}"{{end}}>{{size .Size}}</td>
+<td class="hidden whitespace-nowrap text-muted md:table-cell">{{if gt (len .Platforms) 1}}<span title="{{range $i, $p := .Platforms}}{{if $i}}, {{end}}{{platform $p}}{{if $p.Missing}} (missing){{end}}{{end}}">{{.PlatformCount}}</span>{{else if .Platforms}}{{platform (index .Platforms 0)}}{{else}}{{.Type}}{{end}}</td>
+<td class="text-right whitespace-nowrap tabular-nums"{{with .Main}} title="{{.}}"{{end}}>{{if .Unknown}}Unknown{{else}}{{size .Size}}{{end}}</td>
 <td class="hidden text-right whitespace-nowrap text-muted sm:table-cell">{{if not .Created.IsZero}}<span title="{{date .Created}}">{{age .Created}}</span>{{end}}</td>
 {{- if .TagTimes}}
 <td class="hidden text-right whitespace-nowrap text-muted sm:table-cell">{{if not .Updated.IsZero}}<span title="{{date .Updated}}">{{age .Updated}}</span>{{end}}</td>
@@ -188,12 +188,13 @@
 <thead><tr><th>OS / Arch</th><th class="hidden sm:table-cell">Digest</th><th class="text-right!">Compressed size</th></tr></thead>
 <tbody>
 {{- range $i, $p := .Platforms}}
-<tr{{if ge $i 3}} class="hidden group-has-[[open]]/platforms:table-row"{{end}}><td><span class="inline-flex items-center gap-2 whitespace-nowrap">{{icon "cpu" "text-faint"}}{{platform $p}}</span></td><td class="hidden sm:table-cell"><a href="{{digestURL $.Repo $p.Digest}}" class="font-mono hover:text-accent-text">{{shortDigest $p.Digest}}</a></td><td class="text-right whitespace-nowrap tabular-nums">{{size $p.Size}}</td></tr>
+{{- /* A missing platform is dimmed, with nothing to link to. */}}
+<tr{{if ge $i 3}} class="hidden group-has-[[open]]/platforms:table-row"{{end}}><td><span class="inline-flex items-center gap-2 whitespace-nowrap{{if $p.Missing}} text-faint{{end}}">{{icon "cpu" "text-faint"}}{{platform $p}}</span></td><td class="hidden sm:table-cell">{{if $p.Missing}}<span class="font-mono text-faint">{{shortDigest $p.Digest}}</span>{{else}}<a href="{{digestURL $.Repo $p.Digest}}" class="font-mono hover:text-accent-text">{{shortDigest $p.Digest}}</a>{{end}}</td><td class="text-right whitespace-nowrap tabular-nums">{{if $p.Missing}}<span class="text-faint">Missing</span>{{else}}{{size $p.Size}}{{end}}</td></tr>
 {{- end}}
 </tbody>
 </table>
 {{- if gt (len .Platforms) 3}}
-<details class="group/more mt-2"><summary class="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-accent-text [&::-webkit-details-marker]:hidden">{{$n := len (slice .Platforms 3)}}<span class="group-open/more:hidden">{{$n}} more platform{{if ne $n 1}}s{{end}}</span><span class="hidden group-open/more:inline">Show fewer</span>{{icon "chevron-down" "group-open/more:rotate-180"}}</summary></details>
+<details class="group/more mt-2"><summary class="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-accent-text [&::-webkit-details-marker]:hidden"><span class="group-open/more:hidden">{{.MorePlatforms}}</span><span class="hidden group-open/more:inline">Show fewer</span>{{icon "chevron-down" "group-open/more:rotate-180"}}</summary></details>
 {{- end}}
 </div>
 {{- else}}

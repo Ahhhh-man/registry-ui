@@ -40,11 +40,18 @@ type entry struct {
 	days      int
 	helm      bool
 	alias     string
+	// missing are platforms listed in the index whose manifests aren't in
+	// the registry.
+	missing []string
 }
 
 func img(p []string, mb float64, days int) entry { return entry{platforms: p, mb: mb, days: days} }
 func helm(mb float64, days int) entry            { return entry{helm: true, mb: mb, days: days} }
 func alias(tag string) entry                     { return entry{alias: tag} }
+
+func partial(p, missing []string, mb float64, days int) entry {
+	return entry{platforms: p, missing: missing, mb: mb, days: days}
+}
 
 type repoSeed struct {
 	description, source string
@@ -79,9 +86,11 @@ var seed = map[string]repoSeed{
 		description: "Redis, the in-memory data store used as a database, cache and message broker.",
 		source:      "https://github.com/docker-library/redis",
 		tags: map[string]entry{
-			"latest": alias("7.4.1"), "7.4.1": img(full, 45.2, 30), "7.4.1-alpine": img(alpine, 16.9, 30), "7.2.6": img(full, 44.1, 61),
-			// An index whose platforms a pull-through cache hasn't stored yet.
-			"7.0.15": img(nil, 0, 400),
+			"latest": alias("7.4.1"), "7.4.1": img(full, 45.2, 30), "7.4.1-alpine": img(alpine, 16.9, 30),
+			// Indexes some of whose platforms, or all, a pull-through cache
+			// hasn't stored yet.
+			"7.2.6":  partial(full, []string{"linux/amd64", "linux/s390x"}, 44.1, 61),
+			"7.0.15": partial(two, two, 0, 400),
 		},
 	},
 	"bitnami/kafka": {
@@ -194,8 +203,12 @@ func (r *repo) add(name, tag string, e entry, created time.Time, labels map[stri
 		if len(parts) == 3 {
 			pl.Variant = parts[2]
 		}
+		if slices.Contains(e.missing, p) {
+			pl.Config, pl.Size, pl.Missing = "", 0, true
+		} else {
+			r.configs[pl.Config] = registry.ImageConfig{Created: created, Labels: labels}
+		}
 		platforms[i] = pl
-		r.configs[pl.Config] = registry.ImageConfig{Created: created, Labels: labels}
 	}
 
 	if len(platforms) == 1 {
@@ -209,6 +222,9 @@ func (r *repo) add(name, tag string, e entry, created time.Time, labels map[stri
 	r.manifests[m.Digest] = m
 	// Each platform manifest can be opened by digest too.
 	for _, pl := range platforms {
+		if pl.Missing {
+			continue
+		}
 		r.manifests[pl.Digest] = registry.Manifest{Digest: pl.Digest, MediaType: mediaManifest, Kind: registry.KindImage, Size: pl.Size, Platforms: []registry.Platform{pl}}
 	}
 	return m

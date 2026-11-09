@@ -23,6 +23,9 @@ type Server struct {
 	Title     string                             // registry title, shown in the header
 	PullHost  string                             // host[:port] shown in docker pull commands
 	BasePath  string                             // normalised base path, "/" or e.g. "/registry/"
+	// Storage is set in storage mode, where a platform missing from an
+	// index is one nobody has pulled through the cache yet.
+	Storage bool
 
 	// Sessions and Check enable /-/login and /-/logout, and signing pages'
 	// registry requests in as the session's user. Check asks the registry,
