@@ -16,7 +16,7 @@ const (
 	// cacheSize is how many entries the cache holds before evicting the
 	// least recently used.
 	cacheSize = 5000
-	// cacheTTL is how long the catalog, tag lists and tag lookups are
+	// cacheTTL is how long the catalog, tag lists, tag lookups and tag times are
 	// trusted. Anything addressed by digest can't change, so it never expires.
 	cacheTTL = 30 * time.Second
 )
@@ -81,6 +81,11 @@ func (c *Cache) Config(ctx context.Context, repo, digest string) (ImageConfig, e
 	cfg, err := cached(ctx, c, 0, func(ctx context.Context) (ImageConfig, error) { return c.src.Config(ctx, repo, digest) }, "config", repo, digest)
 	cfg.Labels = maps.Clone(cfg.Labels)
 	return cfg, err
+}
+
+// TagTime implements Source.
+func (c *Cache) TagTime(ctx context.Context, repo, tag string) (time.Time, error) {
+	return cached(ctx, c, cacheTTL, func(ctx context.Context) (time.Time, error) { return c.src.TagTime(ctx, repo, tag) }, "tag time", repo, tag)
 }
 
 // cached returns the entry for key in ctx's identity, or calls fetch once

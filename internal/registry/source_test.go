@@ -139,6 +139,13 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 		t.Errorf("Config(%s) = %+v, %v", single.Config, cfg, err)
 	}
 
+	// Only storage mode knows when a tag changed; TestStorageTagTime checks
+	// the times.
+	_, err = s.TagTime(ctx, registrytest.RepoSingle, registrytest.TagSingle)
+	if r.StoragePath == "" && !errors.Is(err, errors.ErrUnsupported) || r.StoragePath != "" && err != nil {
+		t.Errorf("TagTime error = %v", err)
+	}
+
 	zero := "sha256:" + strings.Repeat("0", 64)
 	for _, tc := range []struct {
 		name string

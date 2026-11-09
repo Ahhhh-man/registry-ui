@@ -212,6 +212,16 @@ func NewStorage(t testing.TB) *Registry {
 	return r
 }
 
+// SetTagTime sets when repo:tag last changed in a NewStorage registry, the
+// modification time of the tag's link, as a push or a pull-through would.
+func (r *Registry) SetTagTime(t testing.TB, repo, tag string, when time.Time) {
+	t.Helper()
+	link := filepath.Join(r.StoragePath, "docker", "registry", "v2", "repositories", repo, "_manifests", "tags", tag, "current", "link")
+	if err := os.Chtimes(link, when, when); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // content lists every tag in the seeded registry, in push order.
 func (r *Registry) content() []tagged {
 	c := []tagged{

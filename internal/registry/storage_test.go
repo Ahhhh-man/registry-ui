@@ -75,6 +75,54 @@ func TestCacheRefreshesStorageIndex(t *testing.T) {
 	})
 }
 
+func TestStorageTagTime(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s, r := newStorage(t)
+		c := registry.NewCache(s)
+		ctx := t.Context()
+		tagTime := func(src registry.Source) time.Time {
+			t.Helper()
+			got, err := src.TagTime(ctx, registrytest.RepoSingle, registrytest.TagSingle)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return got
+		}
+
+		pushed := time.Date(2025, 3, 1, 12, 0, 0, 0, time.UTC)
+		r.SetTagTime(t, registrytest.RepoSingle, registrytest.TagSingle, pushed)
+		if got := tagTime(s); !got.Equal(pushed) {
+			t.Errorf("TagTime = %v, want %v", got, pushed)
+		}
+		if got := tagTime(c); !got.Equal(pushed) {
+			t.Errorf("cached TagTime = %v, want %v", got, pushed)
+		}
+
+		// A pull through a cache rewrites the link; the cache catches up
+		// once its entry expires.
+		pulled := pushed.Add(time.Hour)
+		r.SetTagTime(t, registrytest.RepoSingle, registrytest.TagSingle, pulled)
+		if got := tagTime(c); !got.Equal(pushed) {
+			t.Errorf("right after the pull: %v, want the cached %v", got, pushed)
+		}
+		time.Sleep(31 * time.Second)
+		if got := tagTime(c); !got.Equal(pulled) {
+			t.Errorf("after the cache expires: %v, want %v", got, pulled)
+		}
+
+		for _, ref := range [][2]string{
+			{registrytest.RepoSingle, "0.0.0"},
+			{registrytest.RepoSingle, "../1.36"},
+			{"nope/missing", registrytest.TagSingle},
+			{"Not A Repo", registrytest.TagSingle},
+		} {
+			if _, err := s.TagTime(ctx, ref[0], ref[1]); !errors.Is(err, registry.ErrNotFound) {
+				t.Errorf("TagTime(%s, %s): got %v, want ErrNotFound", ref[0], ref[1], err)
+			}
+		}
+	})
+}
+
 func TestStorageUncached(t *testing.T) {
 	s, r := newStorage(t)
 	ctx := t.Context()

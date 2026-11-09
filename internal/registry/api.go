@@ -266,6 +266,11 @@ func (a *API) Config(ctx context.Context, repo, digest string) (ImageConfig, err
 	return ImageConfig{Created: cfg.Created.Time, Labels: cfg.Config.Labels}, nil
 }
 
+// TagTime implements Source. The registry API records no push time.
+func (a *API) TagTime(context.Context, string, string) (time.Time, error) {
+	return time.Time{}, errors.ErrUnsupported
+}
+
 func config(ctx context.Context, p *remote.Puller, repo name.Repository, digest string) (*v1.ConfigFile, error) {
 	if !digestRef.MatchString(digest) {
 		return nil, ErrNotFound

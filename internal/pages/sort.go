@@ -2,7 +2,9 @@ package pages
 
 import (
 	"context"
+	"errors"
 	"net/url"
+	"slices"
 	"time"
 
 	"golang.org/x/sync/errgroup"
@@ -17,9 +19,26 @@ var sortTimeout = 10 * time.Second
 type sortChoice struct{ Value, Label string }
 
 var (
-	catalogSorts = []sortChoice{{"", "Name A–Z"}, {"name-desc", "Name Z–A"}, {"created", "Recently created"}, {"tags", "Most tags"}}
-	tagSorts     = []sortChoice{{"", "Version, newest first"}, {"version-asc", "Version, oldest first"}, {"name", "Name A–Z"}, {"created", "Recently created"}, {"size", "Largest first"}}
+	// "updated" is only offered when the source has tag times; see sorts.
+	catalogSorts = []sortChoice{{"", "Name A–Z"}, {"name-desc", "Name Z–A"}, {"created", "Recently created"}, {"updated", "Recently updated"}, {"tags", "Most tags"}}
+	tagSorts     = []sortChoice{{"", "Version, newest first"}, {"version-asc", "Version, oldest first"}, {"name", "Name A–Z"}, {"created", "Recently created"}, {"updated", "Recently updated"}, {"size", "Largest first"}}
 )
+
+// tagTimes reports whether the source knows when tags last changed, as
+// storage mode does. A source that can't tell says so for any tag, so the
+// empty one asks without touching a repository.
+func (s *Server) tagTimes(ctx context.Context) bool {
+	_, err := s.Src.TagTime(ctx, "", "")
+	return !errors.Is(err, errors.ErrUnsupported)
+}
+
+// sorts is choices without "Recently updated" when there are no tag times.
+func sorts(choices []sortChoice, tagTimes bool) []sortChoice {
+	if tagTimes {
+		return choices
+	}
+	return slices.DeleteFunc(slices.Clone(choices), func(c sortChoice) bool { return c.Value == "updated" })
+}
 
 // sortMenu is the data for the "sort-menu" template.
 type sortMenu struct {

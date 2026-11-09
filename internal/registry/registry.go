@@ -25,6 +25,12 @@ type Source interface {
 	// Config returns the image config with the given digest, usually a
 	// Platform.Config value.
 	Config(ctx context.Context, repo, digest string) (ImageConfig, error)
+
+	// TagTime returns when tag last changed on this registry: Distribution
+	// rewrites a tag's link on every push of it and, on a pull-through
+	// cache, on every pull by tag. It returns errors.ErrUnsupported when
+	// the source can't tell, as the registry API can't.
+	TagTime(ctx context.Context, repo, tag string) (time.Time, error)
 }
 
 // Kind says what a manifest holds, so pages can pick how to show it.

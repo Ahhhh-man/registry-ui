@@ -3,6 +3,7 @@ package pages
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -56,6 +57,7 @@ type repoView struct {
 	Note                  string // why the tags aren't filtered or in the Sort order, when they aren't
 	Empty                 string // the title when a filter leaves no tags
 	List                  bool   // the list view: ?view=list, or the view cookie without ?view=
+	TagTimes              bool   // the source knows when tags were updated: storage mode
 	Cards                 []tagCard
 	Page, Pages           int
 	Prev, Next            string // pagination links, "" at either end
@@ -95,6 +97,8 @@ type tagCard struct {
 	Size             int64
 	Main             string // the platform Size and Created are from, when there are several
 	Platforms        []registry.Platform
+	Updated          time.Time // when the tag last changed on the registry; zero if unknown
+	TagTimes         bool      // the source has tag times, so a list row has an Updated cell
 }
 
 // Repo serves a repository's page: the Tags tab in the cards or list view,
@@ -111,8 +115,10 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 	q := r.URL.Query()
 	v := repoView{
 		Repo: ref.Repo, TagCount: len(tags), Query: strings.TrimSpace(q.Get("q")), View: q.Get("view"),
-		Sort: pickSort(tagSorts, q.Get("sort")), Type: pickSort(contentTypes, q.Get("type")),
+		Type: pickSort(contentTypes, q.Get("type")), TagTimes: s.tagTimes(r.Context()),
 	}
+	choices := sorts(tagSorts, v.TagTimes)
+	v.Sort = pickSort(choices, q.Get("sort"))
 	v.Namespace, v.Name = splitRepo(ref.Repo)
 	if v.Namespace != "" {
 		v.Prefix = v.Namespace + "/"
@@ -163,7 +169,7 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 		s.fragment(w, r, "repo-tags", v)
 		return
 	}
-	v.Menu = newSortMenu(tagSorts, v.Sort, func(sort string) string { return v.link(r, "sort", sort, "page", "") })
+	v.Menu = newSortMenu(choices, v.Sort, func(sort string) string { return v.link(r, "sort", sort, "page", "") })
 	s.page(w, r, ui.Page{PageTitle: ref.Repo}, "repo", v)
 }
 
@@ -215,8 +221,9 @@ func labelTag(tags []string) int {
 }
 
 // sortTags puts tags, which arrive newest version first, in the order by.
-// The created and size orders resolve every tag first; if that takes too
-// long the tags stay in version order and the returned note says so.
+// The created and size orders resolve every tag first, and the updated
+// order reads every tag time; if that takes too long the tags stay in
+// version order and the returned note says so.
 func (s *Server) sortTags(ctx context.Context, repo string, tags []string, by string) string {
 	switch by {
 	case "version-asc":
@@ -229,18 +236,22 @@ func (s *Server) sortTags(ctx context.Context, repo string, tags []string, by st
 	case "name":
 		slices.Sort(tags)
 		return ""
-	case "created", "size":
+	case "created", "size", "updated":
 	default:
 		return ""
 	}
 	type tagInfo struct {
-		tag     string
-		created time.Time
-		size    int64
+		tag              string
+		created, updated time.Time
+		size             int64
 	}
 	infos := make([]tagInfo, len(tags))
 	err := fetchAll(ctx, len(tags), func(ctx context.Context, i int) {
 		infos[i].tag = tags[i]
+		if by == "updated" {
+			infos[i].updated, _ = s.Src.TagTime(ctx, repo, tags[i]) // zero on error: sorts last
+			return
+		}
 		m, err := s.Src.Resolve(ctx, repo, tags[i])
 		if err != nil {
 			return // sorts last, and its card shows the error
@@ -261,8 +272,11 @@ func (s *Server) sortTags(ctx context.Context, repo string, tags []string, by st
 		return "The registry took too long to describe every tag, so this list is in version order instead."
 	}
 	slices.SortStableFunc(infos, func(a, b tagInfo) int {
-		if by == "size" {
+		switch by {
+		case "size":
 			return cmp.Compare(b.size, a.size)
+		case "updated":
+			return newestFirst(a.updated, b.updated)
 		}
 		return newestFirst(a.created, b.created)
 	})
@@ -336,7 +350,7 @@ func (v *repoView) cards(r *http.Request, page []string, host string) {
 	v.Cards = make([]tagCard, len(page))
 	for i, t := range page {
 		v.Cards[i] = tagCard{
-			Repo: v.Repo, Tag: t, Label: tagLabel(t), Badges: latestBadge(t),
+			Repo: v.Repo, Tag: t, Label: tagLabel(t), Badges: latestBadge(t), TagTimes: v.TagTimes,
 			Load: v.link(r, "fragment", frag, "tag", t, "tab", ""), // a fragment is always Tags
 		}
 		if v.List {
@@ -424,6 +438,9 @@ func (s *Server) tagDetails(ctx context.Context, repo string, page []string, ms 
 func (s *Server) card(ctx context.Context, repo, tag string, m registry.Manifest) (tagCard, error) {
 	c := tagCard{Repo: repo, Tag: tag, Label: tagLabel(tag), Badges: latestBadge(tag), Digest: m.Digest, Size: m.Size, Platforms: m.Platforms}
 	c.Command = command(s.PullHost, repo, tag, m.Kind)
+	var err error
+	c.Updated, err = s.Src.TagTime(ctx, repo, tag) // decoration: an error just leaves it out
+	c.TagTimes = !errors.Is(err, errors.ErrUnsupported)
 	switch m.Kind {
 	case registry.KindImage, registry.KindIndex: // the platforms say it all
 	case registry.KindHelm:

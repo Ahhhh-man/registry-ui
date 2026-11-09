@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/types"
@@ -199,6 +200,18 @@ func (s *Storage) Config(_ context.Context, repo, digest string) (ImageConfig, e
 		return ImageConfig{}, s.fail("config "+repo+"@"+digest, err)
 	}
 	return ImageConfig{Created: cfg.Created.Time, Labels: cfg.Config.Labels}, nil
+}
+
+// TagTime implements Source with the modification time of the tag's link.
+func (s *Storage) TagTime(_ context.Context, repo, tag string) (time.Time, error) {
+	if !repoName.MatchString(repo) || !tagName.MatchString(tag) {
+		return time.Time{}, fmt.Errorf("tag %s:%s: %w", repo, tag, ErrNotFound)
+	}
+	fi, err := os.Stat(s.repoPath(repo, "_manifests", "tags", tag, "current", "link"))
+	if err != nil {
+		return time.Time{}, s.fail("tag time of "+repo+":"+tag, err)
+	}
+	return fi.ModTime(), nil
 }
 
 // tag returns the digest a tag points at, if that manifest is stored.

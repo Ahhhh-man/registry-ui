@@ -140,6 +140,11 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, repo, tag, ref
 		v.Created = created.UTC().Format("2006-01-02 15:04:05 UTC")
 		v.Pills = append(v.Pills, pill{Icon: "clock", Text: "Created " + format.Age(created), Title: format.Date(created)})
 	}
+	if tag != "" {
+		if t, err := s.Src.TagTime(ctx, repo, tag); err == nil {
+			v.Pills = append(v.Pills, pill{Icon: "history", Text: "Updated " + format.Age(t), Title: format.Date(t) + ": when this tag was last pushed or, on a pull-through cache, last pulled"})
+		}
+	}
 	if p, ok := mainPlatform(m); ok {
 		v.Pills = append(v.Pills, pill{Icon: "cpu", Text: plural(len(m.Platforms), "platform") + " · " + format.Size(p.Size) + " on " + format.ShortPlatform(p)})
 	}

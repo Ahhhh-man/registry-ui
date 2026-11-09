@@ -44,6 +44,7 @@ type catalogRow struct {
 	Helm        bool
 	Type        string // its ?type=, "" for a repository without tags
 	Created     time.Time
+	updated     time.Time // its newest tag time, for the "updated" sort only
 }
 
 // Namespace is the part of Repo before its name, "library/" or "".
@@ -80,7 +81,8 @@ func (s *Server) Catalog(w http.ResponseWriter, r *http.Request, _ web.Ref) {
 		return
 	}
 	q, path := strings.TrimSpace(r.URL.Query().Get("q")), r.URL.EscapedPath()
-	data := catalogPage{Host: s.PullHost, Total: len(repos), Query: q, Sort: pickSort(catalogSorts, r.URL.Query().Get("sort")), Type: pickSort(contentTypes, r.URL.Query().Get("type"))}
+	choices := sorts(catalogSorts, s.tagTimes(r.Context()))
+	data := catalogPage{Host: s.PullHost, Total: len(repos), Query: q, Sort: pickSort(choices, r.URL.Query().Get("sort")), Type: pickSort(contentTypes, r.URL.Query().Get("type"))}
 	for _, name := range repos {
 		if strings.Contains(name, strings.ToLower(q)) {
 			data.Rows = append(data.Rows, catalogRow{Repo: name})
@@ -89,7 +91,7 @@ func (s *Server) Catalog(w http.ResponseWriter, r *http.Request, _ web.Ref) {
 	var counts map[string]int
 	data.Rows, counts, data.Note = s.filterRows(r.Context(), data.Rows, data.Type)
 	data.Note = cmp.Or(s.sortRows(r.Context(), data.Rows, data.Sort), data.Note)
-	data.Menu = newSortMenu(catalogSorts, data.Sort, func(sort string) string {
+	data.Menu = newSortMenu(choices, data.Sort, func(sort string) string {
 		return pageURL(path, "q", q, "sort", sort, "type", data.Type)
 	})
 	data.Chips = typeChips(data.Type, counts, func(t string) string { return pageURL(path, "q", q, "sort", data.Sort, "type", t) })
@@ -134,18 +136,23 @@ func (s *Server) filterRows(ctx context.Context, rows []catalogRow, t string) ([
 }
 
 // sortRows puts rows, which arrive A–Z, in the order by. The created and
-// tag-count orders load every row's details first; if that takes too long
-// the rows stay A–Z and the returned note says so.
+// tag-count orders load every row's details first, and the updated order
+// every tag time; if that takes too long the rows stay A–Z and the returned
+// note says so.
 func (s *Server) sortRows(ctx context.Context, rows []catalogRow, by string) string {
 	switch by {
 	case "name-desc":
 		slices.Reverse(rows)
 		return ""
-	case "created", "tags":
+	case "created", "tags", "updated":
 	default:
 		return ""
 	}
 	err := fetchAll(ctx, len(rows), func(ctx context.Context, i int) {
+		if by == "updated" {
+			rows[i].updated = s.repoUpdated(ctx, rows[i].Repo)
+			return
+		}
 		if rows[i].Loaded || rows[i].Failed { // the type filter got them
 			return
 		}
@@ -158,12 +165,27 @@ func (s *Server) sortRows(ctx context.Context, rows []catalogRow, by string) str
 		return "The registry took too long to describe every repository, so this list is A–Z instead."
 	}
 	slices.SortStableFunc(rows, func(a, b catalogRow) int {
-		if by == "tags" {
+		switch by {
+		case "tags":
 			return cmp.Compare(b.Tags, a.Tags)
+		case "updated":
+			return newestFirst(a.updated, b.updated)
 		}
 		return newestFirst(a.Created, b.Created)
 	})
 	return ""
+}
+
+// repoUpdated is the newest tag time in repo, or zero if none can be read.
+func (s *Server) repoUpdated(ctx context.Context, repo string) time.Time {
+	var newest time.Time
+	tags, _ := s.Src.Tags(ctx, repo)
+	for _, tag := range tags {
+		if t, err := s.Src.TagTime(ctx, repo, tag); err == nil && t.After(newest) {
+			newest = t
+		}
+	}
+	return newest
 }
 
 // catalogRow answers a row fragment. A failure only marks the row, so the

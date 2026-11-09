@@ -2,9 +2,10 @@
 # Pull-through cache smoke test for storage mode.
 #
 # An upstream registry holds three tags; a registry:3 proxy in front of it
-# pulls one. registry-ui then reads the proxy's storage, read-only, and must
-# show only that tag without a single request reaching the proxy or the
-# upstream. A proxy answers tags/list from upstream and fetches uncached tags
+# pulls two, a couple of seconds apart. registry-ui then reads the proxy's
+# storage, read-only, and must show only those tags, the later pull first
+# when sorted by "Recently updated", without a single request reaching the
+# proxy or the upstream. A proxy answers tags/list from upstream and fetches uncached tags
 # on demand, so any API call would show up in their access logs.
 #
 # Needs docker, curl and crane. Run it from the dev shell after loading the
@@ -49,25 +50,27 @@ requests() { docker logs "$1" 2>&1 | grep -c 'HTTP/1\.1"' || true; }
 docker network create "$p" >/dev/null
 docker volume create "$p" >/dev/null
 
-echo "== upstream with tags t-cached, t-upstream-a, t-upstream-b"
+echo "== upstream with tags t-cached, t-again, t-upstream"
 docker run -d --name "$p-upstream" --network "$p" -p 127.0.0.1::5000 "$registry" >/dev/null
 up=$(port "$p-upstream" 5000)
-for t in t-cached t-upstream-a t-upstream-b; do
+for t in t-cached t-again t-upstream; do
 	echo "$t" >"$tmp/$t"
 	tar -cf "$tmp/$t.tar" -C "$tmp" "$t"
 	crane append --insecure -f "$tmp/$t.tar" -t "$up/$repo:$t" >/dev/null
 	crane mutate --insecure --set-platform linux/amd64 -t "$up/$repo:$t" "$up/$repo:$t" >/dev/null
 done
 
-echo "== proxy, pulling t-cached through it"
+echo "== proxy, pulling t-cached and then t-again through it"
 docker run -d --name "$p-proxy" --network "$p" -p 127.0.0.1::5000 \
 	-v "$p:/var/lib/registry" \
 	-e REGISTRY_PROXY_REMOTEURL="http://$p-upstream:5000" \
 	"$registry" >/dev/null
 px=$(port "$p-proxy" 5000)
 crane pull --insecure "$px/$repo:t-cached" "$tmp/pulled.tar"
-cached=$(docker exec "$p-proxy" ls /var/lib/registry/docker/registry/v2/repositories/$repo/_manifests/tags)
-[ "$cached" = t-cached ] || fail "the proxy should have cached only t-cached, has: $cached"
+sleep 2 # the proxy writes each tag's link as it's pulled; the UI sorts by its mtime
+crane pull --insecure "$px/$repo:t-again" "$tmp/pulled.tar"
+cached=$(docker exec "$p-proxy" ls /var/lib/registry/docker/registry/v2/repositories/$repo/_manifests/tags | xargs)
+[ "$cached" = "t-again t-cached" ] || fail "the proxy should have cached only t-again and t-cached, has: $cached"
 
 echo "== registry-ui in storage mode"
 # The registry URL points at the proxy, so if storage mode ever fell back to
@@ -96,8 +99,15 @@ grep -q "$repo" "$tmp/body" || fail "the catalog doesn't list $repo"
 page "$repo" 200
 grep -q t-cached "$tmp/body" || fail "the repo page doesn't list t-cached"
 ! grep -q t-upstream "$tmp/body" || fail "the repo page lists a tag that was never pulled"
+# firsttag prints the first tag card's tag in $tmp/body.
+firsttag() { grep -o "\"/$repo:[^\"]*\" title=" "$tmp/body" | head -1 | sed 's/.*://; s/" title=//'; }
+page "$repo?tab=tags" 200
+[ "$(firsttag)" = t-cached ] || fail "version order should put t-cached first, got $(firsttag)"
+page "$repo?sort=updated" 200
+[ "$(firsttag)" = t-again ] || fail "\"Recently updated\" should put t-again, pulled last, first; got $(firsttag)"
 page "$repo:t-cached" 200
-page "$repo:t-upstream-a" 404
+grep -q "Updated today" "$tmp/body" || fail "the tag page doesn't say when t-cached was updated"
+page "$repo:t-upstream" 404
 
 sleep 1 # let the registries flush their logs
 up_after=$(requests "$p-upstream")

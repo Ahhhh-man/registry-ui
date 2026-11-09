@@ -50,6 +50,11 @@ func (s *counter) Config(ctx context.Context, _, _ string) (ImageConfig, error) 
 	return ImageConfig{Labels: map[string]string{"who": who}}, err
 }
 
+func (s *counter) TagTime(ctx context.Context, _, _ string) (time.Time, error) {
+	_, err := s.call(ctx)
+	return time.Unix(0, 0), err
+}
+
 const testDigest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 func (s *counter) want(t *testing.T, n int32) {
@@ -72,21 +77,23 @@ func TestCacheTTL(t *testing.T) {
 			_, _ = c.Resolve(ctx, "repo", "latest")
 			_, _ = c.Resolve(ctx, "repo", testDigest)
 			_, _ = c.Config(ctx, "repo", testDigest)
+			_, _ = c.TagTime(ctx, "repo", "latest")
 		}
 
 		fetch()
-		src.want(t, 5)
+		src.want(t, 6)
 		time.Sleep(cacheTTL - time.Second)
 		fetch()
-		src.want(t, 5)
+		src.want(t, 6)
 
-		// Catalog, tags and the tag lookup expire; digest lookups don't.
+		// Catalog, tags, the tag lookup and the tag time expire; digest
+		// lookups don't.
 		time.Sleep(time.Second)
 		fetch()
-		src.want(t, 8)
+		src.want(t, 10)
 		time.Sleep(365 * 24 * time.Hour)
 		fetch()
-		src.want(t, 11)
+		src.want(t, 14)
 	})
 }
 

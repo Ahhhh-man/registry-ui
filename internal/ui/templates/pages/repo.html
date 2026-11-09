@@ -88,7 +88,7 @@
 {{- /* relative: the sr-only header text is absolute, and mustn't widen the page. */}}
 <div class="relative overflow-x-auto rounded-md border border-border bg-surface">
 <table class="{{template "table" "selectable"}}">
-<thead><tr><th class="w-10"><input type="checkbox" data-select-all aria-label="Select all tags on this page" class="size-4 cursor-pointer align-middle accent-accent"></th><th>Tag</th><th class="hidden md:table-cell">Digest</th><th class="hidden md:table-cell">Platforms</th><th class="text-right!">Size</th><th class="hidden text-right! sm:table-cell">Created</th><th class="w-10"><span class="sr-only">Copy</span></th></tr></thead>
+<thead><tr><th class="w-10"><input type="checkbox" data-select-all aria-label="Select all tags on this page" class="size-4 cursor-pointer align-middle accent-accent"></th><th>Tag</th><th class="hidden md:table-cell">Digest</th><th class="hidden md:table-cell">Platforms</th><th class="text-right!">Size</th><th class="hidden text-right! sm:table-cell">Created</th>{{if .TagTimes}}<th class="hidden text-right! sm:table-cell">Updated</th>{{end}}<th class="w-10"><span class="sr-only">Copy</span></th></tr></thead>
 <tbody>
 {{- range .Cards}}
 {{template "tag-row" .}}
@@ -144,12 +144,15 @@
 <td><input type="checkbox" aria-label="Select {{.Tag}}" class="size-4 cursor-pointer align-middle accent-accent"></td>
 <td><div class="flex flex-wrap items-center gap-x-2 gap-y-1"><a href="{{tagURL .Repo .Tag}}" title="{{.Tag}}" class="font-medium whitespace-nowrap hover:text-accent-text">{{.Label}}</a>{{range .Badges}}{{template "badge" .}}{{end}}</div></td>
 {{- if .Load}}
-<td class="hidden md:table-cell">{{template "skeleton" "w-16"}}</td><td class="hidden md:table-cell">{{template "skeleton" "w-16"}}</td><td class="text-right">{{template "skeleton" "w-12"}}</td><td class="hidden text-right sm:table-cell">{{template "skeleton" "w-16"}}</td><td></td>
+<td class="hidden md:table-cell">{{template "skeleton" "w-16"}}</td><td class="hidden md:table-cell">{{template "skeleton" "w-16"}}</td><td class="text-right">{{template "skeleton" "w-12"}}</td><td class="hidden text-right sm:table-cell">{{template "skeleton" "w-16"}}</td>{{if .TagTimes}}<td class="hidden text-right sm:table-cell">{{template "skeleton" "w-16"}}</td>{{end}}<td></td>
 {{- else}}
 <td class="hidden md:table-cell"><a href="{{digestURL .Repo .Digest}}" class="font-mono text-xs hover:text-accent-text">{{shortDigest .Digest}}</a></td>
 <td class="hidden whitespace-nowrap text-muted md:table-cell">{{if .Main}}<span title="{{range $i, $p := .Platforms}}{{if $i}}, {{end}}{{platform $p}}{{end}}">{{len .Platforms}} platforms</span>{{else if .Platforms}}{{platform (index .Platforms 0)}}{{else}}{{.Type}}{{end}}</td>
 <td class="text-right whitespace-nowrap tabular-nums"{{with .Main}} title="{{.}}"{{end}}>{{size .Size}}</td>
 <td class="hidden text-right whitespace-nowrap text-muted sm:table-cell">{{if not .Created.IsZero}}<span title="{{date .Created}}">{{age .Created}}</span>{{end}}</td>
+{{- if .TagTimes}}
+<td class="hidden text-right whitespace-nowrap text-muted sm:table-cell">{{if not .Updated.IsZero}}<span title="{{date .Updated}}">{{age .Updated}}</span>{{end}}</td>
+{{- end}}
 <td class="py-1! text-right">{{with .Command}}<button type="button" data-copy="{{.}}" aria-label="Copy pull command for {{$.Tag}}" title="Copy pull command" class="group grid size-8 place-items-center rounded-md text-muted hover:bg-panel hover:text-accent-text data-copied:text-accent-text">{{icon "copy" "group-data-copied:hidden"}}{{icon "check" "hidden group-data-copied:block"}}</button>{{end}}</td>
 {{- end}}
 </tr>
@@ -166,6 +169,7 @@
 <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
 {{- if .Load}}{{template "skeleton" "w-1/2"}}{{else}}
 {{- if not .Created.IsZero}}<span class="inline-flex items-center gap-1.5" title="{{date .Created}}">{{icon "clock" "text-faint"}}Created {{age .Created}}</span>{{end}}
+{{- if not .Updated.IsZero}}<span class="inline-flex items-center gap-1.5" title="{{date .Updated}}">{{icon "history" "text-faint"}}Updated {{age .Updated}}</span>{{end}}
 <span class="inline-flex items-center gap-1.5">{{icon "hash" "text-faint"}}<span class="font-mono">{{shortDigest .Digest}}</span></span>
 {{- with .SameAs}}
 <span class="inline-flex items-center gap-1.5">{{icon "link" "text-faint"}}<span>Same as {{range $i, $t := .}}{{if $i}}, {{end}}<a href="{{tagURL $.Repo $t}}" class="hover:text-text">{{$t}}</a>{{end}}{{with $.MoreSameAs}} +{{.}}{{end}}</span></span>

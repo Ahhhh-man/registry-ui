@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -262,6 +263,12 @@ func (s *Source) Config(_ context.Context, name, dgst string) (registry.ImageCon
 	}
 	c.Labels = maps.Clone(c.Labels)
 	return c, nil
+}
+
+// TagTime implements registry.Source. Like the registry API, the fake has
+// no push times.
+func (s *Source) TagTime(context.Context, string, string) (time.Time, error) {
+	return time.Time{}, errors.ErrUnsupported
 }
 
 func (s *Source) repo(name string) (*repo, error) {

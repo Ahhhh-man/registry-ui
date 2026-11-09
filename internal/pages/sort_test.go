@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Ahhhh-man/registry-ui/internal/format"
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
+	"github.com/Ahhhh-man/registry-ui/internal/registry/registrytest"
 )
 
 // rowRepos returns the repositories of the catalog rows in body, in order.
@@ -184,5 +186,85 @@ func TestNewestFirst(t *testing.T) {
 	slices.SortStableFunc(dates, newestFirst)
 	if !dates[0].Equal(now) || !dates[1].Equal(now.Add(-time.Hour)) || !dates[2].Equal(dates[1]) || !dates[3].IsZero() || !dates[4].IsZero() {
 		t.Errorf("order = %v", dates)
+	}
+}
+
+// TestUpdatedSorts runs storage mode, where each tag's time is when its link
+// last changed.
+func TestUpdatedSorts(t *testing.T) {
+	r := registrytest.NewStorage(t)
+	src, err := registry.NewStorage(r.StoragePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newTestServer(t, "/")
+	s.Src = src
+
+	now := time.Now()
+	repos, _ := src.Catalog(t.Context())
+	for _, repo := range repos {
+		tags, _ := src.Tags(t.Context(), repo)
+		for _, tag := range tags {
+			r.SetTagTime(t, repo, tag, now.Add(-365*24*time.Hour))
+		}
+	}
+	for _, tt := range []struct {
+		repo, tag string
+		ago       time.Duration
+	}{
+		{registrytest.RepoSingle, registrytest.TagSingle, time.Hour},
+		{registrytest.RepoPaged, "v3", 2 * time.Hour},
+		{registrytest.RepoPaged, "v5", 3 * time.Hour}, // ties with v7
+		{registrytest.RepoPaged, "v7", 3 * time.Hour},
+		{registrytest.RepoHelm, registrytest.TagHelm, 4 * time.Hour}, // ties with the nested repo
+		{registrytest.RepoNested, registrytest.TagNested, 4 * time.Hour},
+	} {
+		r.SetTagTime(t, tt.repo, tt.tag, now.Add(-tt.ago))
+	}
+
+	// A repo goes by its newest tag; ties stay A–Z, and nginx is oldest.
+	body := get(t, s, "/", "/?sort=updated", false).Body.String()
+	contains(t, body, `<span class="sr-only">Sort by </span>Recently updated<svg`)
+	want := strings.Join([]string{registrytest.RepoSingle, registrytest.RepoPaged, registrytest.RepoHelm, registrytest.RepoNested, registrytest.RepoIndex}, " ")
+	if got := strings.Join(rowRepos(body), " "); got != want {
+		t.Errorf("catalog:\n got %s\nwant %s", got, want)
+	}
+
+	// Ties keep version order, as does everything else, a year old.
+	body = get(t, s, "/", "/"+registrytest.RepoPaged+"?sort=updated", false).Body.String()
+	if got := strings.Join(cardTags(body), " "); got != "v3 v7 v5 v10 v9 v8 v6 v4 v2 v1" {
+		t.Errorf("tags: got %s", got)
+	}
+
+	card := get(t, s, "/", "/"+registrytest.RepoPaged+"?fragment=card&tag=v3", true).Body.String()
+	contains(t, card, "Updated today")
+	list := get(t, s, "/", "/"+registrytest.RepoPaged+"?view=list", false).Body.String()
+	contains(t, list, ">Updated</th>")
+	row := get(t, s, "/", "/"+registrytest.RepoPaged+"?view=list&fragment=row&tag=v7", true).Body.String()
+	contains(t, row, `<span title="`+format.Date(now.Add(-3*time.Hour))+`">today</span>`)
+	tag := get(t, s, "/", "/"+registrytest.RepoSingle+":"+registrytest.TagSingle, false).Body.String()
+	contains(t, tag, "Updated today", "last pulled")
+}
+
+// The registry API has no tag times, so nothing about them shows.
+func TestNoUpdatedInAPIMode(t *testing.T) {
+	api, err := registry.NewAPI(registrytest.New(t).URL, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newTestServer(t, "/")
+	s.Src = api
+	for _, path := range []string{
+		"/?sort=updated",
+		"/" + registrytest.RepoPaged + "?sort=updated",
+		"/" + registrytest.RepoPaged + "?view=list",
+		"/" + registrytest.RepoPaged + "?view=list&fragment=row&tag=v3",
+		"/" + registrytest.RepoPaged + "?fragment=card&tag=v3",
+		"/" + registrytest.RepoSingle + ":" + registrytest.TagSingle,
+	} {
+		body := get(t, s, "/", path, strings.Contains(path, "fragment")).Body.String()
+		if strings.Contains(body, "Updated") || strings.Contains(body, "updated") {
+			t.Errorf("%s mentions updated:\n%s", path, body)
+		}
 	}
 }
