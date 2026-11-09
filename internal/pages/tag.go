@@ -32,6 +32,7 @@ type tagView struct {
 	Badges                []map[string]any // page-header data
 	Pills                 []pill
 	Pull                  string // header pull command; "" for none
+	Ref                   string // "registry.example.com/library/nginx:1.27.3", or "…@sha256:…" on a digest page
 	// Cards are "fact-card" data: one per platform of an image, or one
 	// for a chart, signature or artifact. An image with none has nothing
 	// in storage yet.
@@ -87,8 +88,11 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, repo, tag, ref
 	if tag != "" {
 		pinned = host + ":" + tag
 	}
+	v.Ref = pinned
 	digest := map[string]any{"Label": "Digest", "Value": format.ShortDigest(m.Digest), "Mono": true, "Title": m.Digest}
 	copyDigest := []map[string]any{{"Text": m.Digest, "Caption": "Copy digest"}}
+	// A kind with no pull command has no pull box, so its card copies the reference.
+	copyRef := append([]map[string]any{{"Text": pinned, "Caption": "Copy reference"}}, copyDigest...)
 	var created time.Time // the main platform's, for the header
 	switch m.Kind {
 	case registry.KindImage, registry.KindIndex:
@@ -107,7 +111,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, repo, tag, ref
 			facts = append([]map[string]any{{"Label": "Belongs to", "Value": "sha256:" + format.ShortDigest(target), "Mono": true, "Title": target, "Href": s.BasePath + repo + "@" + target}}, facts...)
 		}
 		v.Cards = []map[string]any{{
-			"Icon": "shield-check", "Title": "Signature", "Size": format.Size(m.Size), "Facts": facts, "Copies": copyDigest,
+			"Icon": "shield-check", "Title": "Signature", "Size": format.Size(m.Size), "Facts": facts, "Copies": copyRef,
 			"Text": "A cosign signature, attestation or SBOM for an image in this repository. It isn't an image you can run.",
 		}}
 	case registry.KindHelm:
@@ -123,7 +127,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, repo, tag, ref
 	default:
 		v.Kind = "artifact"
 		v.Cards = []map[string]any{{
-			"Icon": "package", "Title": "OCI artifact", "Size": format.Size(m.Size), "Copies": copyDigest,
+			"Icon": "package", "Title": "OCI artifact", "Size": format.Size(m.Size), "Copies": copyRef,
 			"Text":  "This isn't a container image, so there are no platforms to show.",
 			"Facts": []map[string]any{digest, {"Label": "Type", "Value": manifestType(m.MediaType)}},
 		}}
@@ -172,7 +176,8 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, repo, tag, ref
 // config for its created time, and returns the main platform's. A config
 // the registry lacks (a pull-through cache holds only what was pulled)
 // leaves it unknown rather than failing the page. Missing platforms come
-// last, dimmed, with a note on why they're missing and no pull command.
+// last, dimmed, with a note on why they're missing and no pull command
+// or reference.
 func (s *Server) platformCards(ctx context.Context, r *http.Request, v *tagView) (time.Time, error) {
 	ps := availableFirst(v.Manifest.Platforms)
 	if len(ps) == 0 {
@@ -232,6 +237,7 @@ func (s *Server) platformCards(ctx context.Context, r *http.Request, v *tagView)
 			},
 			"Copies": []map[string]any{
 				{"Text": "docker pull " + s.PullHost + "/" + v.Repo + "@" + p.Digest, "Caption": "Copy pull command", "Label": "Copy pull command for " + name},
+				{"Text": s.PullHost + "/" + v.Repo + "@" + p.Digest, "Caption": "Copy reference", "Label": "Copy reference for " + name},
 				{"Text": p.Digest, "Caption": "Copy digest", "Label": "Copy digest of " + name},
 			},
 		})

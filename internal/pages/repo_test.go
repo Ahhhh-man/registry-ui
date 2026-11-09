@@ -182,12 +182,13 @@ func TestRepoListView(t *testing.T) {
 	for _, want := range []string{
 		`value="list" aria-pressed="true"`, `value="cards" aria-pressed="false"`,
 		`data-select="/library/nginx"`, `data-selection-bar hidden`, `aria-live="polite"`,
-		`data-action="names"`, `data-action="pulls"`, `data-action="clear"`, `role="status"`,
+		`data-action="names"`, `data-action="refs"`, `data-action="pulls"`, `data-action="clear"`, `role="status"`,
 		`<input type="checkbox" data-select-all aria-label="Select all tags on this page"`,
 		`<input type="checkbox" aria-label="Select 1.27.3"`,
 		// Rows load like cards, and guess their command until they do.
-		`<tr data-tag="1.27.3" data-pull="docker pull registry.example.com/library/nginx:1.27.3" hx-get="/library/nginx?fragment=row&amp;tag=1.27.3&amp;view=list" hx-trigger="revealed"`,
-		`data-pull="cosign verify registry.example.com/library/nginx@` + m.Digest + `"`,
+		`<tr data-tag="1.27.3" data-pull="docker pull registry.example.com/library/nginx:1.27.3" data-ref="registry.example.com/library/nginx:1.27.3" hx-get="/library/nginx?fragment=row&amp;tag=1.27.3&amp;view=list" hx-trigger="revealed"`,
+		// A signature's reference is its own tag, not the image it signs.
+		`data-pull="cosign verify registry.example.com/library/nginx@` + m.Digest + `" data-ref="registry.example.com/library/nginx:sha256-` + hex + `.sig"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("list view lacks %s", want)
@@ -202,7 +203,7 @@ func TestRepoListView(t *testing.T) {
 	_, main, _ := strings.Cut(body, "<main")
 	checkMarkup(t, main)
 
-	if body := get(t, s, "/", "/charts/podinfo?view=list", false).Body.String(); !strings.Contains(body, `data-pull="helm pull oci://registry.example.com/charts/podinfo --version 6.7.1"`) {
+	if body := get(t, s, "/", "/charts/podinfo?view=list", false).Body.String(); !strings.Contains(body, `data-pull="helm pull oci://registry.example.com/charts/podinfo --version 6.7.1" data-ref="registry.example.com/charts/podinfo:6.7.1"`) {
 		t.Error("a chart row should guess helm pull")
 	}
 
@@ -227,7 +228,7 @@ func TestRepoListView(t *testing.T) {
 	rec := get(t, s, "/", "/library/nginx?fragment=row&tag=1.27.3", true)
 	body = rec.Body.String()
 	for _, want := range []string{
-		`<tr data-tag="1.27.3" data-pull="docker pull registry.example.com/library/nginx:1.27.3">`,
+		`<tr data-tag="1.27.3" data-pull="docker pull registry.example.com/library/nginx:1.27.3" data-ref="registry.example.com/library/nginx:1.27.3">`,
 		`href="/library/nginx@` + m.Digest + `"`, ">6 platforms</span>", ">69.0 MB</td>", `<time datetime="`, `UTC">2 days ago</time>`,
 		`data-copy="docker pull registry.example.com/library/nginx:1.27.3" aria-label="Copy pull command for 1.27.3"`,
 	} {

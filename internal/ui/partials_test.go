@@ -53,8 +53,8 @@ var partialCases = []struct {
 		[]string{"font-mono", `>docker pull registry.example.com/library/nginx:1.27</code>`, `data-copy="docker pull registry.example.com/library/nginx:1.27"`, `aria-label="Copy command"`},
 	},
 	{
-		"code-block", `{{template "code-block" (dict "Label" "Copy pull command" "Command" "docker pull registry.example.com/library/nginx")}}`,
-		[]string{"bg-code-bg", "wrap-anywhere", `data-copy="docker pull registry.example.com/library/nginx" aria-label="Copy pull command"`, "bg-accent", "text-accent-fg"},
+		"code-block", `{{template "code-block" (dict "Label" "Copy pull command" "Command" "docker pull registry.example.com/library/nginx" "Ref" "registry.example.com/library/nginx")}}`,
+		[]string{"bg-code-bg", "wrap-anywhere", `data-copy="docker pull registry.example.com/library/nginx" aria-label="Copy pull command"`, "bg-accent", "text-accent-fg", `data-copy="registry.example.com/library/nginx" class=`, ">Copy reference</span>"},
 	},
 	{
 		"tabs", `{{template "tabs" (dict "Label" "Repository" "Tabs" (list (dict "Label" "Tags" "Icon" "tag" "Href" "/library/nginx" "Count" 42 "Current" true) (dict "Label" "Overview" "Icon" "book-open" "Href" "/library/nginx?tab=overview")))}}`,

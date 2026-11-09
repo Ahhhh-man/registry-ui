@@ -98,6 +98,7 @@ type tagCard struct {
 	SameAs           []string // other tags on the page with this digest, the first few
 	MoreSameAs       int      // how many more there are
 	Command          string   // pull or verify command; "" when there's none
+	Ref              string   // "registry.example.com/library/nginx:1.27.3"; "" when the manifest is missing
 	Type             string   // what a tag without platforms holds, e.g. "Helm chart"
 	Size             int64
 	Unknown          bool                // every platform is missing, so Size and Created aren't known
@@ -390,7 +391,7 @@ func (v *repoView) cards(r *http.Request, page []string, host string) {
 			if sigTag.MatchString(t) {
 				k = registry.KindSignature
 			}
-			v.Cards[i].Command = command(host, v.Repo, t, k)
+			v.Cards[i].Command, v.Cards[i].Ref = command(host, v.Repo, t, k), host+"/"+v.Repo+":"+t
 		}
 	}
 	if v.Page > 1 {
@@ -480,7 +481,7 @@ func (s *Server) card(ctx context.Context, repo, tag string, m registry.Manifest
 		return c, nil
 	}
 	c.Digest, c.Size, c.Platforms = m.Digest, m.Size, availableFirst(m.Platforms)
-	c.Command = command(s.PullHost, repo, tag, m.Kind)
+	c.Command, c.Ref = command(s.PullHost, repo, tag, m.Kind), s.PullHost+"/"+repo+":"+tag
 	switch m.Kind {
 	case registry.KindImage, registry.KindIndex: // the platforms say it all
 	case registry.KindHelm:

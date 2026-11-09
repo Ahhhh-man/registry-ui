@@ -76,12 +76,15 @@ func TestTagPage(t *testing.T) {
 				`>Same as <a href="/library/nginx:latest" class="font-medium text-accent-text hover:underline">latest</a>, <a href="/library/nginx:mainline"`,
 				// The pull command, whole, with its Copy button.
 				">" + pull + ":1.27.3</code>", `data-copy="` + pull + `:1.27.3" aria-label="Copy pull command"`,
+				// And the bare reference, for everything that isn't docker.
+				`data-copy="registry.example.com/library/nginx:1.27.3" class=`, `aria-live="polite">Copy reference</span>`,
 				// A card per platform.
 				"<h2 class=\"mb-3 text-base font-semibold\">Platforms</h2>",
 				`<article id="platform-linux-arm-v7" class=`, ">linux/arm/v7</span></h3>", ">" + format.Size(arm64.Size) + "</span>",
 				`<a href="/library/nginx@` + amd64.Digest + `" class="text-accent-text hover:underline">` + format.ShortDigest(amd64.Digest) + "</a>",
 				">OCI image manifest</dd>",
 				`data-copy="` + pull + "@" + amd64.Digest + `" aria-label="Copy pull command for linux/amd64"`,
+				`data-copy="registry.example.com/library/nginx@` + amd64.Digest + `" aria-label="Copy reference for linux/amd64"`,
 				`data-copy="` + arm64.Digest + `" aria-label="Copy digest of linux/arm64"`,
 				// Technical details, closed.
 				"<details class=", "Index digest</dt>", ">" + nginx.Digest + "</code>",
@@ -125,6 +128,7 @@ func TestTagPage(t *testing.T) {
 			want: []string{
 				`<span class="font-medium text-faint">nginx@</span>sha256:` + format.ShortDigest(nginx.Digest) + "</span>",
 				">" + pull + "@" + nginx.Digest + "</code>", ">6 platforms · ", `>Same as <a href="/library/nginx:latest"`,
+				`data-copy="registry.example.com/library/nginx@` + nginx.Digest + `" class=`,
 			},
 		},
 		{
@@ -137,6 +141,8 @@ func TestTagPage(t *testing.T) {
 			want: []string{
 				"</svg>signature</span>", ">Signature</span></h3>", "cosign signature, attestation or SBOM", sig[:19] + "….sig", ">1.2 KB</span>",
 				"Belongs to</dt>", `<a href="/library/nginx@` + nginx.Digest + `" class="text-accent-text hover:underline">sha256:` + format.ShortDigest(nginx.Digest) + "</a>",
+				// No pull box, so the card copies the reference.
+				`data-copy="registry.example.com/library/nginx:` + sig + `" class=`, `aria-live="polite">Copy reference</span>`,
 			},
 			not: []string{"docker pull", "bg-code-bg", "Platforms</h2>", "Created"},
 		},
@@ -145,6 +151,7 @@ func TestTagPage(t *testing.T) {
 			want: []string{
 				"</svg>helm chart</span>", ">Helm chart</span></h3>", ">14 KB</span>", ">OCI artifact</dd>",
 				">helm pull oci://registry.example.com/charts/podinfo --version 6.7.1</code>", `data-copy="` + chart.Digest + `"`,
+				`data-copy="registry.example.com/charts/podinfo:6.7.1" class=`, // no oci://
 			},
 			not: []string{"docker pull", "Platforms</h2>"},
 		},
@@ -157,8 +164,9 @@ func TestTagPage(t *testing.T) {
 				`<article id="platform-linux-ppc64le" class="flex min-w-0 flex-col gap-4 rounded-lg border border-border p-5 aria-[current=true]:border-accent aria-[current=true]:ring-1 aria-[current=true]:ring-accent bg-surface">`,
 				`<article id="platform-linux-amd64" class="flex min-w-0 flex-col gap-4 rounded-lg border border-border p-5 aria-[current=true]:border-accent aria-[current=true]:ring-1 aria-[current=true]:ring-accent border-dashed bg-panel text-muted">`,
 				"This platform&#39;s manifest isn&#39;t in the registry.", `aria-label="Copy digest of linux/amd64"`,
+				`aria-label="Copy reference for linux/arm64"`,
 			},
-			not: []string{"docker pull registry.example.com/library/redis@" + redis.Platforms[0].Digest, `href="/library/redis@` + redis.Platforms[0].Digest, "Not cached"},
+			not: []string{"docker pull registry.example.com/library/redis@" + redis.Platforms[0].Digest, `data-copy="registry.example.com/library/redis@` + redis.Platforms[0].Digest, "Copy reference for linux/amd64", `href="/library/redis@` + redis.Platforms[0].Digest, "Not cached"},
 		},
 		{
 			name: "missing platform highlighted", path: "/library/redis:7.2.6?platform=linux/amd64", status: 200, cards: 6,
@@ -211,6 +219,23 @@ func TestTagPage(t *testing.T) {
 				t.Log(body)
 			}
 		})
+	}
+}
+
+// References use the pull host, like the pull commands do.
+func TestReferencesUsePullHost(t *testing.T) {
+	amd64 := resolve(t, "library/nginx", "1.27.3").Platforms[0]
+	s := newTestServer(t, "/")
+	s.PullHost = "cr.example.com:5000"
+	for path, want := range map[string][]string{
+		"/library/nginx:1.27.3":    {`data-copy="cr.example.com:5000/library/nginx:1.27.3" class=`, `data-copy="cr.example.com:5000/library/nginx@` + amd64.Digest + `" aria-label="Copy reference for linux/amd64"`},
+		"/library/nginx?view=list": {`data-ref="cr.example.com:5000/library/nginx:1.27.3"`},
+	} {
+		_, body := getPage(t, s, "/", path, false)
+		contains(t, body, want...)
+		if strings.Contains(body, `"registry.example.com/`) {
+			t.Errorf("%s has a reference that ignores the pull host", path)
+		}
 	}
 }
 
@@ -418,7 +443,7 @@ func TestMissingManifestInRegistry(t *testing.T) {
 			t.Errorf("%s: card status %d", name, card.Code)
 		}
 		list := get(t, s, "/", repo+"?view=list&fragment=row&tag="+tag, true).Body.String()
-		check("list row", list, []string{`data-tag="latest" data-pull=""`, `aria-label="Select latest"`, "</svg>manifest missing</span>"}, []string{"sha256:", "data-copy", "Unknown"})
+		check("list row", list, []string{`data-tag="latest" data-pull="" data-ref=""`, `aria-label="Select latest"`, "</svg>manifest missing</span>"}, []string{"sha256:", "data-copy", "Unknown"})
 		if name == "storage" {
 			check("list row", list, []string{string(format.Time(updated))}, nil)
 		}

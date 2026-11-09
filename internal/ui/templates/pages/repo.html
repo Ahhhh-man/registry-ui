@@ -141,6 +141,7 @@
 <span class="ml-auto sm:order-last sm:ml-0">{{template "button" (dict "Label" "Clear selection" "Icon" "x" "Variant" "icon" "Action" "clear")}}</span>
 <span class="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
 {{- template "button" (dict "Label" "Copy names" "Icon" "copy" "Action" "names")}}
+{{- template "button" (dict "Label" "Copy references" "Icon" "link" "Action" "refs")}}
 {{- template "button" (dict "Label" "Copy pull commands" "Icon" "terminal" "Action" "pulls")}}
 </span>
 </div>
@@ -152,9 +153,9 @@
 
 {{/* tag-row: one tag in the list view (a pages.tagCard), loading its
      details like a card. data-pull is the command "Copy pull commands"
-     copies. */}}
+     copies, and data-ref the reference "Copy references" copies. */}}
 {{define "tag-row" -}}
-<tr data-tag="{{.Tag}}" data-pull="{{.Command}}"{{with .Load}} hx-get="{{.}}" hx-trigger="revealed" hx-swap="outerHTML" aria-busy="true"{{end}}>
+<tr data-tag="{{.Tag}}" data-pull="{{.Command}}" data-ref="{{.Ref}}"{{with .Load}} hx-get="{{.}}" hx-trigger="revealed" hx-swap="outerHTML" aria-busy="true"{{end}}>
 <td><input type="checkbox" aria-label="Select {{.Tag}}" class="size-4 cursor-pointer align-middle accent-accent"></td>
 <td><div class="flex flex-wrap items-center gap-x-2 gap-y-1"><a href="{{tagURL .Repo .Tag}}" title="{{.Tag}}" class="font-medium whitespace-nowrap hover:text-accent-text">{{.Label}}</a>{{range .Badges}}{{template "badge" .}}{{end}}</div></td>
 {{- if .Load}}

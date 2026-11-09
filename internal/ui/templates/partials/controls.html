@@ -19,10 +19,12 @@
 {{/* copy: a Copy button; app.js copies data-copy and shows "Copied".
      dict "Text" string to copy, "Label" accessible name (optional, e.g.
           "Copy digest"), "Caption" visible text (default "Copy"),
-          "Accent" bool (the solid button on the code block). */}}
+          "Accent" bool (the solid button on the code block), "OnCode" bool
+          (an outlined button beside it, for the dark code block). */}}
 {{define "copy" -}}
 <button type="button" data-copy="{{.Text}}"{{with .Label}} aria-label="{{.}}"{{end}} class="group inline-flex shrink-0 items-center gap-1.5 rounded-md border font-sans font-medium whitespace-nowrap
   {{- if .Accent}} border-accent bg-accent px-3 py-1.5 text-sm text-accent-fg hover:opacity-90
+  {{- else if .OnCode}} border-code-fg/25 px-3 py-1.5 text-sm text-code-fg hover:border-code-fg/60
   {{- else}} border-border bg-surface px-2.5 py-1 text-xs text-text hover:border-accent hover:text-accent-text data-copied:border-accent data-copied:text-accent-text{{end}}">
 {{- icon "copy" "size-3 group-data-copied:hidden"}}{{icon "check" "hidden size-3 group-data-copied:block"}}<span data-copy-label aria-live="polite">{{or .Caption "Copy"}}</span></button>
 {{- end}}
@@ -39,11 +41,15 @@
 {{/* code-block: the dark pull box, a full-width command that wraps rather
      than truncating, with an accent Copy button.
      dict "Command" string, "Label" the button's accessible name
-          ("Copy pull command"). */}}
+          ("Copy pull command"), "Ref" the image reference, for a plain
+          "Copy reference" button (optional). */}}
 {{define "code-block" -}}
-<div class="flex w-full min-w-0 items-center gap-3 rounded-lg border border-code-fg/10 bg-code-bg py-2.5 pr-2.5 pl-4 text-code-fg">
-<code class="min-w-0 flex-1 font-mono text-sm wrap-anywhere"><span class="mr-2 text-code-fg/50 select-none" aria-hidden="true">$</span>{{.Command}}</code>
+<div class="flex w-full min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-2 rounded-lg border border-code-fg/10 bg-code-bg py-2.5 pr-2.5 pl-4 text-code-fg">
+<code class="min-w-0 flex-1 basis-3xs font-mono text-sm wrap-anywhere"><span class="mr-2 text-code-fg/50 select-none" aria-hidden="true">$</span>{{.Command}}</code>
+<span class="flex shrink-0 items-center gap-2">
+{{- with .Ref}}{{template "copy" (dict "Text" . "Caption" "Copy reference" "OnCode" true)}}{{end}}
 {{- template "copy" (dict "Text" .Command "Label" .Label "Accent" true)}}
+</span>
 </div>
 {{- end}}
 

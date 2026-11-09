@@ -167,7 +167,8 @@
   let sel = { path: "", tags: new Map() };
   try {
     const saved = JSON.parse(sessionStorage.getItem(storeKey));
-    if (saved) sel = { path: saved.path, tags: new Map(saved.tags) };
+    // An older version saved a bare command per tag: drop that selection.
+    if (saved?.tags.every(([, v]) => v && typeof v === "object")) sel = { path: saved.path, tags: new Map(saved.tags) };
   } catch {}
   const save = () => {
     try {
@@ -183,6 +184,7 @@
   let anchor = null; // the tag last clicked, where a Shift-click range starts
   let announced = 0;
   const rows = () => [...document.querySelectorAll("tr[data-tag]")];
+  const copies = (row) => ({ pull: row.dataset.pull, ref: row.dataset.ref }); // what a selected row copies
 
   // sync draws the selection: checkboxes, select-all, the bar and its count.
   const sync = () => {
@@ -197,7 +199,7 @@
       if (!on) continue;
       n++;
       // A loaded row knows its exact command; an unloaded one only guessed.
-      if (!row.hasAttribute("aria-busy")) sel.tags.set(row.dataset.tag, row.dataset.pull);
+      if (!row.hasAttribute("aria-busy")) sel.tags.set(row.dataset.tag, copies(row));
     }
     const all = document.querySelector("[data-select-all]");
     if (all) {
@@ -230,7 +232,7 @@
     const all = e.target.closest("[data-select-all]");
     if (all) {
       for (const row of rows()) {
-        if (all.checked) sel.tags.set(row.dataset.tag, row.dataset.pull);
+        if (all.checked) sel.tags.set(row.dataset.tag, copies(row));
         else sel.tags.delete(row.dataset.tag);
       }
       sync();
@@ -243,10 +245,10 @@
       sync();
       document.querySelector("[data-select-all]")?.focus();
     } else if (action) {
-      const names = action === "names";
-      const lines = names ? [...sel.tags.keys()] : [...sel.tags.values()].filter(Boolean);
+      const [unit, pick] = { names: ["tag name", ([tag]) => tag], refs: ["reference", ([, v]) => v.ref], pulls: ["pull command", ([, v]) => v.pull] }[action];
+      const lines = [...sel.tags].map(pick).filter(Boolean);
       const ok = await copyText(lines.join("\n"));
-      toast(ok ? `Copied ${plural(lines.length, names ? "tag name" : "pull command")}` : "Copy failed");
+      toast(ok ? `Copied ${plural(lines.length, unit)}` : "Copy failed");
     }
 
     // A click on a row, or on its checkbox, outside its links and buttons.
@@ -259,7 +261,7 @@
     const to = shown.indexOf(row);
     const range = e.shiftKey && from >= 0 ? shown.slice(Math.min(from, to), Math.max(from, to) + 1) : [row];
     for (const r of range) {
-      if (on) sel.tags.set(r.dataset.tag, r.dataset.pull);
+      if (on) sel.tags.set(r.dataset.tag, copies(r));
       else sel.tags.delete(r.dataset.tag);
     }
     anchor = row.dataset.tag;

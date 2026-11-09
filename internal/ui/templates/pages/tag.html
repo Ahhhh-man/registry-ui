@@ -12,7 +12,7 @@
 {{template "tag-breadcrumbs" .}}
 {{template "page-header" (dict "Repo" .Repo "Helm" (eq .Kind "helm") "Prefix" .Prefix "Title" .Title "Badges" .Badges "Pills" .Pills)}}
 {{- with .Pull}}
-{{template "code-block" (dict "Command" . "Label" "Copy pull command")}}
+{{template "code-block" (dict "Command" . "Label" "Copy pull command" "Ref" $.Ref)}}
 {{- end}}
 </div>
 {{- end}}
