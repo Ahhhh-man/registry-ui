@@ -272,7 +272,9 @@ func TestRepoOverview(t *testing.T) {
 		`<a href="/library/nginx" aria-current="page"`,
 		`<a href="/library/nginx?tab=tags" class=`, // Tags, not current
 		"Official build of Nginx",
-		`<a href="https://github.com/nginxinc/docker-nginx" rel="noreferrer"`,
+		`Source</dt><dd class="min-w-0"><a href="https://github.com/nginxinc/docker-nginx" rel="noreferrer"`,
+		`Homepage</dt><dd class="min-w-0"><a href="https://nginx.org/" rel="noreferrer"`,
+		`Documentation</dt><dd class="min-w-0"><a href="https://nginx.org/en/docs/" rel="noreferrer"`,
 		"Read from the OCI labels on latest.",
 		`hx-get="/library/nginx" hx-trigger="change" hx-target="#summary"`,
 		`<option value="latest" selected>latest</option>`, `<option value="1.9.15">`,
@@ -297,7 +299,7 @@ func TestRepoOverview(t *testing.T) {
 	}
 
 	body = page("/myteam/web/frontend?tab=overview")
-	if !strings.Contains(body, "No description.") || !strings.Contains(body, "v2.0.0 has neither") || strings.Contains(body, "rel=\"noreferrer\"") {
+	if !strings.Contains(body, "No description or links.") || !strings.Contains(body, "v2.0.0 has none it can show") || strings.Contains(body, "rel=\"noreferrer\"") {
 		t.Error("a repo without labels should say so")
 	}
 	if body := page("/charts/podinfo?tab=overview"); !strings.Contains(body, "<dd>Helm chart</dd>") || !strings.Contains(body, "helm pull oci://registry.example.com/charts/podinfo --version 6.7.1") {
@@ -318,6 +320,71 @@ func TestRepoOverview(t *testing.T) {
 	}
 	if rec := get(t, s, "/", "/library/nginx?tab=overview&fragment=summary&tag=nope", true); rec.Code != 404 {
 		t.Errorf("unknown tag summary: %d", rec.Code)
+	}
+}
+
+// labelled is a Source whose image configs all carry the given labels.
+type labelled struct {
+	registry.Source
+	labels map[string]string
+}
+
+func (l labelled) Config(ctx context.Context, repo, digest string) (registry.ImageConfig, error) {
+	cfg, err := l.Source.Config(ctx, repo, digest)
+	cfg.Labels = l.labels
+	return cfg, err
+}
+
+func TestRepoOverviewLinks(t *testing.T) {
+	const src, home, docs = "org.opencontainers.image.source", "org.opencontainers.image.url", "org.opencontainers.image.documentation"
+	for name, c := range map[string]struct {
+		labels map[string]string
+		links  []string // in order; nil for the nothing-to-show text
+	}{
+		"all three": {
+			map[string]string{docs: "https://docs.example.com", home: "http://example.com", src: "https://git.example.com/a"},
+			[]string{`Source</dt><dd class="min-w-0"><a href="https://git.example.com/a"`, `Homepage</dt><dd class="min-w-0"><a href="http://example.com"`, `Documentation</dt><dd class="min-w-0"><a href="https://docs.example.com"`},
+		},
+		"url is the source": {
+			map[string]string{src: "https://git.example.com/a", home: "https://git.example.com/a"},
+			[]string{`Source</dt><dd class="min-w-0"><a href="https://git.example.com/a"`},
+		},
+		"url is the source but for a slash": {
+			map[string]string{src: "https://git.example.com/a/", home: "https://git.example.com/a"},
+			[]string{`Source</dt><dd class="min-w-0"><a href="https://git.example.com/a/"`},
+		},
+		"not web links": {
+			map[string]string{src: "javascript:alert(1)", home: "example.com", docs: "https://docs.example.com"},
+			[]string{`Documentation</dt><dd class="min-w-0"><a href="https://docs.example.com"`},
+		},
+		"only documentation": {
+			map[string]string{docs: "https://docs.example.com"},
+			[]string{`Documentation</dt><dd class="min-w-0"><a href="https://docs.example.com"`},
+		},
+		"nothing usable": {map[string]string{src: "javascript:alert(1)", home: "example.com"}, nil},
+		"none":           {nil, nil},
+	} {
+		s := newTestServer(t, "/")
+		s.Src = labelled{s.Src, c.labels}
+		body := get(t, s, "/", "/myteam/api", false).Body.String()
+		if got := strings.Count(body, `rel="noreferrer"`); got != len(c.links) {
+			t.Errorf("%s: %d links, want %d", name, got, len(c.links))
+		}
+		at := 0
+		for _, want := range c.links {
+			i := strings.Index(body[at:], want)
+			if i < 0 {
+				t.Errorf("%s: lacks %s, or it's out of order", name, want)
+				break
+			}
+			at += i
+		}
+		if (c.links == nil) != strings.Contains(body, "No description or links.") {
+			t.Errorf("%s: wrong About text", name)
+		}
+		if strings.Contains(body, "javascript:") || strings.Contains(body, `href="example.com"`) {
+			t.Errorf("%s: a label that isn't a web link is shown", name)
+		}
 	}
 }
 

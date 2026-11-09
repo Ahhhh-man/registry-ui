@@ -113,7 +113,7 @@ type Registry struct {
 	// and then Attestation.
 	Index v1.ImageIndex
 	// Platforms are Index's linux/amd64, linux/arm64 and linux/arm/v7 images.
-	// Their configs carry the description and source labels.
+	// Their configs carry PlatformsLabels.
 	Platforms []v1.Image
 	// Attestation is Index's buildx-style attestation manifest, listed as
 	// unknown/unknown.
@@ -135,6 +135,9 @@ var (
 	PlatformsLabels  = map[string]string{
 		"org.opencontainers.image.description": "A seeded multi-arch test image.",
 		"org.opencontainers.image.source":      "https://example.com/nginx",
+		// The source again, as docker/metadata-action sets it.
+		"org.opencontainers.image.url":           "https://example.com/nginx/",
+		"org.opencontainers.image.documentation": "https://example.com/nginx/docs",
 	}
 )
 

@@ -52,12 +52,14 @@
 <div class="mt-5 grid items-start gap-5 lg:grid-cols-[1fr_22.5rem]">
 <section class="min-w-0 {{template "panel"}}">
 {{template "panel-header" (dict "Icon" "book-open" "Title" "About")}}
-{{- if or .Description .Source}}
+{{- if or .Description .Links}}
 {{- with .Description}}<p class="leading-relaxed">{{.}}</p>{{end}}
-{{- with .Source}}<a href="{{.}}" rel="noreferrer" class="mt-3 inline-flex max-w-full items-center gap-1.5 font-medium text-accent-text hover:underline">{{icon "external-link"}}<span class="truncate">{{.}}</span></a>{{end}}
+{{- with .Links}}<dl class="mt-3 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
+{{- range .}}<dt class="text-xs text-muted">{{.Label}}</dt><dd class="min-w-0"><a href="{{.Href}}" rel="noreferrer" class="inline-flex max-w-full items-center gap-1.5 font-medium text-accent-text hover:underline">{{icon "external-link"}}<span class="truncate">{{.Href}}</span></a></dd>{{end}}
+</dl>{{end}}
 <div class="mt-5">{{template "note" (print "Read from the OCI labels on " .LabelTag ". Registries don't store READMEs.")}}</div>
 {{- else if .LabelTag}}
-<p class="text-muted">No description. Registries don't store READMEs, so this tab reads the <code class="font-mono text-xs">org.opencontainers.image.description</code> and <code class="font-mono text-xs">source</code> labels, and {{.LabelTag}} has neither.</p>
+<p class="text-muted">No description or links. Registries don't store READMEs, so this tab reads the <code class="font-mono text-xs">org.opencontainers.image.description</code>, <code class="font-mono text-xs">source</code>, <code class="font-mono text-xs">url</code> and <code class="font-mono text-xs">documentation</code> labels, and {{.LabelTag}} has none it can show.</p>
 {{- else}}
 <p class="text-muted">Nothing has been pushed to this repository.</p>
 {{- end}}

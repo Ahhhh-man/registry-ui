@@ -28,6 +28,8 @@ const (
 	sameAsShown      = 3
 	labelDescription = "org.opencontainers.image.description"
 	labelSource      = "org.opencontainers.image.source"
+	labelURL         = "org.opencontainers.image.url"
+	labelDocs        = "org.opencontainers.image.documentation"
 )
 
 // sigTag matches cosign's signature, attestation and SBOM tags.
@@ -63,12 +65,13 @@ type repoView struct {
 	Page, Pages           int
 	Prev, Next            string // pagination links, "" at either end
 
-	// The Overview tab: the tag whose labels fill About, its source link,
+	// The Overview tab: the tag whose labels fill About, its links,
 	// every tag for the dropdown, and the selected tag's summary.
-	Overview         bool
-	LabelTag, Source string
-	Tags             []string
-	Summary          tagCard
+	Overview bool
+	LabelTag string
+	Links    []link
+	Tags     []string
+	Summary  tagCard
 }
 
 type pill struct {
@@ -349,8 +352,16 @@ func (s *Server) header(ctx context.Context, v *repoView, tags []string) {
 	}
 	v.Description = cfg.Labels[labelDescription]
 	// Labels are whatever the image's author wrote; only web links become links.
-	if src := cfg.Labels[labelSource]; strings.HasPrefix(src, "https://") || strings.HasPrefix(src, "http://") {
-		v.Source = src
+	for _, l := range []link{{"Source", labelSource}, {"Homepage", labelURL}, {"Documentation", labelDocs}} {
+		u := cfg.Labels[l.Href]
+		if !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
+			continue
+		}
+		// docker/metadata-action sets url to the source: show that once.
+		if l.Href == labelURL && strings.TrimSuffix(u, "/") == strings.TrimSuffix(cfg.Labels[labelSource], "/") {
+			continue
+		}
+		v.Links = append(v.Links, link{l.Label, u})
 	}
 	if !cfg.Created.IsZero() {
 		pills = append(pills, pill{Icon: "clock", Text: "Created ", Time: cfg.Created})

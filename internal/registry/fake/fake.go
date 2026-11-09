@@ -23,6 +23,8 @@ const (
 
 	labelDescription = "org.opencontainers.image.description"
 	labelSource      = "org.opencontainers.image.source"
+	labelURL         = "org.opencontainers.image.url"
+	labelDocs        = "org.opencontainers.image.documentation"
 )
 
 var (
@@ -58,6 +60,7 @@ func partial(p, missing []string, mb float64, days int) entry {
 
 type repoSeed struct {
 	description, source string
+	url, docs           string
 	tags                map[string]entry
 	// signed names a tag that gets a cosign "sha256-<digest>.sig" tag.
 	signed string
@@ -67,6 +70,8 @@ var seed = map[string]repoSeed{
 	"library/nginx": {
 		description: "Official build of Nginx, a high-performance HTTP server and reverse proxy.",
 		source:      "https://github.com/nginxinc/docker-nginx",
+		url:         "https://nginx.org/",
+		docs:        "https://nginx.org/en/docs/",
 		signed:      "1.27.3",
 		tags: map[string]entry{
 			"latest": alias("1.27.3"), "mainline": alias("1.27.3"), "stable": alias("1.26.2"),
@@ -80,6 +85,7 @@ var seed = map[string]repoSeed{
 	"library/postgres": {
 		description: "The PostgreSQL object-relational database system.",
 		source:      "https://github.com/docker-library/postgres",
+		url:         "https://github.com/docker-library/postgres", // as docker/metadata-action sets it
 		tags: map[string]entry{
 			"latest": alias("17.2"), "17.2": img(full, 158.3, 9), "17.2-alpine": img(alpine, 98.4, 9),
 			"17": alias("17.2"), "16.6": img(full, 151.0, 9), "16": alias("16.6"), "15.10": img(full, 147.2, 9),
@@ -156,6 +162,12 @@ func New() *Source {
 		}
 		if rs.source != "" {
 			labels[labelSource] = rs.source
+		}
+		if rs.url != "" {
+			labels[labelURL] = rs.url
+		}
+		if rs.docs != "" {
+			labels[labelDocs] = rs.docs
 		}
 
 		// Real tags first, so aliases can point at them.
