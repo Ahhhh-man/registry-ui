@@ -14,6 +14,7 @@ import (
 
 	"github.com/Ahhhh-man/registry-ui/internal/format"
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
+	"github.com/Ahhhh-man/registry-ui/internal/registry/registrytest"
 	"github.com/Ahhhh-man/registry-ui/internal/web"
 )
 
@@ -465,4 +466,81 @@ func TestRepoMissingPlatforms(t *testing.T) {
 	contains(t, body, "<dd>Multi-platform image</dd>", "<dt>Platforms</dt><dd>4 platforms (2 missing)</dd>", "linux/arm64</span>")
 	body = get(t, s, "/", "/library/redis?tab=overview&tag=7.0.15", false).Body.String()
 	contains(t, body, "<dd>Multi-platform image</dd>", "<dd><span>Unknown</span></dd>", "<dt>Platforms</dt><dd>2 platforms, all missing</dd>")
+}
+
+// Against a real registry, in both modes, a repository with no tags left
+// shows as empty wherever it shows, rather than as an error, whether
+// tags/list answers an empty list or a 404.
+func TestEmptyReposInRegistry(t *testing.T) {
+	api, err := registry.NewAPI(registrytest.New(t).URL, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storage, err := registry.NewStorage(registrytest.NewStorage(t).StoragePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty := []string{registrytest.RepoEmpty, registrytest.RepoUntagged}
+	for name, src := range map[string]registry.Source{"api": api, "storage": storage} {
+		s := newTestServer(t, "/")
+		s.Src, s.Storage = src, name == "storage"
+		check := func(what, body string, want, not []string) {
+			t.Helper()
+			for _, w := range want {
+				if !strings.Contains(body, w) {
+					t.Errorf("%s: %s lacks %q:\n%s", name, what, w, body)
+				}
+			}
+			for _, n := range not {
+				if strings.Contains(body, n) {
+					t.Errorf("%s: %s has %q:\n%s", name, what, n, body)
+				}
+			}
+		}
+
+		for _, repo := range empty {
+			// The catalog row is dimmed, says so and counts no tags.
+			row := get(t, s, "/", "/?fragment=row&repo="+repo, true).Body.String()
+			check("catalog row", row, []string{`data-tags="0"`, "font-semibold text-muted", ">no tags</span>", ">0 tags</span>"}, []string{"Couldn't load", "No description label"})
+
+			// Both tabs explain, without an error.
+			for _, target := range []string{"", "?tab=tags", "?tab=tags&fragment=tags"} {
+				rec := get(t, s, "/", "/"+repo+target, strings.Contains(target, "fragment"))
+				if rec.Code != 200 {
+					t.Errorf("%s: /%s%s: status %d", name, repo, target, rec.Code)
+				}
+				body := rec.Body.String()
+				check(repo+target, body, []string{"No tags", "Every tag in this repository has been deleted.", "docker/registry/v2/repositories/" + repo + " by hand"}, []string{"Tag summary", "Filter tags"})
+				if ro := "This UI only reads storage"; s.Storage != strings.Contains(body, ro) {
+					t.Errorf("%s: /%s%s: says %q: %t", name, repo, target, ro, !s.Storage)
+				}
+			}
+		}
+
+		// They stay in the list, drop out under a type filter, and come last by tag count.
+		all := rowRepos(get(t, s, "/", "/", false).Body.String())
+		for _, repo := range empty {
+			if !slices.Contains(all, repo) {
+				t.Errorf("%s: catalog lacks %s: %v", name, repo, all)
+			}
+		}
+		if got := rowRepos(get(t, s, "/", "/?type=image", false).Body.String()); slices.ContainsFunc(got, func(r string) bool { return slices.Contains(empty, r) }) {
+			t.Errorf("%s: ?type=image lists an empty repo: %v", name, got)
+		}
+		if got := rowRepos(get(t, s, "/", "/?sort=tags", false).Body.String()); len(got) < 2 || !slices.Equal(got[len(got)-2:], empty) {
+			t.Errorf("%s: ?sort=tags should put %v last: %v", name, empty, got)
+		}
+	}
+
+	// A 404 from tags/list can't tell an unknown name from an untagged
+	// repository, so the API shows that as empty too. Storage can tell.
+	s := newTestServer(t, "/")
+	s.Src = api
+	if rec := get(t, s, "/", "/nope/missing", false); rec.Code != 200 || !strings.Contains(rec.Body.String(), "Every tag in this repository has been deleted.") {
+		t.Errorf("api: unknown repo: status %d", rec.Code)
+	}
+	s.Src = storage
+	if rec := get(t, s, "/", "/nope/missing", false); rec.Code != 404 {
+		t.Errorf("storage: unknown repo: status %d", rec.Code)
+	}
 }

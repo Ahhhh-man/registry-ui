@@ -70,7 +70,7 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 	ctx := t.Context()
 
 	repos, err := s.Catalog(ctx)
-	wantRepos := []string{registrytest.RepoHelm, registrytest.RepoSingle, registrytest.RepoIndex, registrytest.RepoAllMissing, registrytest.RepoDangling, registrytest.RepoSomeMissing, registrytest.RepoNested, registrytest.RepoPaged}
+	wantRepos := []string{registrytest.RepoHelm, registrytest.RepoEmpty, registrytest.RepoUntagged, registrytest.RepoSingle, registrytest.RepoIndex, registrytest.RepoAllMissing, registrytest.RepoDangling, registrytest.RepoSomeMissing, registrytest.RepoNested, registrytest.RepoPaged}
 	if err != nil || !slices.Equal(repos, wantRepos) {
 		t.Errorf("Catalog = %v, %v; want %v", repos, err, wantRepos)
 	}
@@ -86,6 +86,9 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 		registrytest.RepoAllMissing:  {registrytest.TagVersion},
 		// A tag whose manifest is gone is still listed.
 		registrytest.RepoDangling: {registrytest.TagVersion, registrytest.TagLatest},
+		// Repositories with no tags left are empty, not unknown.
+		registrytest.RepoEmpty:    {},
+		registrytest.RepoUntagged: {},
 	} {
 		got, err := s.Tags(ctx, repo)
 		if err != nil || !slices.Equal(slices.Sorted(slices.Values(got)), slices.Sorted(slices.Values(tags))) {
@@ -166,12 +169,18 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 		t.Errorf("DiskUsage error = %v", err)
 	}
 
+	// The API answers an unknown repository's tags as it does an untagged
+	// one's, so only storage can tell it isn't there.
+	tags, err := s.Tags(ctx, "nope/missing")
+	if r.StoragePath == "" && (err != nil || len(tags) != 0) || r.StoragePath != "" && !errors.Is(err, registry.ErrNotFound) {
+		t.Errorf("Tags of an unknown repo = %v, %v", tags, err)
+	}
+
 	zero := "sha256:" + strings.Repeat("0", 64)
 	for _, tc := range []struct {
 		name string
 		call func() error
 	}{
-		{"tags of unknown repo", func() error { _, err := s.Tags(ctx, "nope/missing"); return err }},
 		{"tags of invalid name", func() error { _, err := s.Tags(ctx, "../library/nginx"); return err }},
 		{"unknown tag", func() error { _, err := s.Resolve(ctx, registrytest.RepoIndex, "0.0.0"); return err }},
 		{"resolve in unknown repo", func() error { _, err := s.Resolve(ctx, "nope/missing", registrytest.TagLatest); return err }},

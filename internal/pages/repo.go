@@ -58,6 +58,7 @@ type repoView struct {
 	Empty                 string // the title when a filter leaves no tags
 	List                  bool   // the list view: ?view=list, or the view cookie without ?view=
 	TagTimes              bool   // the source knows when tags were updated: storage mode
+	Storage               bool   // storage mode, which only reads, for an empty repo's explanation
 	Cards                 []tagCard
 	Page, Pages           int
 	Prev, Next            string // pagination links, "" at either end
@@ -126,7 +127,7 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 	q := r.URL.Query()
 	v := repoView{
 		Repo: ref.Repo, TagCount: len(tags), Query: strings.TrimSpace(q.Get("q")), View: q.Get("view"),
-		Type: pickSort(contentTypes, q.Get("type")), TagTimes: s.tagTimes(r.Context()),
+		Type: pickSort(contentTypes, q.Get("type")), TagTimes: s.tagTimes(r.Context()), Storage: s.Storage,
 	}
 	choices := sorts(tagSorts, v.TagTimes)
 	v.Sort = pickSort(choices, q.Get("sort"))

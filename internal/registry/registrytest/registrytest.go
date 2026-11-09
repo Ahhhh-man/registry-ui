@@ -6,7 +6,9 @@
 // last without sending a Link header. A shim in front of both pages them the
 // way Distribution does: sorted, at most PageSize names per page, with a Link
 // header to the next page, so clients have to follow pagination. Another
-// answers 404 for a dangling tag's manifest, as Distribution does.
+// answers 404 where Distribution does but the in-memory registry wouldn't:
+// for a dangling tag's manifest, and for the tag list of a repository
+// without a tags folder.
 //
 // NewStorage writes the same content to disk in Distribution's filesystem
 // layout instead, for tests of storage mode.
@@ -77,6 +79,15 @@ const (
 	// what an interrupted delete leaves behind.
 	RepoDangling = "missing/manifest"
 
+	// RepoEmpty held Single under TagVersion until the tag was deleted. The
+	// repository stays in the catalog, and tags/list answers an empty list,
+	// as registry:3 does; storage keeps an empty tags folder.
+	RepoEmpty = "empty/deleted"
+	// RepoUntagged holds Single under no tag and has no tags folder, like a
+	// repository only ever pushed by digest. It's in the catalog, but
+	// tags/list answers 404 NAME_UNKNOWN, as registry:3 does.
+	RepoUntagged = "empty/untagged"
+
 	// PageSize is the most names one catalog or tag-list page returns.
 	PageSize = 3
 
@@ -140,7 +151,7 @@ func start(t testing.TB, user, pass string) *Registry {
 
 	r := &Registry{}
 	r.build(t)
-	h := dangle(paginate(registry.New(registry.Logger(log.New(io.Discard, "", 0)))), r.content())
+	h := notFound(paginate(registry.New(registry.Logger(log.New(io.Discard, "", 0)))), r.content())
 	if user != "" {
 		h = requireBasicAuth(h, user, pass)
 	}
@@ -168,6 +179,11 @@ func start(t testing.TB, user, pass string) *Registry {
 			if err == nil {
 				err = remote.Delete(ref.Digest(h.String()), opts...)
 			}
+		}
+		// The in-memory registry keeps the manifest under its digest, so the
+		// repository stays in the catalog, as in Distribution.
+		if err == nil && (c.deleted || c.untagged) {
+			err = remote.Delete(ref, opts...)
 		}
 		if err != nil {
 			t.Fatalf("registrytest: push %s:%s: %v", c.repo, c.tag, err)
@@ -231,6 +247,15 @@ func NewStorage(t testing.TB) *Registry {
 			}
 			h = image(c.repo, obj)
 		}
+		switch {
+		case c.untagged:
+			continue
+		case c.deleted:
+			if err := os.MkdirAll(filepath.Join(v2, "repositories", c.repo, "_manifests", "tags"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
 		tag := filepath.Join(v2, "repositories", c.repo, "_manifests", "tags", c.tag)
 		write(filepath.Join(tag, "current", "link"), h.String())
 		write(filepath.Join(tag, "index", "sha256", h.Hex, "link"), h.String())
@@ -267,6 +292,8 @@ func (r *Registry) content() []tagged {
 		tagged{repo: RepoAllMissing, tag: TagVersion, obj: r.Index, missing: []v1.Hash{children[0].Digest, children[1].Digest, children[2].Digest, children[3].Digest}},
 		tagged{repo: RepoDangling, tag: TagVersion, obj: r.Single},
 		tagged{repo: RepoDangling, tag: TagLatest, obj: r.Helm, dangling: true},
+		tagged{repo: RepoEmpty, tag: TagVersion, obj: r.Single, deleted: true},
+		tagged{repo: RepoUntagged, tag: TagVersion, obj: r.Single, untagged: true},
 	)
 	return c
 }
@@ -279,6 +306,11 @@ type tagged struct {
 	// dangling leaves the tag without its manifest. obj must be a v1.Image
 	// the repository holds under no other tag.
 	dangling bool
+	// deleted pushes the tag, then deletes it.
+	deleted bool
+	// untagged leaves obj in the repository under no tag and without a
+	// tags folder, as a push by digest would.
+	untagged bool
 }
 
 // must panics on an error building fixtures from in-memory images, which
@@ -409,21 +441,26 @@ func paginate(next http.Handler) http.Handler {
 	})
 }
 
-// dangle answers 404, as Distribution does, for the manifest of each
-// dangling tag in content. The in-memory registry keeps a copy of every
-// manifest under its tag, so deleting the manifest wouldn't do it.
-func dangle(next http.Handler, content []tagged) http.Handler {
-	gone := map[string]bool{}
+// notFound answers 404, as Distribution does, for the manifest of each
+// dangling tag in content and the tag list of each untagged repository.
+// The in-memory registry keeps a copy of every manifest under its tag, so
+// deleting the manifest wouldn't do the first, and lists a repository
+// without tags as empty.
+func notFound(next http.Handler, content []tagged) http.Handler {
+	gone := map[string]string{} // path → error
 	for _, c := range content {
-		if c.dangling {
-			gone["/v2/"+c.repo+"/manifests/"+c.tag] = true
+		switch {
+		case c.dangling:
+			gone["/v2/"+c.repo+"/manifests/"+c.tag] = `{"code":"MANIFEST_UNKNOWN","message":"manifest unknown"}`
+		case c.untagged:
+			gone["/v2/"+c.repo+"/tags/list"] = `{"code":"NAME_UNKNOWN","message":"repository name not known to registry"}`
 		}
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if (req.Method == http.MethodGet || req.Method == http.MethodHead) && gone[req.URL.Path] {
+		if e, ok := gone[req.URL.Path]; ok && (req.Method == http.MethodGet || req.Method == http.MethodHead) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
-			_, _ = io.WriteString(w, `{"errors":[{"code":"MANIFEST_UNKNOWN","message":"manifest unknown"}]}`)
+			_, _ = io.WriteString(w, `{"errors":[`+e+`]}`)
 			return
 		}
 		next.ServeHTTP(w, req)

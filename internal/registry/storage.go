@@ -81,12 +81,19 @@ func (s *Storage) Catalog(ctx context.Context) ([]string, error) {
 	return repos, nil
 }
 
-// Tags implements Source.
+// Tags implements Source. A repository in the catalog without a tags
+// folder, such as one only ever pushed by digest, has no tags; a name that
+// isn't in the catalog is not found.
 func (s *Storage) Tags(_ context.Context, repo string) ([]string, error) {
 	if !repoName.MatchString(repo) {
 		return nil, fmt.Errorf("repository %s: %w", repo, ErrNotFound)
 	}
 	entries, err := os.ReadDir(s.repoPath(repo, "_manifests", "tags"))
+	if errors.Is(err, fs.ErrNotExist) {
+		if _, serr := os.Stat(s.repoPath(repo, "_manifests")); serr == nil {
+			return []string{}, nil
+		}
+	}
 	if err != nil {
 		return nil, s.fail("tags of "+repo, err)
 	}

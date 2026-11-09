@@ -11,7 +11,8 @@
 <div class="mt-6 border-b border-border">
 {{template "tabs" (dict "Label" "Repository" "Tabs" (list (dict "Label" "Overview" "Icon" "book-open" "Href" (repoURL .Repo) "Current" .Overview) (dict "Label" "Tags" "Icon" "tag" "Href" (print (repoURL .Repo) "?tab=tags") "Count" .TagCount "Current" (not .Overview))))}}
 </div>
-{{- if .Overview}}{{template "repo-overview" .}}{{else}}
+{{- if not .TagCount}}<div class="mt-5">{{template "repo-empty" .}}</div>
+{{- else if .Overview}}{{template "repo-overview" .}}{{else}}
 <div class="mt-5 mb-4 flex flex-wrap items-center justify-between gap-3">
 <form method="get" action="{{repoURL .Repo}}" role="search" hx-get="{{repoURL .Repo}}" hx-trigger="input delay:250ms, submit" hx-target="#tags" hx-sync="this:replace" hx-vals='{"fragment": "tags"}' class="w-full sm:max-w-xs">
 <input type="hidden" name="tab" value="tags">
@@ -35,6 +36,14 @@
 </div>
 {{- end}}
 {{- end}}
+{{- end}}
+
+{{/* repo-empty: both tabs of a repository with no tags left. Distribution
+     never removes a repository, so it stays in the catalog. */}}
+{{define "repo-empty" -}}
+{{$text := print "Every tag in this repository has been deleted. Distribution keeps the repository until its folder is removed from storage: delete docker/registry/v2/repositories/" .Repo " by hand, then run garbage collection to free its layers."}}
+{{- if .Storage}}{{$text = print $text " This UI only reads storage, so it can't remove it."}}{{end}}
+{{- template "empty" (dict "Icon" "tag" "Title" "No tags" "Text" $text)}}
 {{- end}}
 
 {{/* repo-overview: the Overview tab, About from the image's OCI labels and
@@ -102,7 +111,7 @@
 {{- else}}
 {{- range .Cards}}{{template "repo-card" .}}
 {{else}}{{if or .Query .Type}}{{template "empty" (dict "Title" .Empty "Href" (print (repoURL .Repo) "?tab=tags") "Link" "Clear the filter")}}
-{{- else}}{{template "empty" (dict "Icon" "tag" "Title" "No tags yet" "Text" "Nothing has been pushed to this repository.")}}{{end}}
+{{- else}}{{template "repo-empty" .}}{{end}}
 {{end}}
 {{- end}}
 {{- if gt .Pages 1}}

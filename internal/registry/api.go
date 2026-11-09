@@ -128,7 +128,11 @@ func (a *API) Check(ctx context.Context) error {
 // in might show more.
 func (a *API) Challenged() bool { return a.challenged.Load() }
 
-// Tags implements Source.
+// Tags implements Source. A 404 reads as no tags: Distribution answers it
+// for a repository it still lists in the catalog but that has no tags
+// folder, such as one only ever pushed by digest. That can't be told apart
+// from a name that isn't in the catalog, so an unknown repository has no
+// tags rather than not being found.
 func (a *API) Tags(ctx context.Context, repo string) ([]string, error) {
 	r, err := a.repo(repo)
 	if err != nil {
@@ -137,7 +141,10 @@ func (a *API) Tags(ctx context.Context, repo string) ([]string, error) {
 	c := a.call(ctx)
 	tags, err := remote.List(r, c.opts...)
 	if err != nil {
-		return nil, c.fail("tags of "+repo, err)
+		if err = c.fail("tags of "+repo, err); errors.Is(err, ErrNotFound) {
+			return []string{}, nil
+		}
+		return nil, err
 	}
 	return tags, nil
 }

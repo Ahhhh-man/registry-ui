@@ -4,10 +4,11 @@
 #
 # A multi-arch image (linux/amd64 and linux/arm64) plus an alias tag is
 # pushed to an anonymous registry. registry-ui must show it on the catalog,
-# repo, tag and digest pages with no sign-in UI anywhere. A second registry
-# serves the same storage behind htpasswd; there registry-ui must send
-# visitors to sign in, reject wrong credentials, show the pages once signed
-# in, and forget the session after logout.
+# repo, tag and digest pages with no sign-in UI anywhere. Another repo has
+# its only tag deleted, and must show as empty rather than broken. A second
+# registry serves the same storage behind htpasswd; there registry-ui must
+# send visitors to sign in, reject wrong credentials, show the pages once
+# signed in, and forget the session after logout.
 #
 # Needs docker, curl and crane. Run it from the dev shell after loading the
 # image: nix build .#image && docker load < result && .github/smoke/registry.sh
@@ -19,6 +20,7 @@ registry=${REGISTRY_IMAGE:-registry:3}
 base=${BASE_PATH:-/}
 p=reg-smoke-$$ # prefix for every container, network and volume
 repo=smoke/app
+empty=smoke/empty # its only tag is deleted
 tmp=$(mktemp -d)
 ui= # host:port of the registry-ui under test
 uiname=
@@ -99,7 +101,8 @@ docker network create "$p" >/dev/null
 docker volume create "$p" >/dev/null
 
 echo "== anonymous registry, pushing $repo:amd64 and :arm64, index :v1 over both, alias :latest"
-docker run -d --name "$p-anon" --network "$p" -p 127.0.0.1::5000 -v "$p:/var/lib/registry" "$registry" >/dev/null
+docker run -d --name "$p-anon" --network "$p" -p 127.0.0.1::5000 -v "$p:/var/lib/registry" \
+	-e REGISTRY_STORAGE_DELETE_ENABLED=true "$registry" >/dev/null
 reg=$(port "$p-anon" 5000)
 for arch in amd64 arm64; do
 	echo "$arch" >"$tmp/arch"
@@ -111,6 +114,10 @@ crane index append --insecure -m "$reg/$repo:amd64" -m "$reg/$repo:arm64" -t "$r
 crane tag --insecure "$reg/$repo:v1" latest
 digest=$(crane digest --insecure "$reg/$repo:v1")
 amd64=$(crane digest --insecure "$reg/$repo:amd64")
+
+echo "== pushing $empty:v1, then deleting it"
+crane copy --insecure "$reg/$repo:amd64" "$reg/$empty:v1" >/dev/null
+crane delete --insecure "$reg/$empty@$amd64"
 
 echo "== registry-ui on the anonymous registry"
 start_ui anon
@@ -133,6 +140,14 @@ has linux/arm64 "$repo@$digest"
 anon_page "$repo@$amd64"
 has linux/amd64 "$repo@$amd64"
 page "$repo:nope" 404
+# Distribution keeps the repo in the catalog with no tags.
+req "?fragment=row&repo=$empty" 200 -H "HX-Request: true"
+has "no tags</span>" "?fragment=row&repo=$empty"
+has ">0 tags</span>" "?fragment=row&repo=$empty"
+lacks "Couldn't load" "?fragment=row&repo=$empty"
+echo "ok   GET $base?fragment=row&repo=$empty 200, empty"
+anon_page "$empty"
+has "Every tag in this repository has been deleted." "$empty"
 
 echo "== htpasswd registry on the same storage"
 printf '%s\n' "$htpasswd" >"$tmp/htpasswd"

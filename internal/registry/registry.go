@@ -15,7 +15,9 @@ type Source interface {
 	// Catalog returns every repository name, sorted A–Z.
 	Catalog(ctx context.Context) ([]string, error)
 
-	// Tags returns the tag names of repo in no particular order.
+	// Tags returns the tag names of repo in no particular order. A
+	// repository in the catalog with no tags left is empty, not an error:
+	// Distribution keeps a repository after its last tag is deleted.
 	Tags(ctx context.Context, repo string) ([]string, error)
 
 	// Resolve looks up a manifest by tag or by digest ("sha256:…").
