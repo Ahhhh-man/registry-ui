@@ -12,7 +12,7 @@ import (
 )
 
 // Page is the data for the "layout" template, which wraps a rendered page
-// body in the document, header and theme.
+// body in the document, header, footer and theme.
 type Page struct {
 	Title     string        // registry title, in the header and <title>
 	PageTitle string        // optional, shown before Title in <title>
@@ -23,6 +23,7 @@ type Page struct {
 	User      string        // signed-in username: shows the avatar and Log out
 	Login     string        // sign-in link for the header when not signed in, or ""
 	SignIn    bool          // the sign-in page: no search box or user menu
+	Version   string        // the running version, in the footer; "" or "dev" has no release to link to
 	Band      template.HTML // optional full-width header band above Body
 	Body      template.HTML // the page itself, rendered by its own template
 }

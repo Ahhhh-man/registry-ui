@@ -298,7 +298,7 @@ func TestRepoOverview(t *testing.T) {
 		t.Error("an unknown ?tag= should fall back to latest")
 	}
 
-	body = page("/myteam/web/frontend?tab=overview")
+	body, _, _ = strings.Cut(page("/myteam/web/frontend?tab=overview"), "<footer") // the footer has its own external links
 	if !strings.Contains(body, "No description or links.") || !strings.Contains(body, "v2.0.0 has none it can show") || strings.Contains(body, "rel=\"noreferrer\"") {
 		t.Error("a repo without labels should say so")
 	}
@@ -366,7 +366,7 @@ func TestRepoOverviewLinks(t *testing.T) {
 	} {
 		s := newTestServer(t, "/")
 		s.Src = labelled{s.Src, c.labels}
-		body := get(t, s, "/", "/myteam/api", false).Body.String()
+		body, _, _ := strings.Cut(get(t, s, "/", "/myteam/api", false).Body.String(), "<footer") // the footer has its own external links
 		if got := strings.Count(body, `rel="noreferrer"`); got != len(c.links) {
 			t.Errorf("%s: %d links, want %d", name, got, len(c.links))
 		}

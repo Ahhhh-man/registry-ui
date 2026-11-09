@@ -23,6 +23,7 @@ type Server struct {
 	Title     string                             // registry title, shown in the header
 	PullHost  string                             // host[:port] shown in docker pull commands
 	BasePath  string                             // normalised base path, "/" or e.g. "/registry/"
+	Version   string                             // the running version, shown in the footer
 	// Storage is set in storage mode, where a platform missing from an
 	// index is one nobody has pulled through the cache yet.
 	Storage bool
@@ -65,11 +66,11 @@ func (s *Server) auth(page web.PageFunc) web.PageFunc {
 	}
 }
 
-// Header returns the layout data every page shares: the registry title and
-// who is signed in, or a sign-in link once the registry has asked for
+// Header returns the layout data every page shares: the registry title, the
+// version and who is signed in, or a sign-in link once the registry has asked for
 // credentials. Nothing about sign-in shows when the UI has none.
 func (s *Server) Header(r *http.Request) ui.Page {
-	p := ui.Page{Title: s.Title}
+	p := ui.Page{Title: s.Title, Version: s.Version}
 	if s.Sessions == nil || s.Check == nil {
 		return p
 	}
@@ -103,7 +104,7 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request, p ui.Page, name st
 		return
 	}
 	h := s.Header(r)
-	p.Title, p.Theme, p.User, p.Login = h.Title, ui.Theme(r), h.User, h.Login
+	p.Title, p.Version, p.Theme, p.User, p.Login = h.Title, h.Version, ui.Theme(r), h.User, h.Login
 	p.Body = template.HTML(b.String()) //nolint:gosec // our own rendered template
 	b.Reset()
 	if err := t.ExecuteTemplate(&b, "layout", p); err != nil {

@@ -103,6 +103,42 @@ func TestLayout(t *testing.T) {
 	}
 }
 
+func TestLayoutFooter(t *testing.T) {
+	tmpl, err := Templates(testFuncs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tpl, err := tmpl()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const release = `<a href="https://github.com/Ahhhh-man/registry-ui/releases/tag/v0.7.0" rel="noreferrer"`
+	for version, want := range map[string]string{"0.7.0": release, "dev": "registry-ui dev</p>", "": "registry-ui dev</p>"} {
+		var b strings.Builder
+		if err := tpl.ExecuteTemplate(&b, "layout", Page{Version: version}); err != nil {
+			t.Fatal(err)
+		}
+		_, footer, _ := strings.Cut(b.String(), "<footer")
+		for _, want := range []string{
+			want,
+			`<a href="https://github.com/Ahhhh-man/registry-ui" rel="noreferrer"`,
+			`<a href="https://github.com/Ahhhh-man/registry-ui#readme" rel="noreferrer"`,
+			`<a href="https://github.com/Ahhhh-man/registry-ui/issues/new" rel="noreferrer"`,
+		} {
+			if !strings.Contains(footer, want) {
+				t.Errorf("version %q: footer lacks %s:\n%s", version, want, footer)
+			}
+		}
+		if version != "0.7.0" && strings.Contains(footer, "/releases/") {
+			t.Errorf("version %q: footer links to a release:\n%s", version, footer)
+		}
+		// Links only: nothing in the footer loads from another origin.
+		if strings.Contains(footer, "src=") || strings.Contains(footer, "<link") {
+			t.Errorf("version %q: footer loads something:\n%s", version, footer)
+		}
+	}
+}
+
 // The fonts are named by hash in tailwind.css; a stale name would 404.
 func TestCSSURLsResolve(t *testing.T) {
 	css, err := fs.ReadFile(files, "static/app.css")

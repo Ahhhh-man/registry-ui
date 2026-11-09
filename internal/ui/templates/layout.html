@@ -1,6 +1,7 @@
 {{/* The document around every full page. Data is a ui.Page; the page body
      comes pre-rendered in .Body, inside a centred column of max-w-page,
-     below .Band (if any), a full-width panel with the same column. */}}
+     below .Band (if any), a full-width panel with the same column. The
+     footer's links are plain links: nothing is fetched from them. */}}
 {{define "layout" -}}
 <!doctype html>
 <html lang="en"{{with .Theme}} class="{{.}}"{{end}}>
@@ -13,7 +14,8 @@
 <script src="{{staticURL "app.js"}}" defer></script>
 {{template "htmx"}}
 </head>
-<body>
+{{/* A column as tall as the window, so <main> pushes the footer to the bottom of a short page. */}}
+<body class="flex min-h-dvh flex-col">
 {{/* From sm up, equal side columns centre the search on the page, whatever the brand and controls measure. */}}
 <header class="flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-border bg-surface px-4 py-3 sm:flex-nowrap sm:px-6{{if not .SignIn}} sm:grid sm:grid-cols-[minmax(9rem,1fr)_minmax(0,var(--container-2xl))_1fr]{{end}}">
   <a href="{{catalogURL}}" class="flex min-w-0 items-center gap-3 rounded-md sm:max-w-full sm:justify-self-start">
@@ -51,9 +53,19 @@
 {{- with .Band}}
 <div class="border-b border-border bg-panel bg-linear-to-r from-accent-soft to-panel to-70%"><div class="mx-auto w-full max-w-page px-4 py-6 sm:px-8">{{.}}</div></div>
 {{- end}}
-<main class="mx-auto w-full max-w-page px-4 py-6 sm:px-8">
+<main class="mx-auto w-full max-w-page grow px-4 py-6 sm:px-8">
 {{.Body}}
 </main>
+<footer class="border-t border-border text-xs text-muted">
+  <div class="mx-auto flex w-full max-w-page flex-col gap-x-6 gap-y-2 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+    <p>registry-ui {{if and .Version (ne .Version "dev")}}<a href="https://github.com/Ahhhh-man/registry-ui/releases/tag/v{{.Version}}" rel="noreferrer" class="rounded-sm hover:text-text hover:underline">{{.Version}}</a>{{else}}dev{{end}}</p>
+    <nav aria-label="Project" class="flex flex-wrap gap-x-5 gap-y-1">
+      <a href="https://github.com/Ahhhh-man/registry-ui" rel="noreferrer" class="rounded-sm hover:text-text hover:underline">GitHub</a>
+      <a href="https://github.com/Ahhhh-man/registry-ui#readme" rel="noreferrer" class="rounded-sm hover:text-text hover:underline">Documentation</a>
+      <a href="https://github.com/Ahhhh-man/registry-ui/issues/new" rel="noreferrer" class="rounded-sm hover:text-text hover:underline">Report an issue</a>
+    </nav>
+  </div>
+</footer>
 </body>
 </html>
 {{- end}}

@@ -2,6 +2,7 @@ package pages
 
 import (
 	"maps"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -45,5 +46,26 @@ func TestPageWrapsLayoutAndFragmentDoesNot(t *testing.T) {
 	s.fragment(rec, httptest.NewRequest("GET", "/", nil), "error-inline", data)
 	if body := rec.Body.String(); strings.Contains(body, "<!doctype html>") || !strings.Contains(body, "Sample title") {
 		t.Errorf("fragment should be the bare template, got:\n%s", body)
+	}
+}
+
+// The footer's version reaches normal pages, the sign-in page and error pages.
+func TestFooterVersionOnEveryPage(t *testing.T) {
+	s := newLoginServer(t, "/")
+	s.Version = "0.7.0"
+	pages := map[string]func(w http.ResponseWriter, r *http.Request){
+		"catalog": func(w http.ResponseWriter, r *http.Request) { s.Catalog(w, r, web.Ref{Kind: web.KindCatalog}) },
+		"sign-in": s.Login,
+		"error": func(w http.ResponseWriter, r *http.Request) {
+			ui.ErrorRenderer(s.Templates, s.Header)(w, r, web.ErrorPage{Status: http.StatusNotFound, Title: "Not found"})
+		},
+	}
+	for name, page := range pages {
+		rec := httptest.NewRecorder()
+		page(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+		_, footer, _ := strings.Cut(rec.Body.String(), "<footer")
+		if !strings.Contains(footer, `/releases/tag/v0.7.0"`) || !strings.Contains(footer, "Report an issue") {
+			t.Errorf("%s: no footer with the version:\n%s", name, rec.Body)
+		}
 	}
 }

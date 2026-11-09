@@ -158,7 +158,7 @@ Some limits:
 
 ## No telemetry
 
-The UI only ever talks to the registry you point it at. No telemetry, no update checks, no CDNs. Fonts, scripts and styles are all embedded in the binary.
+The UI only ever talks to the registry you point it at. No telemetry, no update checks, no CDNs. Fonts, scripts and styles are all embedded in the binary. The footer's links to GitHub are plain links: nothing is fetched from GitHub, and the UI never checks whether a newer version exists.
 
 ## Development
 
