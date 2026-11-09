@@ -37,6 +37,7 @@ type tagView struct {
 	// in storage yet.
 	Cards   []map[string]any
 	Created string // the main platform's created time in UTC; "" if unknown
+	Missing bool   // for "tag-not-found": the tag is listed, but its manifest is missing
 }
 
 // Tag serves a tag's detail page (#14).
@@ -66,6 +67,10 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, repo, tag, ref
 
 	m, err := s.Src.Resolve(ctx, repo, ref)
 	if errors.Is(err, registry.ErrNotFound) {
+		if tag != "" {
+			tags, _ := s.Src.Tags(ctx, repo) // on error, it's just not found
+			v.Missing = manifestMissing(err, tags, tag)
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusNotFound)
 		s.page(w, r, ui.Page{PageTitle: pageTitle}, "tag-not-found", v)

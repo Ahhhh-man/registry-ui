@@ -241,6 +241,9 @@ func (s *Server) rowDetails(ctx context.Context, row *catalogRow) error {
 		return nil
 	}
 	m, err := s.Src.Resolve(ctx, row.Repo, tag)
+	if manifestMissing(err, tags, tag) {
+		return nil // nothing to describe, but nothing failed either
+	}
 	if err != nil {
 		return err
 	}

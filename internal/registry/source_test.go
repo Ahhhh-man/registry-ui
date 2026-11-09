@@ -70,7 +70,7 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 	ctx := t.Context()
 
 	repos, err := s.Catalog(ctx)
-	wantRepos := []string{registrytest.RepoHelm, registrytest.RepoSingle, registrytest.RepoIndex, registrytest.RepoAllMissing, registrytest.RepoSomeMissing, registrytest.RepoNested, registrytest.RepoPaged}
+	wantRepos := []string{registrytest.RepoHelm, registrytest.RepoSingle, registrytest.RepoIndex, registrytest.RepoAllMissing, registrytest.RepoDangling, registrytest.RepoSomeMissing, registrytest.RepoNested, registrytest.RepoPaged}
 	if err != nil || !slices.Equal(repos, wantRepos) {
 		t.Errorf("Catalog = %v, %v; want %v", repos, err, wantRepos)
 	}
@@ -84,6 +84,8 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 
 		registrytest.RepoSomeMissing: {registrytest.TagVersion},
 		registrytest.RepoAllMissing:  {registrytest.TagVersion},
+		// A tag whose manifest is gone is still listed.
+		registrytest.RepoDangling: {registrytest.TagVersion, registrytest.TagLatest},
 	} {
 		got, err := s.Tags(ctx, repo)
 		if err != nil || !slices.Equal(slices.Sorted(slices.Values(got)), slices.Sorted(slices.Values(tags))) {
@@ -127,6 +129,7 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 		{"single by tag", registrytest.RepoSingle, registrytest.TagSingle, image},
 		{"single by digest", registrytest.RepoSingle, single.Digest, image},
 		{"nested", registrytest.RepoNested, registrytest.TagNested, image},
+		{"next to a dangling tag", registrytest.RepoDangling, registrytest.TagVersion, image},
 		{"signature by tag", registrytest.RepoIndex, r.SignatureTag, signature},
 		{"signature by digest", registrytest.RepoIndex, signature.Digest, signature},
 		{"attestation by digest", registrytest.RepoIndex, digest(t, r.Attestation), artifact(r.Attestation, registry.KindSignature)},
@@ -175,6 +178,7 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 		{"resolve in invalid name", func() error { _, err := s.Resolve(ctx, "Not A Repo", registrytest.TagLatest); return err }},
 		{"unknown digest", func() error { _, err := s.Resolve(ctx, registrytest.RepoIndex, zero); return err }},
 		{"digest from another repo", func() error { _, err := s.Resolve(ctx, registrytest.RepoSingle, index.Digest); return err }},
+		{"tag whose manifest is gone", func() error { _, err := s.Resolve(ctx, registrytest.RepoDangling, registrytest.TagLatest); return err }},
 		{"missing platform by digest", func() error { _, err := s.Resolve(ctx, registrytest.RepoSomeMissing, platforms[1].Digest); return err }},
 		{"malformed config digest", func() error { _, err := s.Config(ctx, registrytest.RepoIndex, "sha256:00"); return err }},
 		{"unknown config digest", func() error { _, err := s.Config(ctx, registrytest.RepoIndex, zero); return err }},

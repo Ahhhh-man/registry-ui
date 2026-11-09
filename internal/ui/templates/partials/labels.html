@@ -2,15 +2,16 @@
 
 {{/* badge: a small label next to a tag name.
      dict "Label" string,
-          "Variant" "" (neutral) | "accent" | "signature" | "helm".
-     signature and helm bring their own icon. */}}
+          "Variant" "" (neutral) | "accent" | "signature" | "helm" | "warn".
+     signature, helm and warn bring their own icon. */}}
 {{define "badge" -}}
 <span class="inline-flex items-center gap-1 rounded-sm px-2 py-0.5 text-xs font-medium whitespace-nowrap
   {{- if eq .Variant "accent"}} bg-accent-soft text-accent-text
   {{- else if eq .Variant "signature"}} bg-warn-bg text-warn-fg
   {{- else if eq .Variant "helm"}} bg-info-bg text-info-fg
+  {{- else if eq .Variant "warn"}} bg-warn-bg text-warn-fg
   {{- else}} bg-panel text-muted{{end}}">
-{{- if eq .Variant "signature"}}{{icon "shield-check" "size-3"}}{{else if eq .Variant "helm"}}{{icon "anchor" "size-3"}}{{end}}{{.Label}}</span>
+{{- if eq .Variant "signature"}}{{icon "shield-check" "size-3"}}{{else if eq .Variant "helm"}}{{icon "anchor" "size-3"}}{{else if eq .Variant "warn"}}{{icon "triangle-alert" "size-3"}}{{end}}{{.Label}}</span>
 {{- end}}
 
 {{/* pill: an icon and short text, for metadata under a page title.

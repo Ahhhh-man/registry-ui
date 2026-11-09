@@ -100,6 +100,7 @@ type tagCard struct {
 	Platforms        []registry.Platform // missing ones last
 	Updated          time.Time           // when the tag last changed on the registry; zero if unknown
 	TagTimes         bool                // the source has tag times, so a list row has an Updated cell
+	Missing          bool                // the tag's manifest is missing: only Repo, Tag, Label, Badges and the times are set
 }
 
 // PlatformCount is how many platforms the tag has, e.g. "3 platforms (1 missing)".
@@ -264,7 +265,7 @@ func (s *Server) sortTags(ctx context.Context, repo string, tags []string, by st
 		}
 		m, err := s.Src.Resolve(ctx, repo, tags[i])
 		if err != nil {
-			return // sorts last, and its card shows the error
+			return // sorts last, and its card shows the error or the missing manifest
 		}
 		infos[i].size = m.Size
 		p, ok := mainPlatform(m)
@@ -431,12 +432,13 @@ func (s *Server) repoCard(w http.ResponseWriter, r *http.Request, repo string, p
 // tagDetails returns the card for page[i], given every tag on the page
 // resolved (ms and errs, from resolveAll) for its "Same as".
 func (s *Server) tagDetails(ctx context.Context, repo string, page []string, ms []registry.Manifest, errs []error, i int) (tagCard, error) {
-	if errs[i] != nil {
+	missing := manifestMissing(errs[i], page, page[i])
+	if errs[i] != nil && !missing {
 		return tagCard{}, errs[i]
 	}
-	c, err := s.card(ctx, repo, page[i], ms[i])
-	if err != nil {
-		return c, err
+	c, err := s.card(ctx, repo, page[i], ms[i], missing)
+	if err != nil || missing {
+		return c, err // a missing manifest has no digest to share
 	}
 	for j, o := range ms {
 		if j != i && errs[j] == nil && o.Digest == c.Digest {
@@ -449,13 +451,20 @@ func (s *Server) tagDetails(ctx context.Context, repo string, page []string, ms 
 	return c, nil
 }
 
-// card returns a tag's details from m, its manifest; all but SameAs.
-func (s *Server) card(ctx context.Context, repo, tag string, m registry.Manifest) (tagCard, error) {
-	c := tagCard{Repo: repo, Tag: tag, Label: tagLabel(tag), Badges: latestBadge(tag), Digest: m.Digest, Size: m.Size, Platforms: availableFirst(m.Platforms)}
-	c.Command = command(s.PullHost, repo, tag, m.Kind)
+// card returns a tag's details from m, its manifest; all but SameAs. A tag
+// whose manifest is missing gets only a badge saying so and when it was
+// updated: no pull command, since the pull would fail.
+func (s *Server) card(ctx context.Context, repo, tag string, m registry.Manifest, missing bool) (tagCard, error) {
+	c := tagCard{Repo: repo, Tag: tag, Label: tagLabel(tag), Badges: latestBadge(tag)}
 	var err error
 	c.Updated, err = s.Src.TagTime(ctx, repo, tag) // decoration: an error just leaves it out
 	c.TagTimes = !errors.Is(err, errors.ErrUnsupported)
+	if missing {
+		c.Missing, c.Badges = true, append(c.Badges, badge{"manifest missing", "warn"})
+		return c, nil
+	}
+	c.Digest, c.Size, c.Platforms = m.Digest, m.Size, availableFirst(m.Platforms)
+	c.Command = command(s.PullHost, repo, tag, m.Kind)
 	switch m.Kind {
 	case registry.KindImage, registry.KindIndex: // the platforms say it all
 	case registry.KindHelm:
@@ -523,8 +532,8 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request, v *repoView, t
 	}
 	if tag != "" {
 		m, err := s.Src.Resolve(r.Context(), v.Repo, tag)
-		if err == nil {
-			v.Summary, err = s.card(r.Context(), v.Repo, tag, m)
+		if missing := manifestMissing(err, tags, tag); err == nil || missing {
+			v.Summary, err = s.card(r.Context(), v.Repo, tag, m, missing)
 		}
 		if err != nil {
 			web.Error(w, r, err)
@@ -554,6 +563,14 @@ func (s *Server) resolveAll(ctx context.Context, repo string, tags []string) ([]
 	}
 	_ = g.Wait() // errors are per tag, in errs
 	return ms, errs
+}
+
+// manifestMissing reports whether tag, listed in tags, failed to resolve
+// with err because its manifest is missing: the registry lists the tag but
+// not the manifest it points at. Any other error, such as a 401 or a 5xx,
+// is a failure, not a missing manifest.
+func manifestMissing(err error, tags []string, tag string) bool {
+	return errors.Is(err, registry.ErrNotFound) && slices.Contains(tags, tag)
 }
 
 // mainPlatform is the platform that speaks for a tag: linux/amd64, or the

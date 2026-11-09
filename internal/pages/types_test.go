@@ -164,7 +164,8 @@ func TestRepoTypes(t *testing.T) {
 	if got := strings.Join(cardTags(body), " "); got != "pr-218" {
 		t.Errorf("artifacts: %s", got)
 	}
-	if got, want := chipText(body), "All 4 · Images 3 · *Other artifacts 1"; got != want {
+	// v1.3.1, whose manifest is missing, counts only under All.
+	if got, want := chipText(body), "All 5 · Images 3 · *Other artifacts 1"; got != want {
 		t.Errorf("chips:\n got %s\nwant %s", got, want)
 	}
 }

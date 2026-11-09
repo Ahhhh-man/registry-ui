@@ -50,11 +50,13 @@
 </details>
 {{- end}}
 
-{{/* tag-not-found: the tag or digest isn't in the repo. */}}
+{{/* tag-not-found: the tag or digest isn't in the repo, or the tag is but
+     its manifest is missing. */}}
 {{define "tag-not-found" -}}
 {{template "tag-breadcrumbs" .}}
 <div class="mt-6">
-{{- if .Tag}}{{template "empty" (dict "Title" (print "Tag “" .Tag "” doesn't exist") "Text" (print "There's no tag by that name in " .Repo ".") "Href" (repoURL .Repo) "Link" (print "Back to " .Repo))}}
+{{- if .Missing}}{{template "empty" (dict "Icon" "triangle-alert" "Title" "Manifest missing" "Text" "The registry still lists this tag, but the manifest it points to is gone, usually after a delete or garbage collection." "Href" (repoURL .Repo) "Link" (print "Back to " .Repo))}}
+{{- else if .Tag}}{{template "empty" (dict "Title" (print "Tag “" .Tag "” doesn't exist") "Text" (print "There's no tag by that name in " .Repo ".") "Href" (repoURL .Repo) "Link" (print "Back to " .Repo))}}
 {{- else}}{{template "empty" (dict "Title" "Digest not found" "Text" (print "There's no manifest with that digest in " .Repo ".") "Href" (repoURL .Repo) "Link" (print "Back to " .Repo))}}{{end}}
 </div>
 {{- end}}

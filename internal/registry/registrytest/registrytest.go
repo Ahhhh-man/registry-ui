@@ -5,7 +5,8 @@
 // /v2/_catalog, but unsorted and in one page, and its tag lists honour n and
 // last without sending a Link header. A shim in front of both pages them the
 // way Distribution does: sorted, at most PageSize names per page, with a Link
-// header to the next page, so clients have to follow pagination.
+// header to the next page, so clients have to follow pagination. Another
+// answers 404 for a dangling tag's manifest, as Distribution does.
 //
 // NewStorage writes the same content to disk in Distribution's filesystem
 // layout instead, for tests of storage mode.
@@ -71,6 +72,10 @@ const (
 	// RepoAllMissing holds Index under TagVersion without any of the
 	// manifests it lists.
 	RepoAllMissing = "missing/all"
+	// RepoDangling holds Single under TagVersion, and TagLatest, whose
+	// manifest is gone: tags/list names it, but it won't resolve. That's
+	// what an interrupted delete leaves behind.
+	RepoDangling = "missing/manifest"
 
 	// PageSize is the most names one catalog or tag-list page returns.
 	PageSize = 3
@@ -133,15 +138,15 @@ func NewWithBasicAuth(t testing.TB, user, pass string) *Registry { return start(
 func start(t testing.TB, user, pass string) *Registry {
 	t.Helper()
 
-	h := paginate(registry.New(registry.Logger(log.New(io.Discard, "", 0))))
+	r := &Registry{}
+	r.build(t)
+	h := dangle(paginate(registry.New(registry.Logger(log.New(io.Discard, "", 0)))), r.content())
 	if user != "" {
 		h = requireBasicAuth(h, user, pass)
 	}
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
-
-	r := &Registry{URL: srv.URL, Host: strings.TrimPrefix(srv.URL, "http://")}
-	r.build(t)
+	r.URL, r.Host = srv.URL, strings.TrimPrefix(srv.URL, "http://")
 
 	opts := []remote.Option{remote.WithContext(t.Context())}
 	if user != "" {
@@ -219,6 +224,11 @@ func NewStorage(t testing.TB) *Registry {
 			}
 			h = blob(c.repo, "_manifests/revisions", must(obj.RawManifest()))
 		case v1.Image:
+			if c.dangling {
+				// Only the tag's links are left, as after an interrupted delete.
+				h = must(obj.Digest())
+				break
+			}
 			h = image(c.repo, obj)
 		}
 		tag := filepath.Join(v2, "repositories", c.repo, "_manifests", "tags", c.tag)
@@ -255,6 +265,8 @@ func (r *Registry) content() []tagged {
 	c = append(c,
 		tagged{repo: RepoSomeMissing, tag: TagVersion, obj: r.Index, missing: []v1.Hash{children[1].Digest}},
 		tagged{repo: RepoAllMissing, tag: TagVersion, obj: r.Index, missing: []v1.Hash{children[0].Digest, children[1].Digest, children[2].Digest, children[3].Digest}},
+		tagged{repo: RepoDangling, tag: TagVersion, obj: r.Single},
+		tagged{repo: RepoDangling, tag: TagLatest, obj: r.Helm, dangling: true},
 	)
 	return c
 }
@@ -264,6 +276,9 @@ type tagged struct {
 	obj       any // v1.Image or v1.ImageIndex
 	// missing are manifests of an index left out of the registry.
 	missing []v1.Hash
+	// dangling leaves the tag without its manifest. obj must be a v1.Image
+	// the repository holds under no other tag.
+	dangling bool
 }
 
 // must panics on an error building fixtures from in-memory images, which
@@ -391,6 +406,27 @@ func paginate(next http.Handler) http.Handler {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(out)
+	})
+}
+
+// dangle answers 404, as Distribution does, for the manifest of each
+// dangling tag in content. The in-memory registry keeps a copy of every
+// manifest under its tag, so deleting the manifest wouldn't do it.
+func dangle(next http.Handler, content []tagged) http.Handler {
+	gone := map[string]bool{}
+	for _, c := range content {
+		if c.dangling {
+			gone["/v2/"+c.repo+"/manifests/"+c.tag] = true
+		}
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if (req.Method == http.MethodGet || req.Method == http.MethodHead) && gone[req.URL.Path] {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = io.WriteString(w, `{"errors":[{"code":"MANIFEST_UNKNOWN","message":"manifest unknown"}]}`)
+			return
+		}
+		next.ServeHTTP(w, req)
 	})
 }
 

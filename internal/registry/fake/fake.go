@@ -43,11 +43,14 @@ type entry struct {
 	// missing are platforms listed in the index whose manifests aren't in
 	// the registry.
 	missing []string
+	// gone is a tag the registry lists but whose manifest is missing.
+	gone bool
 }
 
 func img(p []string, mb float64, days int) entry { return entry{platforms: p, mb: mb, days: days} }
 func helm(mb float64, days int) entry            { return entry{helm: true, mb: mb, days: days} }
 func alias(tag string) entry                     { return entry{alias: tag} }
+func gone() entry                                { return entry{gone: true} }
 
 func partial(p, missing []string, mb float64, days int) entry {
 	return entry{platforms: p, missing: missing, mb: mb, days: days}
@@ -108,7 +111,11 @@ var seed = map[string]repoSeed{
 	},
 	"myteam/api": {
 		description: "Internal REST API service.",
-		tags:        map[string]entry{"main": img(one, 24.6, 0), "v1.4.0": img(two, 24.1, 6), "v1.3.2": img(two, 23.8, 33), "pr-218": img(one, 24.7, 1)},
+		tags: map[string]entry{
+			"main": img(one, 24.6, 0), "v1.4.0": img(two, 24.1, 6), "v1.3.2": img(two, 23.8, 33), "pr-218": img(one, 24.7, 1),
+			// Left behind by a delete that didn't finish.
+			"v1.3.1": gone(),
+		},
 	},
 	"myteam/web/frontend": {
 		tags: map[string]entry{"main": img(one, 31.2, 0), "v2.0.0": img(one, 30.9, 15)},
@@ -153,7 +160,7 @@ func New() *Source {
 
 		// Real tags first, so aliases can point at them.
 		for tag, e := range rs.tags {
-			if e.alias != "" {
+			if e.alias != "" || e.gone {
 				continue
 			}
 			created := now.Add(-time.Duration(e.days) * 24 * time.Hour)

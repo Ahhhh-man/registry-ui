@@ -23,9 +23,11 @@ import (
 // would ask the upstream for tag lists and fetch uncached tags. It only
 // reads, so the storage can be mounted read-only. Credentials are ignored.
 //
-// Only content that is actually on disk is shown: a tag or digest counts when
-// its link and its blob both exist, and an index's platforms whose manifests
-// aren't cached are marked Missing.
+// Only content that is actually on disk is shown: a digest counts when its
+// link and its blob both exist, and an index's platforms whose manifests
+// aren't cached are marked Missing. A tag is listed as long as its link names
+// a digest, like the registry lists it, but resolves only when that manifest
+// is on disk too.
 type Storage struct {
 	root string // <storage root>/docker/registry/v2
 }
@@ -93,7 +95,7 @@ func (s *Storage) Tags(_ context.Context, repo string) ([]string, error) {
 		if !tagName.MatchString(e.Name()) {
 			continue
 		}
-		if _, err := s.tag(repo, e.Name()); err == nil {
+		if _, err := s.link(repo, e.Name()); err == nil {
 			tags = append(tags, e.Name())
 		} else if !errors.Is(err, ErrNotFound) {
 			return nil, s.fail("tags of "+repo, err)
@@ -282,13 +284,26 @@ func (s *Storage) DiskUsage(ctx context.Context, repo string) (int64, error) {
 
 // tag returns the digest a tag points at, if that manifest is stored.
 func (s *Storage) tag(repo, tag string) (string, error) {
+	digest, err := s.link(repo, tag)
+	if err != nil {
+		return "", err
+	}
+	if _, err := s.blobPath(repo, digest, "_manifests", "revisions"); err != nil {
+		return "", err
+	}
+	return digest, nil
+}
+
+// link returns the digest a tag's link names, whether or not that manifest
+// is stored: an interrupted delete can leave the link behind.
+func (s *Storage) link(repo, tag string) (string, error) {
 	link, err := os.ReadFile(s.repoPath(repo, "_manifests", "tags", tag, "current", "link"))
 	if err != nil {
 		return "", notFound(err)
 	}
 	digest := strings.TrimSpace(string(link))
-	if _, err := s.blobPath(repo, digest, "_manifests", "revisions"); err != nil {
-		return "", err
+	if !digestRef.MatchString(digest) {
+		return "", ErrNotFound
 	}
 	return digest, nil
 }

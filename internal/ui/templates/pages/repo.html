@@ -71,6 +71,8 @@
 
 {{/* repo-summary: one tag's facts and pull command (a pages.tagCard). */}}
 {{define "repo-summary" -}}
+{{- if .Missing}}<div class="mt-4 mb-5">{{template "warning" "Manifest missing. The registry still lists this tag, but the manifest it points to is gone, usually after a delete or garbage collection."}}</div>
+{{- else}}
 <dl class="mt-1 mb-5 [&_dd]:mt-1 [&_dd]:flex [&_dd]:min-h-6 [&_dd]:items-center [&_dd]:justify-between [&_dd]:gap-2 [&_dd]:font-medium [&_dt]:mt-4 [&_dt]:text-xs [&_dt]:text-muted">
 <dt>Content type</dt><dd>{{if .Platforms}}{{if gt (len .Platforms) 1}}Multi-platform image{{else}}Image{{end}}{{else}}{{.Type}}{{end}}</dd>
 <dt>Digest</dt><dd><a href="{{digestURL .Repo .Digest}}" class="min-w-0 truncate font-mono text-xs hover:text-accent-text" title="{{.Digest}}">{{.Digest}}</a>{{template "copy" (dict "Text" .Digest "Label" "Copy digest")}}</dd>
@@ -78,6 +80,7 @@
 {{- if not .Created.IsZero}}<dt>Created</dt><dd><span title="{{date .Created}}">{{age .Created}}</span></dd>{{end}}
 {{- if .Platforms}}<dt>Platforms</dt><dd>{{.PlatformCount}}</dd>{{end}}
 </dl>
+{{- end}}
 {{- with .Command}}{{template "copy-field" .}}{{end}}
 {{- end}}
 
@@ -145,6 +148,13 @@
 <td><div class="flex flex-wrap items-center gap-x-2 gap-y-1"><a href="{{tagURL .Repo .Tag}}" title="{{.Tag}}" class="font-medium whitespace-nowrap hover:text-accent-text">{{.Label}}</a>{{range .Badges}}{{template "badge" .}}{{end}}</div></td>
 {{- if .Load}}
 <td class="hidden md:table-cell">{{template "skeleton" "w-16"}}</td><td class="hidden md:table-cell">{{template "skeleton" "w-16"}}</td><td class="text-right">{{template "skeleton" "w-12"}}</td><td class="hidden text-right sm:table-cell">{{template "skeleton" "w-16"}}</td>{{if .TagTimes}}<td class="hidden text-right sm:table-cell">{{template "skeleton" "w-16"}}</td>{{end}}<td></td>
+{{- else if .Missing}}
+{{- /* The badge says why there's no digest, platforms, size or date. */}}
+<td class="hidden md:table-cell"></td><td class="hidden md:table-cell"></td><td></td><td class="hidden sm:table-cell"></td>
+{{- if .TagTimes}}
+<td class="hidden text-right whitespace-nowrap text-muted sm:table-cell">{{if not .Updated.IsZero}}<span title="{{date .Updated}}">{{age .Updated}}</span>{{end}}</td>
+{{- end}}
+<td></td>
 {{- else}}
 <td class="hidden md:table-cell"><a href="{{digestURL .Repo .Digest}}" class="font-mono text-xs hover:text-accent-text">{{shortDigest .Digest}}</a></td>
 <td class="hidden whitespace-nowrap text-muted md:table-cell">{{if gt (len .Platforms) 1}}<span title="{{range $i, $p := .Platforms}}{{if $i}}, {{end}}{{platform $p}}{{if $p.Missing}} (missing){{end}}{{end}}">{{.PlatformCount}}</span>{{else if .Platforms}}{{platform (index .Platforms 0)}}{{else}}{{.Type}}{{end}}</td>
@@ -170,7 +180,9 @@
 {{- if .Load}}{{template "skeleton" "w-1/2"}}{{else}}
 {{- if not .Created.IsZero}}<span class="inline-flex items-center gap-1.5" title="{{date .Created}}">{{icon "clock" "text-faint"}}Created {{age .Created}}</span>{{end}}
 {{- if not .Updated.IsZero}}<span class="inline-flex items-center gap-1.5" title="{{date .Updated}}">{{icon "history" "text-faint"}}Updated {{age .Updated}}</span>{{end}}
+{{- if not .Missing}}
 <span class="inline-flex items-center gap-1.5">{{icon "hash" "text-faint"}}<span class="font-mono">{{shortDigest .Digest}}</span></span>
+{{- end}}
 {{- with .SameAs}}
 <span class="inline-flex items-center gap-1.5">{{icon "link" "text-faint"}}<span>Same as {{range $i, $t := .}}{{if $i}}, {{end}}<a href="{{tagURL $.Repo $t}}" class="hover:text-text">{{$t}}</a>{{end}}{{with $.MoreSameAs}} +{{.}}{{end}}</span></span>
 {{- end}}
@@ -197,7 +209,7 @@
 <details class="group/more mt-2"><summary class="inline-flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-accent-text [&::-webkit-details-marker]:hidden"><span class="group-open/more:hidden">{{.MorePlatforms}}</span><span class="hidden group-open/more:inline">Show fewer</span>{{icon "chevron-down" "group-open/more:rotate-180"}}</summary></details>
 {{- end}}
 </div>
-{{- else}}
+{{- else if not .Missing}}
 <div class="overflow-x-auto">
 <table class="{{template "table"}}">
 <thead><tr><th>Digest</th><th>Type</th><th class="text-right!">Size</th></tr></thead>

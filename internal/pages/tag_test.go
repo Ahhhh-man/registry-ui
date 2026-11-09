@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Ahhhh-man/registry-ui/internal/format"
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
@@ -354,7 +356,7 @@ func TestMissingPlatformsInRegistry(t *testing.T) {
 			rec := httptest.NewRecorder()
 			s.Catalog(rec, req, web.Ref{})
 			for _, w := range want {
-				if body := rec.Body.String(); !strings.Contains(body, w) || strings.Contains(body, "Couldn&#39;t load") {
+				if body := rec.Body.String(); !strings.Contains(body, w) || strings.Contains(body, "Couldn't load") {
 					t.Errorf("%s: catalog row for %s lacks %q:\n%s", name, repo, w, body)
 				}
 			}
@@ -362,6 +364,135 @@ func TestMissingPlatformsInRegistry(t *testing.T) {
 			if status != http.StatusOK || strings.Count(body, "<article ") != 3 || !strings.Contains(body, want[0]) {
 				t.Errorf("%s: tag page for %s: status %d\n%s", name, repo, status, body)
 			}
+		}
+	}
+}
+
+// Against a real registry, in both modes, a listed tag whose manifest is
+// gone shows as "manifest missing" wherever it would show, rather than as
+// an error or a tag that doesn't exist.
+func TestMissingManifestInRegistry(t *testing.T) {
+	r := registrytest.New(t)
+	api, err := registry.NewAPI(r.URL, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := registrytest.NewStorage(t)
+	storage, err := registry.NewStorage(st.StoragePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The dangling tag was touched last, so it's first by update.
+	updated := time.Now().Add(-time.Hour)
+	st.SetTagTime(t, registrytest.RepoDangling, registrytest.TagLatest, updated)
+	st.SetTagTime(t, registrytest.RepoDangling, registrytest.TagVersion, updated.Add(-365*24*time.Hour))
+
+	repo, tag := "/"+registrytest.RepoDangling, registrytest.TagLatest
+	for name, src := range map[string]registry.Source{"api": api, "storage": storage} {
+		s := newTestServer(t, "/")
+		s.Src = src
+		check := func(what, body string, want, not []string) {
+			t.Helper()
+			for _, w := range want {
+				if !strings.Contains(body, w) {
+					t.Errorf("%s: %s lacks %q:\n%s", name, what, w, body)
+				}
+			}
+			for _, n := range not {
+				if strings.Contains(body, n) {
+					t.Errorf("%s: %s has %q:\n%s", name, what, n, body)
+				}
+			}
+		}
+
+		// The catalog row counts the tags and leaves the rest out, without failing.
+		row := get(t, s, "/", "/?fragment=row&repo="+registrytest.RepoDangling, true).Body.String()
+		check("catalog row", row, []string{">2 tags</span>"}, []string{"Couldn't load", "platform", "Latest created"})
+
+		// A card or list row has the badge and no digest, size or pull command.
+		card := get(t, s, "/", repo+"?fragment=card&tag="+tag, true)
+		check("card", card.Body.String(), []string{"</svg>manifest missing</span>", ">latest</span>"}, []string{"sha256:", "docker pull", "Created", "<table"})
+		if card.Code != http.StatusOK {
+			t.Errorf("%s: card status %d", name, card.Code)
+		}
+		list := get(t, s, "/", repo+"?view=list&fragment=row&tag="+tag, true).Body.String()
+		check("list row", list, []string{`data-tag="latest" data-pull=""`, `aria-label="Select latest"`, "</svg>manifest missing</span>"}, []string{"sha256:", "data-copy", "Unknown"})
+		if name == "storage" {
+			check("list row", list, []string{`<span title="` + format.Date(updated) + `">today</span>`}, nil)
+		}
+		// "Same as" leaves it out.
+		other := get(t, s, "/", repo+"?fragment=card&tag="+registrytest.TagVersion, true).Body.String()
+		check("other card", other, []string{"docker pull"}, []string{"Same as"})
+
+		// The tag page explains, with a 404.
+		status, body := getPage(t, s, "/", repo+":"+tag, false)
+		check("tag page", body, []string{"Manifest missing", "The registry still lists this tag, but the manifest it points to is gone"}, []string{"doesn&#39;t exist"})
+		if status != http.StatusNotFound {
+			t.Errorf("%s: tag page status %d, want 404", name, status)
+		}
+		_, body = getPage(t, s, "/", repo+":nope", false)
+		check("unknown tag", body, []string{"doesn&#39;t exist"}, []string{"Manifest missing"})
+
+		// Overview summarises latest, so it says the same.
+		body = get(t, s, "/", repo, false).Body.String()
+		check("overview", body, []string{"Manifest missing. The registry still lists this tag"}, []string{"docker pull"})
+
+		// The created and size sorts put it last; type filters leave it out.
+		for _, tc := range []struct{ query, want string }{
+			{"?tab=tags", "latest 1.0.0"},
+			{"?sort=created", "1.0.0 latest"},
+			{"?sort=size", "1.0.0 latest"},
+			{"?type=image", "1.0.0"},
+			{"?type=helm", ""},
+			{"?type=artifact", ""},
+		} {
+			if got := strings.Join(cardTags(get(t, s, "/", repo+tc.query, false).Body.String()), " "); got != tc.want {
+				t.Errorf("%s: tags%s = %q, want %q", name, tc.query, got, tc.want)
+			}
+		}
+		// Its link's time still counts in storage mode.
+		if name == "storage" {
+			if got := strings.Join(cardTags(get(t, s, "/", repo+"?sort=updated", false).Body.String()), " "); got != "latest 1.0.0" {
+				t.Errorf("tags?sort=updated = %q", got)
+			}
+		}
+
+		// In the catalog, a repository whose latest is missing has no type, and no date.
+		if got := rowRepos(get(t, s, "/", "/?type=image", false).Body.String()); slices.Contains(got, registrytest.RepoDangling) {
+			t.Errorf("%s: ?type=image lists %s: %v", name, registrytest.RepoDangling, got)
+		}
+		if got := rowRepos(get(t, s, "/", "/?sort=created", false).Body.String()); len(got) == 0 || got[len(got)-1] != registrytest.RepoDangling {
+			t.Errorf("%s: ?sort=created should put %s last: %v", name, registrytest.RepoDangling, got)
+		}
+	}
+}
+
+// failResolve is a registry that fails every manifest lookup with err.
+type failResolve struct {
+	registry.Source
+	err error
+}
+
+func (s failResolve) Resolve(context.Context, string, string) (registry.Manifest, error) {
+	return registry.Manifest{}, s.err
+}
+
+// Only a not-found makes a listed tag's manifest missing. A 401, 403 or
+// 5xx is still an error.
+func TestResolveErrorsAreNotMissingManifests(t *testing.T) {
+	for _, err := range []error{registry.ErrUnauthorized, registry.ErrForbidden, registry.ErrUnavailable} {
+		s := newTestServer(t, "/")
+		s.Src = failResolve{s.Src, fmt.Errorf("manifest: %w", err)}
+		status, body := getPage(t, s, "/", "/myteam/api:main", false)
+		if status == http.StatusNotFound || strings.Contains(body, "Manifest missing") {
+			t.Errorf("%v: tag page: status %d\n%s", err, status, body)
+		}
+		rec := get(t, s, "/", "/myteam/api?fragment=card&tag=main", true)
+		if rec.Code == http.StatusOK || strings.Contains(rec.Body.String(), "manifest missing") {
+			t.Errorf("%v: card: status %d\n%s", err, rec.Code, rec.Body.String())
+		}
+		if body := get(t, s, "/", "/?fragment=row&repo=myteam/api", true).Body.String(); !strings.Contains(body, "Couldn't load") {
+			t.Errorf("%v: catalog row doesn't fail:\n%s", err, body)
 		}
 	}
 }

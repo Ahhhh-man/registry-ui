@@ -114,6 +114,11 @@ func TestStorageTagTime(t *testing.T) {
 			t.Errorf("after the cache expires: %v, want %v", got, pulled)
 		}
 
+		// A tag whose manifest is gone still has its link, and so a time.
+		if _, err := s.TagTime(ctx, registrytest.RepoDangling, registrytest.TagLatest); err != nil {
+			t.Errorf("TagTime of a dangling tag: %v", err)
+		}
+
 		for _, ref := range [][2]string{
 			{registrytest.RepoSingle, "0.0.0"},
 			{registrytest.RepoSingle, "../1.36"},
@@ -243,10 +248,10 @@ func TestStorageUncached(t *testing.T) {
 		t.Errorf("missing config: got %v, want ErrNotFound", err)
 	}
 
-	// A tag whose manifest blob is missing isn't there.
+	// A tag whose manifest blob is missing is listed, but doesn't resolve.
 	removeBlob(t, r, digest(t, r.Helm))
-	if tags, err := s.Tags(ctx, registrytest.RepoHelm); err != nil || len(tags) != 0 {
-		t.Errorf("Tags with a missing blob = %v, %v; want none", tags, err)
+	if tags, err := s.Tags(ctx, registrytest.RepoHelm); err != nil || !slices.Equal(tags, []string{registrytest.TagHelm}) {
+		t.Errorf("Tags with a missing blob = %v, %v; want %s", tags, err, registrytest.TagHelm)
 	}
 	if _, err := s.Resolve(ctx, registrytest.RepoHelm, registrytest.TagHelm); !errors.Is(err, registry.ErrNotFound) {
 		t.Errorf("tag with a missing blob: got %v, want ErrNotFound", err)

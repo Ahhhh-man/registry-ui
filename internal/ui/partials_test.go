@@ -86,6 +86,7 @@ var partialCases = []struct {
 	{"badge accent", `{{template "badge" (dict "Label" "latest" "Variant" "accent")}}`, []string{"bg-accent-soft text-accent-text", ">latest</span>"}},
 	{"badge signature", `{{template "badge" (dict "Label" "signature" "Variant" "signature")}}`, []string{"bg-warn-bg text-warn-fg", "</svg>signature</span>"}},
 	{"badge helm", `{{template "badge" (dict "Label" "helm chart" "Variant" "helm")}}`, []string{"bg-info-bg text-info-fg", "</svg>helm chart</span>"}},
+	{"badge warn", `{{template "badge" (dict "Label" "manifest missing" "Variant" "warn")}}`, []string{"bg-warn-bg text-warn-fg", "</svg>manifest missing</span>"}},
 	{"pill", `{{template "pill" (dict "Icon" "hash" "Text" "3f2a9c1b7e44" "Mono" true)}}`, []string{"rounded-sm border", `<span class="truncate font-mono">3f2a9c1b7e44</span>`}},
 	{
 		"pill copy", `{{template "pill" (dict "Icon" "hash" "Text" "3f2a9c1b7e44" "Mono" true "Copy" "sha256:3f2a")}}`,
