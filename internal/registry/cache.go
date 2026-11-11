@@ -102,17 +102,15 @@ func (c *Cache) DiskUsage(ctx context.Context, repo string) (int64, error) {
 // for all concurrent callers and keeps a successful result for ttl (0:
 // until evicted). Callers must copy slices and maps before handing them out.
 func cached[T any](ctx context.Context, c *Cache, ttl time.Duration, fetch func(context.Context) (T, error), key ...string) (T, error) {
-	k := identity(ctx)
-	for _, s := range key {
-		k += "\x00" + s
-	}
-	if v, ok := c.get(k); ok {
-		return v.(T), nil
+	k := entryKey(ctx, key...)
+	last, fresh := c.get(k)
+	if fresh {
+		return last.(T), nil
 	}
 	v, err, _ := c.group.Do(k, func() (any, error) {
 		// Shared by every waiting caller, so one giving up mustn't fail the
 		// rest. Each upstream request has its own timeout.
-		v, err := fetch(context.WithoutCancel(ctx))
+		v, err := fetch(context.WithValue(context.WithoutCancel(ctx), askedKey{}, asked{c, last}))
 		if err == nil {
 			c.put(k, v, ttl)
 		}
@@ -120,6 +118,32 @@ func cached[T any](ctx context.Context, c *Cache, ttl time.Duration, fetch func(
 	})
 	t, _ := v.(T)
 	return t, err
+}
+
+// asked is what the Cache tells the Source it asks, in the call's context,
+// so the Source needn't fetch again what is addressed by digest.
+type asked struct {
+	cache *Cache
+	// last is the answer to the same question that has just expired, if the
+	// cache still holds it.
+	last any
+}
+
+type askedKey struct{}
+
+// keepConfig files cfg as the answer to Config, for a Source that read it
+// on the way to answering something else.
+func (c *Cache) keepConfig(ctx context.Context, repo, digest string, cfg ImageConfig) {
+	c.put(entryKey(ctx, "config", repo, digest), cfg, 0)
+}
+
+// entryKey is where the answer to key is filed for ctx's identity.
+func entryKey(ctx context.Context, key ...string) string {
+	k := identity(ctx)
+	for _, s := range key {
+		k += "\x00" + s
+	}
+	return k
 }
 
 // identity names who ctx signs in as: "a" for anonymous, or "u" and a hash
@@ -133,7 +157,9 @@ func identity(ctx context.Context) string {
 	return "u" + string(sum[:])
 }
 
-func (c *Cache) get(key string) (any, bool) {
+// get returns the entry for key and whether it can still be served. One that
+// has expired stays until it is replaced or evicted.
+func (c *Cache) get(key string) (val any, fresh bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	el, ok := c.items[key]
@@ -142,9 +168,7 @@ func (c *Cache) get(key string) (any, bool) {
 	}
 	e := el.Value.(*cacheEntry)
 	if !e.expires.IsZero() && !time.Now().Before(e.expires) {
-		c.order.Remove(el)
-		delete(c.items, key)
-		return nil, false
+		return e.val, false
 	}
 	c.order.MoveToFront(el)
 	return e.val, true

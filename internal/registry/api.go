@@ -210,6 +210,10 @@ func resolve(ctx context.Context, p *remote.Puller, repo name.Repository, ref na
 		return Manifest{}, err
 	}
 	m := Manifest{Digest: desc.Digest.String(), MediaType: string(desc.MediaType)}
+	// The cache's last answer for ref has expired, since a tag can move. What
+	// it says of a digest still holds, so that much isn't fetched again.
+	by, _ := ctx.Value(askedKey{}).(asked)
+	last, _ := by.last.(Manifest)
 	tag := ""
 	if t, ok := ref.(name.Tag); ok {
 		tag = t.TagStr()
@@ -235,7 +239,7 @@ func resolve(ctx context.Context, p *remote.Puller, repo name.Repository, ref na
 		errs := make([]error, len(children))
 		var wg sync.WaitGroup
 		for i, d := range children {
-			wg.Go(func() { m.Platforms[i], errs[i] = platform(ctx, p, repo, d) })
+			wg.Go(func() { m.Platforms[i], errs[i] = platform(ctx, p, repo, d, last) })
 		}
 		wg.Wait()
 		if err := errors.Join(errs...); err != nil {
@@ -244,6 +248,9 @@ func resolve(ctx context.Context, p *remote.Puller, repo name.Repository, ref na
 		return m, nil
 	}
 
+	if last.Digest == m.Digest {
+		return last, nil // the tag hasn't moved
+	}
 	mf, err := v1.ParseManifest(bytes.NewReader(desc.Manifest))
 	if err != nil {
 		return Manifest{}, err
@@ -257,6 +264,10 @@ func resolve(ctx context.Context, p *remote.Puller, repo name.Repository, ref na
 	if err != nil {
 		return Manifest{}, err
 	}
+	if by.cache != nil {
+		// The page asks for this config next.
+		by.cache.keepConfig(ctx, repo.RepositoryStr(), mf.Config.Digest.String(), shown(cfg))
+	}
 	m.Platforms = []Platform{{
 		OS: cfg.OS, Arch: cfg.Architecture, Variant: cfg.Variant,
 		Digest: m.Digest, MediaType: m.MediaType, Config: mf.Config.Digest.String(), Size: m.Size,
@@ -265,9 +276,15 @@ func resolve(ctx context.Context, p *remote.Puller, repo name.Repository, ref na
 }
 
 // platform summarises one image listed in an index. One the registry
-// doesn't have (404) is marked missing; any other error fails.
-func platform(ctx context.Context, p *remote.Puller, repo name.Repository, d v1.Descriptor) (Platform, error) {
+// doesn't have (404) is marked missing; any other error fails. One that
+// last, the answer before this one, already summarises isn't fetched again,
+// unless it was missing then: a mirror may have fetched it since.
+func platform(ctx context.Context, p *remote.Puller, repo name.Repository, d v1.Descriptor, last Manifest) (Platform, error) {
 	pl := indexed(d)
+	if i := slices.IndexFunc(last.Platforms, func(was Platform) bool { return was.Digest == pl.Digest && !was.Missing }); i >= 0 {
+		pl.Config, pl.Size = last.Platforms[i].Config, last.Platforms[i].Size
+		return pl, nil
+	}
 	desc, err := p.Get(ctx, repo.Digest(d.Digest.String()))
 	if te := (*transport.Error)(nil); errors.As(err, &te) && te.StatusCode == http.StatusNotFound {
 		pl.Missing = true
@@ -308,7 +325,12 @@ func (a *API) Config(ctx context.Context, repo, digest string) (ImageConfig, err
 	if err != nil {
 		return ImageConfig{}, c.fail("config "+repo+"@"+digest, err)
 	}
-	return ImageConfig{Created: cfg.Created.Time, Labels: cfg.Config.Labels}, nil
+	return shown(cfg), nil
+}
+
+// shown is the part of a config that Config answers with.
+func shown(cfg *v1.ConfigFile) ImageConfig {
+	return ImageConfig{Created: cfg.Created.Time, Labels: cfg.Config.Labels}
 }
 
 // TagTime implements Source. The registry API records no push time.
