@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/Ahhhh-man/registry-ui/internal/web"
 )
 
 // Set by hand: mime.TypeByExtension reads system files and doesn't know woff2.
@@ -128,29 +130,11 @@ func (a *assets) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	body := x.data
 	if x.gz != nil {
 		h.Set("Vary", "Accept-Encoding")
-		if acceptsGzip(strings.Join(r.Header.Values("Accept-Encoding"), ",")) {
+		if web.AcceptsGzip(strings.Join(r.Header.Values("Accept-Encoding"), ",")) {
 			h.Set("Content-Encoding", "gzip")
 			body = x.gz
 		}
 	}
 	h.Set("Content-Length", strconv.Itoa(len(body)))
 	_, _ = w.Write(body)
-}
-
-// acceptsGzip reports whether an Accept-Encoding value allows gzip,
-// honouring "gzip;q=0" as a refusal.
-func acceptsGzip(header string) bool {
-	for part := range strings.SplitSeq(header, ",") {
-		coding, params, _ := strings.Cut(part, ";")
-		if !strings.EqualFold(strings.TrimSpace(coding), "gzip") {
-			continue
-		}
-		q, ok := strings.CutPrefix(strings.TrimSpace(params), "q=")
-		if !ok {
-			return true
-		}
-		f, err := strconv.ParseFloat(q, 64)
-		return err == nil && f > 0
-	}
-	return false
 }

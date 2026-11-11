@@ -2,8 +2,10 @@ package web
 
 import (
 	"bytes"
+	"compress/gzip"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -138,5 +140,59 @@ func TestError(t *testing.T) {
 	}
 	if !strings.Contains(log.String(), "upstream_status=503") {
 		t.Errorf("log lacks the upstream status:\n%s", log)
+	}
+}
+
+func TestGzip(t *testing.T) {
+	log := captureLog(t)
+	big := strings.Repeat("<p>hello</p>", 200)
+	for _, tt := range []struct {
+		name, ctype, encoding, body string
+		gzip                        bool
+	}{
+		{"big HTML", "text/html; charset=utf-8", "", big, true},
+		{"small HTML", "text/html; charset=utf-8", "", big[:gzipMin-1], false},
+		{"not HTML", "text/css; charset=utf-8", "", big, false},
+		{"already encoded", "text/html; charset=utf-8", "br", big, false},
+		{"no body", "", "", "", false},
+	} {
+		h := Middleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			// The status first, as the 404 tag page does it.
+			w.WriteHeader(http.StatusBadGateway)
+			if tt.ctype != "" {
+				w.Header().Set("Content-Type", tt.ctype)
+			}
+			if tt.encoding != "" {
+				w.Header().Set("Content-Encoding", tt.encoding)
+			}
+			if tt.body == "" {
+				return
+			}
+			// In two writes, to check they end up in one gzip stream.
+			_, _ = w.Write([]byte(tt.body[:len(tt.body)/2]))
+			_, _ = w.Write([]byte(tt.body[len(tt.body)/2:]))
+		}), nil)
+		log.Reset()
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.Header.Set("Accept-Encoding", "gzip")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		if rec.Code != http.StatusBadGateway || !strings.Contains(log.String(), "status=502") {
+			t.Errorf("%s: status = %d, log %q", tt.name, rec.Code, log)
+		}
+		body := rec.Body.String()
+		if got := rec.Header().Get("Content-Encoding") == "gzip"; got != tt.gzip {
+			t.Errorf("%s: gzip = %v, want %v", tt.name, got, tt.gzip)
+		} else if got {
+			zr, err := gzip.NewReader(rec.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := io.ReadAll(zr)
+			body = string(b)
+		}
+		if body != tt.body {
+			t.Errorf("%s: body differs from what the handler wrote", tt.name)
+		}
 	}
 }

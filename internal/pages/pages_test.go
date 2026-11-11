@@ -15,7 +15,7 @@ import (
 
 // newTestServer returns a Server over the fake registry with the real
 // templates and template funcs, served at base.
-func newTestServer(t *testing.T, base string) *Server {
+func newTestServer(t testing.TB, base string) *Server {
 	t.Helper()
 	funcs := web.FuncMap(base, ui.StaticName)
 	maps.Copy(funcs, format.Funcs())
