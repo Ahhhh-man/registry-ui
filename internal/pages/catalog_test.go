@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -216,10 +217,21 @@ func TestNewestTag(t *testing.T) {
 		{[]string{"1.9", "latest", "1.10"}, "latest"},
 		{[]string{"1.9", "1.10", "sha256-" + strings.Repeat("a", 64) + ".sig"}, "1.10"},
 		{[]string{"sha256-" + strings.Repeat("a", 64) + ".sig"}, ""},
+		// Only a full cosign tag is skipped: the repository page agrees.
+		{[]string{"1.0.0", "sha256-test"}, "sha256-test"},
 		{nil, ""},
 	} {
 		if got := newestTag(c.tags); got != c.want {
 			t.Errorf("newestTag(%q) = %q, want %q", c.tags, got, c.want)
+		}
+		// The repository page sorts the tags and describes tags[labelTag].
+		sorted, page := slices.Clone(c.tags), ""
+		format.SortTags(sorted)
+		if i := labelTag(sorted); i >= 0 {
+			page = sorted[i]
+		}
+		if got := newestTag(c.tags); got != page {
+			t.Errorf("newestTag(%q) = %q, but the repository page describes %q", c.tags, got, page)
 		}
 	}
 }

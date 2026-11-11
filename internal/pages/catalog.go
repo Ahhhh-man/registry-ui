@@ -257,19 +257,13 @@ func (s *Server) rowDetails(ctx context.Context, row *catalogRow) error {
 	return nil
 }
 
-// newestTag picks the tag a repository is summarised by: "latest", else the
-// first in natural sort order. Cosign-style "sha256-…" tags are skipped, as
-// they'd sort above version numbers and describe no image.
+// newestTag picks the tag a repository is summarised by, the same one the
+// repository page describes: see labelTag. It's "" if there's none.
 func newestTag(tags []string) string {
-	var images []string
-	for _, t := range tags {
-		if !strings.HasPrefix(t, "sha256-") {
-			images = append(images, t)
-		}
+	tags = slices.Clone(tags)
+	format.SortTags(tags)
+	if i := labelTag(tags); i >= 0 {
+		return tags[i]
 	}
-	if len(images) == 0 {
-		return ""
-	}
-	format.SortTags(images)
-	return images[0]
+	return ""
 }
