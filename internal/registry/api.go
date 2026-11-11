@@ -29,6 +29,11 @@ const (
 	requestTimeout = 10 * time.Second
 	// maxConfigSize caps how much of a config blob is read.
 	maxConfigSize = 4 << 20
+	// maxRemembered is how many repositories the kept pullers remember
+	// between them before the least recently used are dropped. A puller
+	// keeps about 1 KB for every repository name it is asked about, and
+	// visitors pick those names.
+	maxRemembered = 10_000
 
 	mediaHelmConfig = "application/vnd.cncf.helm.config.v1+json"
 )
@@ -61,6 +66,19 @@ type API struct {
 	// challenged is set once the registry sends an anonymous request an
 	// auth challenge.
 	challenged atomic.Bool
+
+	mu      sync.Mutex
+	pullers []*puller // most recently used first
+	max     int       // of repositories remembered across pullers
+}
+
+// puller is the remote.Puller kept for one identity. It remembers how the
+// registry wants to be signed in to and the identity's tokens, repository by
+// repository, so only the first call for a repository has to ask.
+type puller struct {
+	*remote.Puller
+	id    string              // as identity gives it, so no password is held as a key
+	repos map[string]struct{} // the names it has been asked about; guarded by API.mu
 }
 
 var _ Source = (*API)(nil)
@@ -76,7 +94,7 @@ func NewAPI(registryURL string, insecure bool) (*API, error) {
 	if u.Scheme == "http" {
 		opts = append(opts, name.Insecure)
 	}
-	a := &API{}
+	a := &API{max: maxRemembered}
 	if a.reg, err = name.NewRegistry(u.Host, opts...); err != nil {
 		return nil, fmt.Errorf("registry URL %q: %w", registryURL, err)
 	}
@@ -84,14 +102,18 @@ func NewAPI(registryURL string, insecure bool) (*API, error) {
 	if insecure {
 		t.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
-	a.transport = t
+	a.transport = roundTripper{t}
 	return a, nil
 }
 
 // Catalog implements Source.
 func (a *API) Catalog(ctx context.Context) ([]string, error) {
-	c := a.call(ctx)
-	repos, err := remote.Catalog(ctx, a.reg, c.opts...)
+	ctx, c := a.call(ctx)
+	p, err := a.puller(ctx, c, "")
+	if err != nil {
+		return nil, err
+	}
+	repos, err := p.Catalog(ctx, a.reg)
 	if err != nil {
 		return nil, c.fail("catalog", err)
 	}
@@ -101,10 +123,11 @@ func (a *API) Catalog(ctx context.Context) ([]string, error) {
 
 // Check asks the registry whether it accepts the credentials in ctx, with a
 // GET /v2/ after any token exchange the registry asks for. It is never
-// cached, so login can use it. A rejection is an *UnauthorizedError.
+// cached and uses no kept puller, so login can use it. A rejection is an
+// *UnauthorizedError.
 func (a *API) Check(ctx context.Context) error {
-	c := a.call(ctx)
-	t, err := transport.NewWithContext(ctx, a.reg, c.auth, c, nil)
+	ctx, c := a.call(ctx)
+	t, err := transport.NewWithContext(ctx, a.reg, c.auth, a.transport, nil)
 	if err != nil {
 		return c.fail("check", err)
 	}
@@ -138,8 +161,12 @@ func (a *API) Tags(ctx context.Context, repo string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := a.call(ctx)
-	tags, err := remote.List(r, c.opts...)
+	ctx, c := a.call(ctx)
+	p, err := a.puller(ctx, c, repo)
+	if err != nil {
+		return nil, err
+	}
+	tags, err := p.List(ctx, r)
 	if err != nil {
 		if err = c.fail("tags of "+repo, err); errors.Is(err, ErrNotFound) {
 			return []string{}, nil
@@ -165,9 +192,8 @@ func (a *API) Resolve(ctx context.Context, repo, ref string) (Manifest, error) {
 		return Manifest{}, fmt.Errorf("manifest %s:%s: %w", repo, ref, ErrNotFound)
 	}
 
-	c := a.call(ctx)
-	// One puller per call reuses the ping and token across its requests.
-	p, err := remote.NewPuller(c.opts...)
+	ctx, c := a.call(ctx)
+	p, err := a.puller(ctx, c, repo)
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -273,8 +299,8 @@ func (a *API) Config(ctx context.Context, repo, digest string) (ImageConfig, err
 	if err != nil {
 		return ImageConfig{}, err
 	}
-	c := a.call(ctx)
-	p, err := remote.NewPuller(c.opts...)
+	ctx, c := a.call(ctx)
+	p, err := a.puller(ctx, c, repo)
 	if err != nil {
 		return ImageConfig{}, err
 	}
@@ -360,41 +386,111 @@ func size(m *v1.Manifest) int64 {
 	return n
 }
 
-// call is one Source call's view of the registry: its remote options, and
-// whether the registry has sent it an auth challenge.
+// call is one Source call's view of the registry: who it signs in as, the
+// puller it uses, and whether the registry has sent it an auth challenge.
 type call struct {
-	opts       []remote.Option
+	api        *API
 	auth       authn.Authenticator
-	inner      http.RoundTripper
+	puller     *puller // nil for Check
 	challenged atomic.Bool
 	anon       *atomic.Bool // the API's challenged, for anonymous calls only
 }
 
-func (a *API) call(ctx context.Context) *call {
-	c := &call{inner: a.transport, auth: authn.Anonymous, anon: &a.challenged}
+type callKey struct{}
+
+// call starts a call. Its requests must be made with the context it returns,
+// which is how the transport finds the call they belong to.
+func (a *API) call(ctx context.Context) (context.Context, *call) {
+	c := &call{api: a, auth: authn.Anonymous, anon: &a.challenged}
 	if cr, ok := ctx.Value(credentialsKey{}).(credentials); ok {
 		c.auth, c.anon = &authn.Basic{Username: cr.user, Password: cr.pass}, nil
 	}
-	c.opts = []remote.Option{
-		remote.WithContext(ctx),
-		remote.WithAuth(c.auth),
-		remote.WithTransport(c),
-		// Fail fast: a page waiting on retries is worse than an error page.
-		remote.WithRetryStatusCodes(),
-		remote.WithRetryPredicate(func(error) bool { return false }),
-	}
-	return c
+	return context.WithValue(ctx, callKey{}, c), c
 }
 
-// RoundTrip bounds each request to requestTimeout and notes auth challenges.
-func (c *call) RoundTrip(req *http.Request) (*http.Response, error) {
+// puller returns the puller kept for ctx's identity, making one if there is
+// none, for a call about repo ("" for the catalog). Each identity has its
+// own, so what one user signed in for is never used for another user or an
+// anonymous visitor.
+func (a *API) puller(ctx context.Context, c *call, repo string) (*remote.Puller, error) {
+	id := identity(ctx)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	// shortcut: a scan, fine for the handful of people signed in at once;
+	// index by id if a registry ever has thousands.
+	i := slices.IndexFunc(a.pullers, func(p *puller) bool { return p.id == id })
+	if i < 0 {
+		rp, err := remote.NewPuller(
+			remote.WithAuth(signIn{}),
+			remote.WithTransport(a.transport),
+			// Fail fast: a page waiting on retries is worse than an error page.
+			remote.WithRetryStatusCodes(),
+			remote.WithRetryPredicate(func(error) bool { return false }),
+			// A puller reads four blobs at a time unless told otherwise. This
+			// one serves every page at once, and pages limit themselves.
+			remote.WithJobs(1<<20),
+		)
+		if err != nil {
+			return nil, err
+		}
+		i = len(a.pullers)
+		a.pullers = append(a.pullers, &puller{Puller: rp, id: id, repos: map[string]struct{}{}})
+	}
+	p := a.pullers[i]
+	a.pullers = slices.Insert(slices.Delete(a.pullers, i, i+1), 0, p)
+	p.repos[repo] = struct{}{}
+	// Drop the least recently used once there is too much to remember. That
+	// can be p itself, which then serves only this call.
+	n := 0
+	for i, kept := range a.pullers {
+		if n += len(kept.repos); n > a.max {
+			a.pullers = slices.Delete(a.pullers, i, len(a.pullers))
+			break
+		}
+	}
+	c.puller = p
+	return p.Puller, nil
+}
+
+// signIn is the Authenticator pullers are made with. It signs each request
+// in as the call it belongs to, so a kept puller holds the tokens the
+// registry gave it but never a password.
+type signIn struct{}
+
+// Authorization implements authn.Authenticator, for a request without a call.
+func (signIn) Authorization() (*authn.AuthConfig, error) { return authn.Anonymous.Authorization() }
+
+// AuthorizationContext implements authn.ContextAuthenticator.
+func (s signIn) AuthorizationContext(ctx context.Context) (*authn.AuthConfig, error) {
+	if c, ok := ctx.Value(callKey{}).(*call); ok {
+		return c.auth.Authorization()
+	}
+	return s.Authorization()
+}
+
+// retire stops p being reused. Calls already using it finish with it.
+func (a *API) retire(p *puller) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if i := slices.Index(a.pullers, p); i >= 0 {
+		a.pullers = slices.Delete(a.pullers, i, i+1)
+	}
+}
+
+// roundTripper bounds each request to requestTimeout and notes auth
+// challenges. Pullers keep it from one call to the next, so it finds the
+// call a request belongs to in the request's context.
+type roundTripper struct{ inner http.RoundTripper }
+
+// RoundTrip implements http.RoundTripper.
+func (t roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx, cancel := context.WithTimeout(req.Context(), requestTimeout)
-	resp, err := c.inner.RoundTrip(req.WithContext(ctx))
+	resp, err := t.inner.RoundTrip(req.WithContext(ctx))
 	if err != nil {
 		cancel()
 		return nil, err
 	}
-	if resp.StatusCode == http.StatusUnauthorized && resp.Header.Get("WWW-Authenticate") != "" {
+	if c, ok := ctx.Value(callKey{}).(*call); ok && resp.StatusCode == http.StatusUnauthorized && resp.Header.Get("WWW-Authenticate") != "" {
 		c.challenged.Store(true)
 		if c.anon != nil {
 			c.anon.Store(true)
@@ -425,6 +521,9 @@ func (c *call) fail(what string, err error) error {
 		case http.StatusNotFound:
 			return fmt.Errorf("%s: %w", what, ErrNotFound)
 		case http.StatusUnauthorized:
+			// The registry may have changed how it wants to be signed in to,
+			// so the identity's next call asks it again, as every call used to.
+			c.api.retire(c.puller)
 			return &UnauthorizedError{Challenged: c.challenged.Load()}
 		case http.StatusForbidden:
 			return fmt.Errorf("%s: %w", what, ErrForbidden)

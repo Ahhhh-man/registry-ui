@@ -6,6 +6,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -170,5 +171,39 @@ func TestCatalogForbidden(t *testing.T) {
 	rec := u.get(t, "/?fragment=x", "", "", true)
 	if body := rec.Body.String(); rec.Code != http.StatusForbidden || strings.Contains(body, "<html") || !strings.Contains(body, `href="/-/login?next=%2Flibrary%2Fnginx%3Fq%3D1"`) {
 		t.Errorf("htmx: status %d, body:\n%s", rec.Code, body)
+	}
+}
+
+// A registry that starts wanting credentials after it has been read
+// anonymously sends the visitor to sign in: what the source remembers of it
+// from before doesn't hide the 401.
+func TestRegistryStartsRefusing(t *testing.T) {
+	up, err := url.Parse(registrytest.New(t).URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var refuse atomic.Bool
+	proxy := httputil.NewSingleHostReverseProxy(up)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if refuse.Load() {
+			w.Header().Set("WWW-Authenticate", `Basic realm="test"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		proxy.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	u := newAuthUI(t, "/", srv.URL)
+
+	if rec := u.get(t, "/library/nginx", "", "", false); rec.Code != http.StatusOK {
+		t.Fatalf("repo page: status %d", rec.Code)
+	}
+	refuse.Store(true)
+	// The same repository, so the registry isn't asked how to sign in again,
+	// and a tag the cache doesn't hold yet.
+	target := "/library/nginx:" + registrytest.TagVersion
+	rec := u.get(t, target, "", "", false)
+	if want := "/-/login?next=" + url.QueryEscape(target); rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != want {
+		t.Errorf("%s: %d to %q, want 303 to %q", target, rec.Code, rec.Header().Get("Location"), want)
 	}
 }
