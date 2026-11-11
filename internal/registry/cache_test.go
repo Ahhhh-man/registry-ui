@@ -3,6 +3,7 @@ package registry
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -124,6 +125,29 @@ func TestCacheEvictsLeastRecentlyUsed(t *testing.T) {
 		if n := len(c.items); n != 2 {
 			t.Errorf("cache holds %d entries, want 2", n)
 		}
+	})
+}
+
+// A catalog sort loads a tag list, a manifest and a config for every
+// repository. If they don't all fit, the next visit starts over.
+func TestCacheHoldsCatalogSort(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
+		src := &counter{}
+		c := NewCache(src)
+		row := func(i int) {
+			repo := "repo-" + strconv.Itoa(i)
+			_, _ = c.Tags(ctx, repo)
+			_, _ = c.Resolve(ctx, repo, "latest")
+			_, _ = c.Config(ctx, repo, testDigest)
+		}
+		const repos = 5000
+		for i := range repos {
+			row(i)
+		}
+		src.want(t, 3*repos)
+		row(0)
+		src.want(t, 3*repos)
 	})
 }
 
