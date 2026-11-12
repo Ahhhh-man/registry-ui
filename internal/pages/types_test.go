@@ -62,25 +62,25 @@ func (s retyped) Resolve(ctx context.Context, repo, ref string) (registry.Manife
 
 func TestCatalogTypes(t *testing.T) {
 	images := "bitnami/kafka bitnami/minio library/nginx library/postgres library/redis myteam/api myteam/web/frontend"
-	for _, c := range []struct{ target, rows, chips, empty string }{
-		// Unfiltered, only the total is known without calls.
-		{"/", "bitnami/kafka bitnami/minio charts/podinfo library/nginx library/postgres library/redis myteam/api myteam/web/frontend", "*All 8 · Images · Helm charts · Signatures · Other artifacts", ""},
-		{"/?type=nope", "bitnami/kafka bitnami/minio charts/podinfo library/nginx library/postgres library/redis myteam/api myteam/web/frontend", "*All 8 · Images · Helm charts · Signatures · Other artifacts", ""},
-		// Filtered, every row is described, so the chips count and hide.
-		{"/?type=image", images, "All 8 · *Images 7 · Helm charts 1", ""},
-		{"/?type=helm", "charts/podinfo", "All 8 · Images 7 · *Helm charts 1", ""},
-		{"/?type=signature", "", "All 8 · Images 7 · Helm charts 1 · *Signatures 0", "No signatures here"},
-		{"/?type=artifact", "", "All 8 · Images 7 · Helm charts 1 · *Other artifacts 0", "No artifacts here"},
+	for _, c := range []struct{ target, rows, pressed, empty string }{
+		{"/", "bitnami/kafka bitnami/minio charts/podinfo library/nginx library/postgres library/redis myteam/api myteam/web/frontend", "All", ""},
+		{"/?type=nope", "bitnami/kafka bitnami/minio charts/podinfo library/nginx library/postgres library/redis myteam/api myteam/web/frontend", "All", ""},
+		{"/?type=image", images, "Images", ""},
+		{"/?type=helm", "charts/podinfo", "Helm charts", ""},
+		{"/?type=signature", "", "Signatures", "No signatures here"},
+		{"/?type=artifact", "", "Other artifacts", "No artifacts here"},
 		// With the name filter.
-		{"/?q=bitnami&type=image", "bitnami/kafka bitnami/minio", "All 2 · *Images 2", ""},
-		{"/?q=library&type=helm", "", "All 3 · Images 3 · *Helm charts 0", "No Helm charts match “library”"},
+		{"/?q=bitnami&type=image", "bitnami/kafka bitnami/minio", "Images", ""},
+		{"/?q=library&type=helm", "", "Helm charts", "No Helm charts match “library”"},
 	} {
 		body := get(t, newTestServer(t, "/"), "/", c.target, false).Body.String()
 		if got := strings.Join(rowRepos(body), " "); got != c.rows {
 			t.Errorf("%s rows:\n got %s\nwant %s", c.target, got, c.rows)
 		}
-		if got := chipText(body); got != c.chips {
-			t.Errorf("%s chips:\n got %s\nwant %s", c.target, got, c.chips)
+		// Every type is always offered, without counts: counting means loading every row.
+		types := regexp.MustCompile(`<[^>]+>`).ReplaceAllString(segmented(body, "Content type"), " ")
+		if got := strings.Join(strings.Fields(types), " "); got != "All Images Helm charts Signatures Other artifacts" || pressed(body, "Content type") != c.pressed {
+			t.Errorf("%s types: %s, with %s pressed; want %s", c.target, got, pressed(body, "Content type"), c.pressed)
 		}
 		if c.empty != "" && !strings.Contains(body, c.empty) {
 			t.Errorf("%s lacks %q", c.target, c.empty)
@@ -102,8 +102,8 @@ func TestCatalogTypeKinds(t *testing.T) {
 	if got := strings.Join(rowRepos(body), " "); got != sigRepo {
 		t.Errorf("signatures: %s", got)
 	}
-	if got, want := chipText(body), "All 9 · Images 6 · Helm charts 1 · *Signatures 1 · Other artifacts 1"; got != want {
-		t.Errorf("chips:\n got %s\nwant %s", got, want)
+	if got := pressed(body, "Content type"); got != "Signatures" {
+		t.Errorf("%s is pressed, want Signatures", got)
 	}
 	body = get(t, s, "/", "/?type=artifact", false).Body.String()
 	if got := strings.Join(rowRepos(body), " "); got != "myteam/api" {
@@ -114,11 +114,15 @@ func TestCatalogTypeKinds(t *testing.T) {
 func TestCatalogTypeKeptInLinks(t *testing.T) {
 	body := get(t, newTestServer(t, "/"), "/", "/?q=a&type=image&sort=tags", false).Body.String()
 	contains(t, body,
-		`<a href="/?q=a&amp;sort=tags" class=`,                             // the All chip
-		`<a href="/?q=a&amp;sort=tags&amp;type=image" aria-current="true"`, // the Images chip
-		`<a href="/?q=a&amp;sort=name-desc&amp;type=image" class=`,         // the sort menu
-		`<section id="repo-list" hx-get="/?sort=tags&amp;type=image"`,      // as you type
-		`<input type="hidden" name="type" value="image">`,                  // the header search
+		`<a href="/?q=a&amp;sort=name-desc&amp;type=image" class=`,    // the sort menu
+		`<section id="repo-list" hx-get="/?sort=tags&amp;type=image"`, // as you type
+		`<input type="hidden" name="type" value="image">`,             // the header search
+	)
+	// The type filter keeps the search and sort; All leaves the type out of the URL.
+	contains(t, segmented(body, "Content type"),
+		`<input type="hidden" name="q" value="a"><input type="hidden" name="sort" value="tags">`,
+		`<button type="submit" aria-pressed="false"`,
+		`<button type="submit" name="type" value="image" aria-pressed="true"`,
 	)
 	// Filtered, then sorted by tag count; ties stay A–Z.
 	if got, want := strings.Join(rowRepos(body), " "), "library/nginx library/postgres library/redis myteam/api bitnami/kafka bitnami/minio myteam/web/frontend"; got != want {

@@ -24,16 +24,14 @@
 {{define "table"}}w-full border-collapse text-sm [&_td]:border-t [&_td]:border-row-border [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2.5 [&_th]:text-left [&_th]:text-xs [&_th]:font-medium [&_th]:tracking-wide [&_th]:whitespace-nowrap [&_th]:text-faint [&_th]:uppercase
 {{- if eq . "selectable"}} [&_tbody_tr]:cursor-pointer [&_tbody_tr:has(:checked)]:bg-accent-soft [&_tbody_tr:hover]:bg-panel{{end}}{{end}}
 
-{{/* stat: a figure with an icon, for the catalog's stats row. An empty
-     Value shows a skeleton, for figures that load later.
+{{/* stat: a figure as plain text with an icon, "15 repositories", for the
+     top of the catalog. An empty Value shows a skeleton, for figures that
+     load later.
      dict "Icon" icon name, "Label" string, "Value" string or number,
           "Name" string (optional): sets data-stat on the figure, for
           app.js to fill in. */}}
 {{define "stat" -}}
-<div class="flex items-center gap-3 rounded-md border border-border bg-surface px-4 py-3">
-<span class="grid size-9 shrink-0 place-items-center rounded-md bg-accent-soft text-accent-text">{{icon .Icon "size-5"}}</span>
-<div class="min-w-0"><div class="text-xl leading-tight font-semibold tabular-nums"{{with .Name}} data-stat="{{.}}"{{end}}>{{with .Value}}{{.}}{{else}}{{template "skeleton" "w-12"}}{{end}}</div><div class="text-xs text-muted">{{.Label}}</div></div>
-</div>
+<span class="inline-flex items-center gap-1.5 whitespace-nowrap text-muted">{{icon .Icon "text-faint"}}<b class="font-semibold text-text tabular-nums"{{with .Name}} data-stat="{{.}}"{{end}}>{{with .Value}}{{.}}{{else}}{{template "skeleton" "w-12"}}{{end}}</b> <span>{{.Label}}</span></span>
 {{- end}}
 
 {{/* skeleton: a pulsing placeholder bar for content that loads later. The

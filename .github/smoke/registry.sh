@@ -143,7 +143,7 @@ page "$repo:nope" 404
 # Distribution keeps the repo in the catalog with no tags.
 req "?fragment=row&repo=$empty" 200 -H "HX-Request: true"
 has "no tags</span>" "?fragment=row&repo=$empty"
-has ">0 tags</span>" "?fragment=row&repo=$empty"
+has 'data-tags="0"' "?fragment=row&repo=$empty"
 lacks "Couldn't load" "?fragment=row&repo=$empty"
 echo "ok   GET $base?fragment=row&repo=$empty 200, empty"
 anon_page "$empty"

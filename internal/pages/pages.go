@@ -32,6 +32,9 @@ type Server struct {
 	// is how many tags a page lists; 0 means 100.
 	TagSort     string
 	TagsPerPage int
+	// CatalogSort is the catalog's order when the URL has no ?sort=, one of
+	// the catalog sorts' names; "" means "name".
+	CatalogSort string
 
 	// Sessions and Check enable /-/login and /-/logout, and signing pages'
 	// registry requests in as the session's user. Check asks the registry,

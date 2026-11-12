@@ -58,11 +58,26 @@ var partialCases = []struct {
 	},
 	{
 		"tabs", `{{template "tabs" (dict "Label" "Repository" "Tabs" (list (dict "Label" "Tags" "Icon" "tag" "Href" "/library/nginx" "Count" 42 "Current" true) (dict "Label" "Overview" "Icon" "book-open" "Href" "/library/nginx?tab=overview")))}}`,
-		[]string{`<nav aria-label="Repository"`, `<a href="/library/nginx" aria-current="page"`, `<a href="/library/nginx?tab=overview" class=`, ">42</span>", "aria-[current=page]:[border-image:"},
+		[]string{`<nav aria-label="Repository"`, `<a href="/library/nginx" aria-current="page"`, `<a href="/library/nginx?tab=overview" class=`, ">42</span>", "aria-[current=page]:border-accent"},
 	},
 	{
 		"segmented", `{{template "segmented" (dict "Label" "View" "Name" "view" "Options" (list (dict "Value" "cards" "Label" "Cards" "Icon" "layers" "Pressed" true) (dict "Value" "list" "Label" "List" "Icon" "list" "Disabled" true)))}}`,
-		[]string{`<form method="get" role="group" aria-label="View"`, `<button type="submit" name="view" value="cards" aria-pressed="true"`, `value="list" aria-pressed="false" disabled`, "aria-pressed:bg-panel"},
+		[]string{`<form method="get" role="group" aria-label="View" class=`, `<button type="submit" name="view" value="cards" aria-pressed="true"`, `value="list" aria-pressed="false" disabled`, "aria-pressed:bg-accent-soft", "</svg>Cards</button>"},
+	},
+	{
+		"segmented keep", `{{template "segmented" (dict "Label" "Content type" "Name" "type" "Keep" (dict "q" "ngi\"nx" "sort" "" "view" "compact") "Options" (list (dict "Label" "All" "Pressed" true) (dict "Value" "image" "Label" "Images")))}}`,
+		[]string{`<input type="hidden" name="q" value="ngi&#34;nx"><input type="hidden" name="view" value="compact">`, `<button type="submit" aria-pressed="true" class=`, `>All</button>`, `<button type="submit" name="type" value="image" aria-pressed="false"`},
+	},
+	{
+		"segmented icons", `{{template "segmented" (dict "Label" "View" "Name" "view" "Cookie" "catalog-view" "IconOnly" true "Options" (list (dict "Value" "compact" "Label" "Compact" "Icon" "rows-dense" "Pressed" true)))}}`,
+		[]string{`aria-label="View" data-cookie="catalog-view"`, `<button type="submit" name="view" value="compact" aria-pressed="true" aria-label="Compact" title="Compact"`, "</svg></button>"},
+	},
+	{
+		"sort-menu bordered", `{{template "sort-menu" (dict "Bordered" true "Align" "right-0" "Menu" (dict "Label" "Name A–Z" "Options" (list (dict "Label" "Name A–Z" "Href" "/" "Current" true) (dict "Label" "Most tags" "Href" "/?sort=tags"))))}}`,
+		[]string{
+			`<details data-menu class="group relative">`, "border border-border bg-surface px-3 py-1.5 text-sm", `<span class="font-normal text-muted">Sort </span>Name A–Z<svg`, `<ul class="absolute right-0 `,
+			`<li><a href="/" aria-current="true" class=`, `<li><a href="/?sort=tags" class=`, ">Most tags</a></li>",
+		},
 	},
 	{
 		"type-chips", `{{template "type-chips" (list (dict "Value" "" "Label" "All" "Href" "/" "Count" 8) (dict "Value" "image" "Label" "Images" "Href" "/?type=image" "Count" 7 "Current" true) (dict "Value" "helm" "Label" "Helm charts" "Href" "/?type=helm" "Count" -1) (dict "Value" "signature" "Label" "Signatures" "Href" "/?type=signature" "Count" -1))}}`,
@@ -113,7 +128,8 @@ var partialCases = []struct {
 		"breadcrumbs", `{{template "breadcrumbs" (dict "Trail" (list (dict "Label" "Repositories" "Href" "/") (dict "Label" "library")) "Current" "nginx")}}`,
 		[]string{`<nav aria-label="Breadcrumb">`, `<a href="/" class="hover:text-text">Repositories</a>`, "<span>library</span>", `aria-current="page">nginx</li>`},
 	},
-	{"repo-tile", `{{template "repo-tile" (dict "Repo" "library/nginx")}}`, []string{`aria-hidden="true"`, TileClass("library/nginx"), "size-10", ">N</span>"}},
+	{"repo-tile", `{{template "repo-tile" (dict "Repo" "library/nginx")}}`, []string{`aria-hidden="true"`, TileClass("library/nginx"), "size-9", ">N</span>"}},
+	{"repo-tile small", `{{template "repo-tile" (dict "Repo" "charts/podinfo" "Helm" true "Small" true)}}`, []string{"size-5 rounded-sm", `<svg class="icon size-3"`}},
 	{"repo-tile helm", `{{template "repo-tile" (dict "Repo" "charts/podinfo" "Helm" true "Large" true)}}`, []string{"size-16", `<svg class="icon size-8"`}},
 	{
 		"page-header", `{{template "page-header" (dict "Repo" "library/nginx" "Prefix" "library/" "Title" "nginx" "Description" "Official build of Nginx." "Badges" (list (dict "Label" "latest" "Variant" "accent")) "Pills" (list (dict "Icon" "tag" "Text" "42 tags") (dict "Icon" "cpu" "Text" "4 platforms")))}}`,
@@ -133,8 +149,8 @@ var partialCases = []struct {
 		"table selectable", `<table class="{{template "table" "selectable"}}"><tbody><tr><td><input type="checkbox" aria-label="Select 1.27" checked></td><td>1.27</td></tr><tr><td><input type="checkbox" aria-label="Select 1.26"></td><td>1.26</td></tr></tbody></table>`,
 		[]string{"[&_tbody_tr:has(:checked)]:bg-accent-soft"},
 	},
-	{"stat", `{{template "stat" (dict "Icon" "package" "Label" "Repositories" "Value" 128)}}`, []string{">128</div>", "Repositories</div>"}},
-	{"stat loading", `<div aria-busy="true">{{template "stat" (dict "Icon" "tag" "Label" "Tags")}}</div>`, []string{"motion-safe:animate-pulse w-12"}},
+	{"stat", `{{template "stat" (dict "Icon" "package" "Label" "repositories" "Value" 128)}}`, []string{`<svg class="icon text-faint"`, ">128</b> <span>repositories</span>"}},
+	{"stat loading", `<div aria-busy="true">{{template "stat" (dict "Icon" "tag" "Label" "tags" "Name" "tags")}}</div>`, []string{`data-stat="tags"`, "motion-safe:animate-pulse w-12"}},
 	{"skeleton", `<p aria-busy="true">{{template "skeleton" "w-1/2"}}</p>`, []string{`<span aria-hidden="true" class="inline-block`, "w-1/2"}},
 	{
 		"empty", `{{template "empty" (dict "Title" "No tags match “zzz”" "Href" "/library/nginx" "Link" "Clear the filter")}}`,
@@ -144,23 +160,30 @@ var partialCases = []struct {
 		"error-state", `{{template "error-state" (dict "Title" "Can't reach the registry" "Text" "registry:5000 refused the connection." "Retry" "/")}}`,
 		[]string{"bg-danger-bg", "Can&#39;t reach the registry", `<a href="/" class=`, "Retry</a>"},
 	},
-	{"list-header", `{{template "list-header" (dict "Title" "All repositories")}}`, []string{"<h2 ", "All repositories</h2>"}},
 	{
-		"list-header sort", `{{template "list-header" (dict "Title" "All repositories" "Sort" (dict "Label" "Name A–Z" "Options" (list (dict "Label" "Name A–Z" "Href" "/" "Current" true) (dict "Label" "Most tags" "Href" "/?sort=tags"))))}}`,
+		"sort-menu", `{{template "sort-menu" (dict "Align" "right-0" "Menu" (dict "Label" "Name A–Z" "Options" (list (dict "Label" "Name A–Z" "Href" "/" "Current" true))))}}`,
+		[]string{`<span class="sr-only">Sort by </span>Name A–Z<svg`, `<ul class="absolute right-0 `},
+	},
+	{
+		"repo-row loading", `{{template "repo-row" (dict "View" "comfortable" "Repo" "library/nginx" "Namespace" "library/" "Name" "nginx")}}`,
+		[]string{`<div data-row aria-busy="true" hx-get="/?fragment=row&amp;repo=library/nginx&amp;view=comfortable" hx-trigger="intersect once" hx-swap="outerHTML"`, `<a href="/?q=library/" aria-label="Repositories in library/" class=`, `>library/</a><a href="/library/nginx" class=`, `>nginx</a></div>`, "animate-pulse w-12"},
+	},
+	{
+		"repo-row loaded", `{{template "repo-row" (dict "View" "comfortable" "Repo" "charts/podinfo" "Namespace" "charts/" "Name" "podinfo" "Loaded" true "Helm" true "Tags" 1 "Tag" "6.7.1" "Description" "A chart." "Created" .)}}`,
+		[]string{`data-row data-tags="1"`, ">A chart.</div>", `title="Newest tag: 6.7.1">6.7.1</span>`, "</svg>1 tag</span>", `</svg><time datetime="2024-11-06T23:30:00Z" title="Latest created 2024-11-06 23:30 UTC" data-title="Latest created {}">`},
+	},
+	{
+		"repo-row compact", `{{template "repo-row" (dict "View" "compact" "Repo" "charts/podinfo" "Namespace" "charts/" "Name" "podinfo" "Loaded" true "Tags" 2 "Tag" "6.7.1" "Description" "A chart." "Created" .)}}`,
+		[]string{`data-row data-tags="2"`, "size-5", "hover:bg-panel", "after:inset-0", ">6.7.1</span>", "</svg>2 tags</span>"},
+	},
+	{
+		"repo-row detailed", `{{template "repo-row" (dict "View" "detailed" "Repo" "charts/podinfo" "Namespace" "charts/" "Name" "podinfo" "Loaded" true "Helm" true "Tags" 1 "Tag" "6.7.1" "Type" "helm" "Kind" "Helm chart" "Command" "helm pull oci://r/charts/podinfo --version 6.7.1" "Created" .)}}`,
 		[]string{
-			`<details data-menu class="group relative">`, `<span class="sr-only">Sort by </span>Name A–Z<svg`, `<ul class="absolute right-0 `,
-			`<li><a href="/" aria-current="true" class=`, `<li><a href="/?sort=tags" class=`, ">Most tags</a></li>",
+			`<p class="h-5 truncate leading-5 text-muted"></p>`, `<dt>Newest tag</dt><dd><a href="/charts/podinfo:6.7.1" class="relative z-10`, "<dt>Type</dt><dd>Helm chart</dd>", `<dt>Tags</dt><dd class="tabular-nums">1</dd>`,
+			`<dt>Created</dt><dd><span class="relative z-10"><time `, "bg-code-bg", `</span>helm pull oci://r/charts/podinfo --version 6.7.1</code>`, `data-copy="helm pull oci://r/charts/podinfo --version 6.7.1" aria-label="Copy pull command" title="Copy pull command"`,
 		},
 	},
-	{
-		"repo-row loading", `{{template "repo-row" (dict "Repo" "library/nginx" "Namespace" "library/" "Name" "nginx")}}`,
-		[]string{`<div data-row aria-busy="true" hx-get="/?fragment=row&amp;repo=library/nginx" hx-trigger="intersect once" hx-swap="outerHTML"`, `<a href="/?q=library/" aria-label="Repositories in library/" class=`, `>library/</a><a href="/library/nginx" class=`, `>nginx</a></div>`, "animate-pulse w-1/2"},
-	},
-	{
-		"repo-row loaded", `{{template "repo-row" (dict "Repo" "charts/podinfo" "Namespace" "charts/" "Name" "podinfo" "Loaded" true "Helm" true "Tags" 1 "Created" .)}}`,
-		[]string{`data-row data-tags="1"`, "No description label", "</svg>Helm chart</span>", "</svg>1 tag</span>", `</svg><time datetime="2024-11-06T23:30:00Z" title="Latest created 2024-11-06 23:30 UTC" data-title="Latest created {}">`},
-	},
-	{"repo-row failed", `{{template "repo-row" (dict "Repo" "x/y" "Namespace" "x/" "Name" "y" "Failed" true)}}`, []string{"Couldn't load details"}},
+	{"repo-row failed", `{{template "repo-row" (dict "View" "compact" "Repo" "x/y" "Namespace" "x/" "Name" "y" "Failed" true)}}`, []string{"Couldn't load details"}},
 	{"note", `{{template "note" "Layers and build history come later."}}`, []string{`role="note"`, "bg-accent-soft", "Layers and build history come later."}},
 	{"warning", `{{template "warning" "2 more tags will also go."}}`, []string{`role="note"`, "bg-warn-bg", "2 more tags will also go."}},
 }

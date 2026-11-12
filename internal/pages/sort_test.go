@@ -55,7 +55,7 @@ func TestCatalogSortNameMakesNoExtraCalls(t *testing.T) {
 func TestCatalogSortKeptInLinks(t *testing.T) {
 	body := get(t, newTestServer(t, "/"), "/", "/?q=library&sort=tags", false).Body.String()
 	contains(t, body,
-		`<span class="sr-only">Sort by </span>Most tags<svg`,
+		`<span class="font-normal text-muted">Sort </span>Most tags<svg`,
 		`<a href="/?q=library" class=`, // the default drops sort
 		`<a href="/?q=library&amp;sort=name-desc" class=`,
 		`<a href="/?q=library&amp;sort=tags" aria-current="true"`,
@@ -68,6 +68,29 @@ func TestCatalogSortKeptInLinks(t *testing.T) {
 	if strings.Contains(get(t, newTestServer(t, "/"), "/", "/", false).Body.String(), `name="sort"`) {
 		t.Error("the default sort shouldn't add a hidden field")
 	}
+}
+
+// A configured default order is the one with clean URLs; A–Z then has a
+// name like the rest.
+func TestCatalogDefaultSort(t *testing.T) {
+	s := newTestServer(t, "/")
+	s.CatalogSort = "tags"
+	const byTags, byName = "library/nginx library/postgres ", "bitnami/kafka bitnami/minio "
+
+	body := get(t, s, "/", "/", false).Body.String()
+	if got := strings.Join(rowRepos(body), " "); !strings.HasPrefix(got, byTags) {
+		t.Errorf("default order = %s, want by tag count", got)
+	}
+	contains(t, body, `Sort </span>Most tags<svg`, `<a href="/" aria-current="true"`, `<a href="/?sort=name" class=`)
+	if strings.Contains(body, `name="sort"`) || strings.Contains(body, "sort=tags") {
+		t.Error("the default order shouldn't be named in a field or a link")
+	}
+
+	body = get(t, s, "/", "/?sort=name", false).Body.String()
+	if got := strings.Join(rowRepos(body), " "); !strings.HasPrefix(got, byName) {
+		t.Errorf("?sort=name = %s, want A–Z", got)
+	}
+	contains(t, body, `Sort </span>Name A–Z<svg`, `<a href="/?sort=name" aria-current="true"`, `<input type="hidden" name="sort" value="name">`)
 }
 
 func TestRepoSorts(t *testing.T) {
@@ -224,7 +247,7 @@ func TestUpdatedSorts(t *testing.T) {
 
 	// A repo goes by its newest tag; ties stay A–Z, and the rest are a year old.
 	body := get(t, s, "/", "/?sort=updated", false).Body.String()
-	contains(t, body, `<span class="sr-only">Sort by </span>Recently updated<svg`)
+	contains(t, body, `<span class="font-normal text-muted">Sort </span>Recently updated<svg`)
 	want := strings.Join([]string{registrytest.RepoSingle, registrytest.RepoPaged, registrytest.RepoHelm, registrytest.RepoNested, registrytest.RepoIndex, registrytest.RepoAllMissing, registrytest.RepoDangling, registrytest.RepoSomeMissing, registrytest.RepoEmpty, registrytest.RepoUntagged}, " ")
 	if got := strings.Join(rowRepos(body), " "); got != want {
 		t.Errorf("catalog:\n got %s\nwant %s", got, want)

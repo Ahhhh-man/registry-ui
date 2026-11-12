@@ -128,6 +128,7 @@
     let total = 0;
     for (const row of list.querySelectorAll("[data-tags]")) total += Number(row.dataset.tags);
     out.textContent = total;
+    if (total === 1) out.nextElementSibling.textContent = "tag";
     out.closest("[hidden]")?.removeAttribute("hidden");
   };
   document.addEventListener("htmx:afterSettle", tagTotal);
@@ -147,14 +148,15 @@
     menu.querySelector("summary").focus();
   });
 
-  // The Cards/List toggle remembers the choice in a cookie, which the server
-  // reads when the URL has no view, and keeps the filter that htmx has been
-  // writing into the URL.
+  // A view toggle remembers the choice in a cookie, which the server reads
+  // when the URL has no view, and keeps the filter that htmx has been
+  // writing into the URL. The catalog's toggle names its own cookie.
   document.addEventListener("click", (e) => {
     const btn = e.target.closest('button[name="view"]');
     if (!btn) return;
+    document.cookie = `${btn.form.dataset.cookie || "view"}=${btn.value}; path=/; max-age=31536000; samesite=lax`;
+    if (btn.closest("[hx-boost]")) return; // htmx swaps the list in place
     e.preventDefault();
-    document.cookie = `view=${btn.value}; path=/; max-age=31536000; samesite=lax`;
     const url = new URL(location.href);
     url.searchParams.set("view", btn.value);
     location.assign(url);

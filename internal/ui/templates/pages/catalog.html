@@ -1,36 +1,48 @@
 {{/* The catalog: every repository, A–Z or as sorted. Data is pages.catalogPage. */}}
 {{define "catalog" -}}
-<div class="flex flex-col gap-8">
-<div class="flex flex-col items-start gap-3">
-{{template "pill" (dict "Icon" "hard-drive" "Text" .Host)}}
-{{template "page-header" (dict "Title" "Repositories" "Description" "Every image, tag and platform stored in this registry.")}}
+<div class="flex flex-col gap-6">
+<div class="flex flex-wrap items-end justify-between gap-x-10 gap-y-2">
+<h1 class="text-2xl leading-tight font-semibold tracking-tight">Repositories <span class="text-[15px] font-normal tracking-normal text-muted">on {{.Host}}</span></h1>
+{{- /* Plain text: a border or a fill would promise a click. */}}
+<div class="flex flex-wrap gap-x-6 gap-y-0.5 text-muted">
+{{template "stat" (dict "Icon" "package" "Label" (or (and (eq .Total 1) "repository") "repositories") "Value" (printf "%d" .Total))}}
+{{if .Total}}<span hidden>{{template "stat" (dict "Icon" "tag" "Label" "tags" "Name" "tags")}}</span>{{else}}{{template "stat" (dict "Icon" "tag" "Label" "tags" "Value" "0")}}{{end}}
+{{if .Disk}}<span hx-get="{{catalogURL}}?fragment=disk" hx-trigger="load" hx-swap="outerHTML" aria-busy="true">{{template "disk-stat" ""}}</span>{{end}}
 </div>
-<div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-{{template "stat" (dict "Icon" "package" "Label" "Repositories" "Value" (printf "%d" .Total))}}
-{{if .Total}}<div hidden>{{template "stat" (dict "Icon" "tag" "Label" "Tags" "Name" "tags")}}</div>{{else}}{{template "stat" (dict "Icon" "tag" "Label" "Tags" "Value" "0")}}{{end}}
-{{if .Disk}}<div hx-get="{{catalogURL}}?fragment=disk" hx-trigger="load" hx-swap="outerHTML" aria-busy="true">{{template "disk-stat" ""}}</div>{{end}}
 </div>
 {{template "catalog-list" .}}
 </div>
 {{- end}}
 
-{{/* disk-stat: the On disk figure, a size, or "" while it loads. */}}
-{{define "disk-stat"}}{{template "stat" (dict "Icon" "hard-drive" "Label" "On disk" "Value" .)}}{{end}}
+{{/* disk-stat: the on disk figure, a size, or "" while it loads. */}}
+{{define "disk-stat"}}{{template "stat" (dict "Icon" "hard-drive" "Label" "on disk" "Value" .)}}{{end}}
 
-{{/* catalog-list: the rows. It reloads itself from the header search as you
-     type, keeping the sort and type; data-repo-list marks the unfiltered list, whose rows add up to the
-     Tags total, hidden until then. */}}
+{{/* catalog-list: the toolbar and the rows. It reloads itself from the
+     header search as you type, keeping the sort, type and view;
+     data-repo-list marks the unfiltered list, whose rows add up to the tags
+     figure, hidden until then. */}}
 {{define "catalog-list" -}}
 <section id="repo-list" hx-get="{{.List}}" hx-trigger="input changed delay:200ms from:#search" hx-include="#search" hx-select="#repo-list" hx-swap="outerHTML" hx-replace-url="true" hx-sync="this:replace" hx-disinherit="*"{{if not (or .Query .Type)}} data-repo-list{{end}}>
-{{template "list-header" (dict "Title" (or (and .Query (printf "Matching “%s”" .Query)) "All repositories") "Sort" .Menu)}}
-{{- if .Total}}<div class="mb-3">{{template "type-chips" .Chips}}</div>{{end}}
+{{- with .Query}}<h2 class="mb-3 truncate text-base font-semibold">Matching “{{.}}”</h2>{{end}}
+{{- if .Total}}
+{{- /* Boosted: a filter, sort or view click swaps the list in place, without a page load. */}}
+<div hx-boost="true" hx-target="#repo-list" hx-select="#repo-list" hx-swap="outerHTML" class="mb-3 flex flex-wrap items-stretch justify-between gap-3">
+{{- /* Five types don't fit a phone, so they scroll; the padding keeps their focus rings inside. */}}
+<div class="-m-1 max-w-full overflow-x-auto p-1">
+{{- template "segmented" (dict "Label" "Content type" "Name" "type" "Keep" (dict "q" .Query "sort" .Sort "view" .Keep) "Options" (list (dict "Label" "All" "Pressed" (not .Type)) (dict "Value" "image" "Label" "Images" "Pressed" (eq .Type "image")) (dict "Value" "helm" "Label" "Helm charts" "Pressed" (eq .Type "helm")) (dict "Value" "signature" "Label" "Signatures" "Pressed" (eq .Type "signature")) (dict "Value" "artifact" "Label" "Other artifacts" "Pressed" (eq .Type "artifact"))))}}</div>
+<div class="flex flex-wrap items-stretch gap-3">
+{{template "sort-menu" (dict "Menu" .Menu "Align" "left-0 sm:right-0 sm:left-auto" "Bordered" true)}}
+{{template "segmented" (dict "Label" "View" "Name" "view" "Cookie" "catalog-view" "IconOnly" true "Keep" (dict "q" .Query "sort" .Sort "type" .Type) "Options" (list (dict "Value" "compact" "Label" "Compact" "Icon" "rows-dense" "Pressed" (eq .View "compact")) (dict "Value" "comfortable" "Label" "Comfortable" "Icon" "menu" "Pressed" (eq .View "comfortable")) (dict "Value" "detailed" "Label" "Detailed" "Icon" "stretch-horizontal" "Pressed" (eq .View "detailed"))))}}
+</div>
+</div>
+{{- end}}
 {{- with .Note}}<div class="mb-3">{{template "warning" .}}</div>{{end}}
 {{- if not .Total}}
 {{template "empty" (dict "Icon" "package" "Title" "No repositories yet" "Text" "Images pushed to this registry show up here.")}}
 {{- else if not .Rows}}
 {{template "empty" (dict "Title" .Empty "Text" (and .Query "Check the spelling, or search for part of a name.") "Href" catalogURL "Link" "Show all repositories")}}
 {{- else}}
-<div class="flex flex-col gap-2.5">
+<div class="{{if eq .View "compact"}}divide-y divide-row-border rounded-md border border-border bg-surface{{else if eq .View "detailed"}}grid grid-cols-[repeat(auto-fill,minmax(min(100%,400px),1fr))] gap-3{{else}}flex flex-col gap-2{{end}}">
 {{- range .Rows}}
 {{template "repo-row" .}}
 {{- end}}

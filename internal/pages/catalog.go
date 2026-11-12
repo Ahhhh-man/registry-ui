@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,14 +19,15 @@ import (
 
 // catalogPage is the data for the "catalog" template.
 type catalogPage struct {
-	Host  string       // registry host, above the title
+	Host  string       // registry host, beside the title
 	Total int          // repositories in the registry
-	Disk  bool         // the source can tell disk usage, so the stats load it: storage mode
+	Disk  bool         // the source can tell disk usage, so the figures load it: storage mode
 	Query string       // the ?q= filter
-	Sort  string       // the ?sort= order, "" for A–Z
+	Sort  string       // the ?sort= order, "" for the default
 	Type  string       // the ?type= filter, "" for all
+	View  string       // one of catalogViews
+	Keep  string       // View when the URL names it, kept in links; "" when a cookie or the default picked it
 	Menu  sortMenu     // the sort menu
-	Chips []typeChip   // the type filters
 	List  string       // the list's URL without the search, which htmx adds as you type
 	Note  string       // why the rows aren't filtered or in the Sort order, when they aren't
 	Empty string       // the title when no rows match
@@ -36,13 +38,16 @@ type catalogPage struct {
 // details are loaded by the row fragment.
 type catalogRow struct {
 	Repo   string
-	Loaded bool // the details below are filled in
-	Failed bool // the details couldn't be read
+	View   string // the view it renders in, one of catalogViews
+	Loaded bool   // the details below are filled in
+	Failed bool   // the details couldn't be read
 	// Tags counts the repository's tags. The rest describe its latest (or
 	// newest) tag.
 	Tags        int
+	Tag         string // its name, "" without one
 	Description string
-	Platforms   string // e.g. "3 platforms (1 missing)"; "" without any
+	Platforms   string // the ones in the registry, e.g. "linux/amd64, linux/arm64 (1 missing)"
+	Command     string // its pull command, "" when there's none
 	Helm        bool
 	Type        string // its ?type=, "" for a repository without tags
 	Created     time.Time
@@ -54,6 +59,33 @@ func (c catalogRow) Namespace() string { return c.Repo[:strings.LastIndexByte(c.
 
 // Name is Repo without its namespace.
 func (c catalogRow) Name() string { return c.Repo[strings.LastIndexByte(c.Repo, '/')+1:] }
+
+// Kind names what a repository that isn't an image holds: "Helm chart".
+func (c catalogRow) Kind() string {
+	switch c.Type {
+	case "helm":
+		return "Helm chart"
+	case "signature":
+		return "Signature"
+	}
+	return "Other artifact"
+}
+
+// catalogViews are the ?view= values.
+var catalogViews = []string{"compact", "comfortable", "detailed"}
+
+// catalogView is the view to render in: ?view=, else the catalog-view
+// cookie app.js sets (the repository page owns "view"), else comfortable.
+func catalogView(r *http.Request) string {
+	v := r.URL.Query().Get("view")
+	if c, err := r.Cookie("catalog-view"); err == nil && v == "" {
+		v = c.Value
+	}
+	if !slices.Contains(catalogViews, v) {
+		return "comfortable"
+	}
+	return v
+}
 
 // Catalog serves the repository list. Rows start as bare names and fetch
 // their details (?fragment=row&repo=…) once scrolled into view, so the page
@@ -76,8 +108,12 @@ func (s *Server) Catalog(w http.ResponseWriter, r *http.Request, _ web.Ref) {
 		return
 	}
 	q, path := strings.TrimSpace(r.URL.Query().Get("q")), r.URL.EscapedPath()
-	choices := sorts(catalogSorts, s.tagTimes(r.Context()))
-	data := catalogPage{Host: s.PullHost, Total: len(repos), Disk: s.diskUsage(r.Context()), Query: q, Sort: pickSort(choices, r.URL.Query().Get("sort")), Type: pickSort(contentTypes, r.URL.Query().Get("type"))}
+	def := cmp.Or(s.CatalogSort, "name")
+	choices := withDefault(sorts(catalogSorts, s.tagTimes(r.Context())), def)
+	data := catalogPage{Host: s.PullHost, Total: len(repos), Disk: s.diskUsage(r.Context()), Query: q, Sort: pickSort(choices, r.URL.Query().Get("sort")), Type: pickSort(contentTypes, r.URL.Query().Get("type")), View: catalogView(r)}
+	if r.URL.Query().Get("view") == data.View {
+		data.Keep = data.View
+	}
 	// A query ending in "/" is a namespace: it matches from the start of the name.
 	match := strings.Contains
 	if strings.HasSuffix(q, "/") {
@@ -85,33 +121,25 @@ func (s *Server) Catalog(w http.ResponseWriter, r *http.Request, _ web.Ref) {
 	}
 	for _, name := range repos {
 		if match(name, strings.ToLower(q)) {
-			data.Rows = append(data.Rows, catalogRow{Repo: name})
+			data.Rows = append(data.Rows, catalogRow{Repo: name, View: data.View})
 		}
 	}
-	var counts map[string]int
-	data.Rows, counts, data.Note = s.filterRows(r.Context(), data.Rows, data.Type)
-	data.Note = cmp.Or(s.sortRows(r.Context(), data.Rows, data.Sort), data.Note)
+	data.Rows, data.Note = s.filterRows(r.Context(), data.Rows, data.Type)
+	data.Note = cmp.Or(s.sortRows(r.Context(), data.Rows, cmp.Or(data.Sort, def)), data.Note)
 	data.Menu = newSortMenu(choices, data.Sort, func(sort string) string {
-		return pageURL(path, "q", q, "sort", sort, "type", data.Type)
+		return pageURL(path, "q", q, "sort", sort, "type", data.Type, "view", data.Keep)
 	})
-	data.Chips = typeChips(data.Type, counts, func(t string) string { return pageURL(path, "q", q, "sort", data.Sort, "type", t) })
-	data.List = pageURL(path, "sort", data.Sort, "type", data.Type)
+	data.List = pageURL(path, "sort", data.Sort, "type", data.Type, "view", data.Keep)
 	data.Empty = noMatch("repositories", data.Type, q)
-	s.page(w, r, ui.Page{PageTitle: "Repositories", Query: q, Sort: data.Sort, Type: data.Type}, "catalog", data)
+	s.page(w, r, ui.Page{PageTitle: "Repositories", Query: q, Sort: data.Sort, Type: data.Type, View: data.Keep}, "catalog", data)
 }
 
 // filterRows keeps the rows whose latest (or newest) tag is of type t,
-// loading every row's details to find out, and counts each type for the
-// chips. Without a type it costs nothing and leaves the counts unknown
-// (-1); so does taking too long, when the returned note says why the rows
-// aren't filtered.
-func (s *Server) filterRows(ctx context.Context, rows []catalogRow, t string) ([]catalogRow, map[string]int, string) {
-	counts := map[string]int{"": len(rows)}
-	for _, c := range contentTypes[1:] {
-		counts[c.Value] = -1
-	}
+// loading every row's details to find out. Without a type it costs nothing;
+// if it takes too long, the returned note says why the rows aren't filtered.
+func (s *Server) filterRows(ctx context.Context, rows []catalogRow, t string) ([]catalogRow, string) {
 	if t == "" {
-		return rows, counts, ""
+		return rows, ""
 	}
 	err := fetchAll(ctx, len(rows), func(ctx context.Context, i int) {
 		if err := s.rowDetails(ctx, &rows[i]); err != nil {
@@ -120,19 +148,9 @@ func (s *Server) filterRows(ctx context.Context, rows []catalogRow, t string) ([
 		}
 	})
 	if err != nil {
-		return rows, counts, "The registry took too long to describe every repository, so this list isn't filtered by type."
+		return rows, "The registry took too long to describe every repository, so this list isn't filtered by type."
 	}
-	counts = map[string]int{"": len(rows)}
-	var kept []catalogRow
-	for _, row := range rows {
-		if row.Type != "" {
-			counts[row.Type]++
-		}
-		if row.Type == t {
-			kept = append(kept, row)
-		}
-	}
-	return kept, counts, ""
+	return slices.DeleteFunc(rows, func(row catalogRow) bool { return row.Type != t }), ""
 }
 
 // sortRows puts rows, which arrive A–Z, in the order by. The created and
@@ -191,7 +209,7 @@ func (s *Server) repoUpdated(ctx context.Context, repo string) time.Time {
 // catalogRow answers a row fragment. A failure only marks the row, so the
 // link to the repository stays usable.
 func (s *Server) catalogRow(w http.ResponseWriter, r *http.Request) {
-	row := catalogRow{Repo: r.URL.Query().Get("repo")}
+	row := catalogRow{Repo: r.URL.Query().Get("repo"), View: catalogView(r)}
 	if err := s.rowDetails(r.Context(), &row); err != nil {
 		slog.WarnContext(r.Context(), "catalog row details", "repo", row.Repo, "err", err)
 		row.Failed = true
@@ -219,8 +237,8 @@ func (s *Server) catalogDisk(w http.ResponseWriter, r *http.Request) {
 	s.fragment(w, r, "disk-stat", format.Size(n))
 }
 
-// rowDetails fills in row's tag count, then the description, platforms and
-// created date of its latest (or newest) tag.
+// rowDetails fills in row's tag count, then the name, description,
+// platforms, pull command and created date of its latest (or newest) tag.
 func (s *Server) rowDetails(ctx context.Context, row *catalogRow) error {
 	tags, err := s.Src.Tags(ctx, row.Repo)
 	if err != nil {
@@ -228,6 +246,7 @@ func (s *Server) rowDetails(ctx context.Context, row *catalogRow) error {
 	}
 	row.Tags, row.Loaded = len(tags), true
 	tag := newestTag(tags)
+	row.Tag = tag
 	if tag == "" {
 		if len(tags) > 0 { // only cosign tags: signatures kept apart from their images
 			row.Type = "signature"
@@ -241,9 +260,20 @@ func (s *Server) rowDetails(ctx context.Context, row *catalogRow) error {
 	if err != nil {
 		return err
 	}
-	row.Helm, row.Type = m.Kind == registry.KindHelm, typeOf(m.Kind)
-	if len(m.Platforms) > 0 {
+	row.Helm, row.Type, row.Command = m.Kind == registry.KindHelm, typeOf(m.Kind), command(s.PullHost, row.Repo, tag, m.Kind)
+	var names []string
+	for _, p := range m.Platforms {
+		if !p.Missing {
+			names = append(names, format.Platform(p))
+		}
+	}
+	row.Platforms = strings.Join(names, ", ")
+	// A platform the registry lacks still counts, as on the tag's own page.
+	switch missing := len(m.Platforms) - len(names); {
+	case missing > 0 && len(names) == 0:
 		row.Platforms = platformCount(m.Platforms)
+	case missing > 0:
+		row.Platforms += " (" + strconv.Itoa(missing) + " missing)"
 	}
 	p, ok := mainPlatform(m)
 	if !ok {

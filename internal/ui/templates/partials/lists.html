@@ -1,53 +1,79 @@
 {{/* Lists of things to open, such as the catalog's repositories. */}}
 
-{{/* list-header: a list's heading, with its sort menu.
-     dict "Title" string, "Sort" a pages.sortMenu (optional). */}}
-{{define "list-header" -}}
-<div class="mb-3 flex items-center justify-between gap-4">
-<h2 class="min-w-0 truncate text-base font-semibold">{{.Title}}</h2>
-{{- with .Sort}}{{template "sort-menu" (dict "Menu" . "Align" "right-0")}}{{end}}
-</div>
-{{- end}}
-
-{{/* repo-row: a catalog row linking to a repository. The name's link is
-     stretched over the whole row, and the namespace's link, to the catalog
-     filtered to it, sits above that. Until Loaded or
-     Failed it shows skeletons and, once scrolled into view, replaces itself
-     with the catalog's row fragment for Repo. Loaded rows carry
-     data-tags for app.js's tag total. A loaded row without tags is an
-     empty repository: dimmed, with a "no tags" badge for its details.
+{{/* repo-row: a catalog row linking to a repository, in one of three views:
+     a line of a bordered list (compact), a card (comfortable, the default)
+     or a taller card for a grid (detailed). The name's link is stretched
+     over the whole row; the namespace's link, to the catalog filtered to
+     it, and the detailed card's tag link and pull command sit above that.
+     Until Loaded or Failed it shows skeletons and, once scrolled into view,
+     replaces itself with the catalog's row fragment for Repo in the same
+     view. Loaded rows carry data-tags for app.js's tag total. A loaded row
+     without tags is an empty repository: dimmed, with a "no tags" badge
+     for its details.
      Data: "Repo" string, "Namespace" ("library/" or ""), "Name" string,
-           "Loaded" bool, "Failed" bool, "Tags" int, "Description" string,
-           "Platforms" string ("3 platforms (1 missing)"), "Helm" bool, "Created" time.Time, when
-           the latest tag was created. */}}
+           "View" "compact" | "comfortable" | "detailed",
+           "Loaded" bool, "Failed" bool, "Tags" int, and of the latest tag:
+           "Tag" its name, "Description" string, "Helm" bool, "Created"
+           time.Time. The detailed view also reads "Type" ("image", …),
+           "Platforms" ("linux/amd64, linux/arm64"), "Kind" ("Helm chart",
+           for other types) and "Command", the pull command. */}}
 {{define "repo-row" -}}
 {{$empty := and .Loaded (not .Tags) -}}
 <div data-row
-{{- if .Loaded}} data-tags="{{.Tags}}"{{else if not .Failed}} aria-busy="true" hx-get="{{catalogURL}}?fragment=row&amp;repo={{.Repo}}" hx-trigger="intersect once" hx-swap="outerHTML"{{end}}
- class="group relative flex items-center gap-4 rounded-md border border-border bg-surface px-4 py-3 hover:border-accent/50">
-{{- if $empty}}<span class="shrink-0 opacity-50">{{template "repo-tile" (dict "Repo" .Repo)}}</span>
-{{- else}}{{template "repo-tile" (dict "Repo" .Repo "Helm" .Helm)}}{{end}}
-<div class="min-w-0 flex-1">
-{{- /* The padding leaves room for the namespace's focus ring inside the truncation. */}}
-<div class="-mx-1 truncate px-1 text-base font-semibold{{if $empty}} text-muted{{end}}">{{with .Namespace}}<a href="{{print catalogURL "?q=" .}}" aria-label="Repositories in {{.}}" class="relative z-10 rounded-sm font-medium text-faint outline-offset-0 hover:underline">{{.}}</a>{{end}}<a href="{{repoURL .Repo}}" class="after:absolute after:-inset-px after:rounded-md focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-accent">{{.Name}}</a></div>
-<div class="mt-0.5 truncate text-muted">
+{{- if .Loaded}} data-tags="{{.Tags}}"{{else if not .Failed}} aria-busy="true" hx-get="{{catalogURL}}?fragment=row&amp;repo={{.Repo}}&amp;view={{.View}}" hx-trigger="intersect once" hx-swap="outerHTML"{{end}}
+{{- if eq .View "detailed"}} class="relative flex flex-col gap-3 rounded-md border border-border bg-surface p-4 hover:border-accent/50">
+<div class="flex min-w-0 items-center gap-3">{{template "repo-row-name" .}}</div>
+{{- /* The line stays when it's empty, so the cards of a grid row line up. */}}
+<p class="h-5 truncate leading-5 text-muted">
 {{- if .Failed}}<span class="text-faint">Couldn't load details</span>
 {{- else if not .Loaded}}{{template "skeleton" "w-1/2"}}
 {{- else if $empty}}{{template "badge" (dict "Label" "no tags")}}
-{{- else if .Description}}{{.Description}}
-{{- else}}<span class="text-faint">No description label</span>{{end -}}
+{{- else}}{{.Description}}{{end -}}
+</p>
+{{- if not (or .Failed $empty)}}
+{{- /* The dd padding leaves room for the tag link's focus ring inside the truncation. */}}
+<dl class="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 border-t border-row-border pt-3 [&_dd]:-mx-1 [&_dd]:truncate [&_dd]:px-1 [&_dt]:text-muted">
+{{- if not .Loaded}}
+<dt>Newest tag</dt><dd>{{template "skeleton" "w-16"}}</dd><dt>Platforms</dt><dd>{{template "skeleton" "w-1/2"}}</dd><dt>Tags</dt><dd>{{template "skeleton" "w-12"}}</dd><dt>Created</dt><dd>{{template "skeleton" "w-16"}}</dd>
+{{- else}}
+<dt>Newest tag</dt><dd>{{with .Tag}}<a href="{{tagURL $.Repo .}}" class="relative z-10 rounded-sm font-mono text-xs outline-offset-0 hover:text-accent-text hover:underline">{{.}}</a>{{end}}</dd>
+{{- if eq .Type "image"}}<dt>Platforms</dt><dd title="{{.Platforms}}">{{.Platforms}}</dd>{{else}}<dt>Type</dt><dd>{{.Kind}}</dd>{{end}}
+<dt>Tags</dt><dd class="tabular-nums">{{.Tags}}</dd>
+<dt>Created</dt><dd>{{if not .Created.IsZero}}<span class="relative z-10">{{time .Created "" "Latest created {}"}}</span>{{end}}</dd>
+{{- end}}
+</dl>
+{{- /* Above the stretched link, so the command can be selected as well as copied. */}}
+{{- if .Command}}
+<div class="relative z-10 mt-auto flex h-9 items-center gap-2 rounded-md border border-border bg-code-bg pr-1 pl-3 text-code-fg">
+<code class="min-w-0 flex-1 truncate font-mono text-xs" title="{{.Command}}"><span class="text-code-fg/50 select-none" aria-hidden="true">$ </span>{{.Command}}</code>
+<button type="button" data-copy="{{.Command}}" aria-label="Copy pull command" title="Copy pull command" class="group grid shrink-0 place-items-center rounded-sm p-1.5 text-code-fg/70 outline-offset-0 hover:bg-code-fg/10 hover:text-code-fg data-copied:text-code-fg">{{icon "copy" "group-data-copied:hidden"}}{{icon "check" "hidden group-data-copied:block"}}</button>
 </div>
+{{- else if not .Loaded}}<div aria-hidden="true" class="mt-auto h-9 rounded-md bg-border motion-safe:animate-pulse"></div>{{end}}
+{{- end}}
+{{- else}} class="relative grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-4 sm:grid-cols-[auto_minmax(0,1fr)_7.5rem_5.5rem_8.5rem] {{if eq .View "compact"}}px-4 py-1.5 first:rounded-t-md last:rounded-b-md hover:bg-panel{{else}}rounded-md border border-border bg-surface px-4 py-3 hover:border-accent/50{{end}}">
+{{- template "repo-row-name" .}}
+{{- /* Fixed columns, so the three facts line up down the page whatever a row lacks. */}}
+{{- if .Failed}}<span class="text-xs text-faint sm:col-span-3">Couldn't load details</span>
+{{- else if not .Loaded}}<span class="hidden sm:block">{{template "skeleton" "w-16"}}</span><span>{{template "skeleton" "w-12"}}</span><span class="hidden sm:block">{{template "skeleton" "w-16"}}</span>
+{{- else if $empty}}<span class="sm:col-span-3">{{template "badge" (dict "Label" "no tags")}}</span>
+{{- else}}
+{{- /* The tag and the date sit above the row's stretched link, so hovering them shows their titles. */}}
+<span class="relative z-10 hidden truncate font-mono text-xs sm:block" title="Newest tag: {{.Tag}}">{{.Tag}}</span>
+<span class="inline-flex items-center gap-1.5 text-xs whitespace-nowrap text-muted">{{icon "tag" "text-faint"}}{{.Tags}} tag{{if ne .Tags 1}}s{{end}}</span>
+<span class="relative z-10 hidden items-center gap-1.5 text-xs whitespace-nowrap text-muted sm:inline-flex">{{if not .Created.IsZero}}{{icon "clock" "text-faint"}}{{time .Created "" "Latest created {}"}}{{end}}</span>
+{{- end}}
+{{- end}}
 </div>
-<div class="hidden shrink-0 items-center gap-4 text-xs whitespace-nowrap text-muted sm:flex">
-{{- if .Loaded}}
-{{- if .Helm}}<span class="inline-flex items-center gap-1.5">{{icon "anchor" "text-faint"}}Helm chart</span>
-{{- else if .Platforms}}<span class="inline-flex items-center gap-1.5">{{icon "cpu" "text-faint"}}{{.Platforms}}</span>{{end}}
-<span class="inline-flex items-center gap-1.5">{{icon "tag" "text-faint"}}{{.Tags}} tag{{if ne .Tags 1}}s{{end}}</span>
-{{- if not .Created.IsZero}}
-{{- /* Above the row's stretched link, so hovering the date shows when exactly. */}}
-<span class="relative z-10 inline-flex items-center gap-1.5">{{icon "clock" "text-faint"}}{{time .Created "" "Latest created {}"}}</span>{{end}}
-{{- else if not .Failed}}{{template "skeleton" "w-16"}}{{template "skeleton" "w-12"}}{{template "skeleton" "w-16"}}{{end}}
-</div>
-{{icon "chevron-right" "text-faint group-hover:text-accent"}}
+{{- end}}
+
+{{/* repo-row-name: a row's tile, its name and, in the comfortable view, its
+     description. The data is repo-row's. */}}
+{{define "repo-row-name" -}}
+{{$empty := and .Loaded (not .Tags) -}}
+<span class="shrink-0{{if $empty}} opacity-50{{end}}">{{template "repo-tile" (dict "Repo" .Repo "Helm" .Helm "Small" (eq .View "compact"))}}</span>
+<div class="min-w-0 flex-1">
+{{- /* The padding leaves room for the namespace's focus ring inside the truncation. */}}
+<div class="-mx-1 truncate px-1{{if ne .View "compact"}} text-base{{end}} font-semibold{{if $empty}} text-muted{{end}}">{{with .Namespace}}<a href="{{print catalogURL "?q=" .}}" aria-label="Repositories in {{.}}" class="relative z-10 rounded-sm font-medium text-faint outline-offset-0 hover:underline">{{.}}</a>{{end}}<a href="{{repoURL .Repo}}" class="after:absolute focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-accent {{if eq .View "compact"}}after:inset-0 focus-visible:after:-outline-offset-2{{else}}after:-inset-px after:rounded-md focus-visible:after:outline-offset-2{{end}}">{{.Name}}</a></div>
+{{- if and .Description (eq .View "comfortable")}}<div class="mt-0.5 truncate text-muted">{{.Description}}</div>{{end}}
 </div>
 {{- end}}

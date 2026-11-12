@@ -43,11 +43,18 @@ type Config struct {
 	TagSort string
 	// TagsPerPage is how many tags a repository's page lists.
 	TagsPerPage int
+	// CatalogSort is the order the catalog is in when the URL doesn't say,
+	// one of catalogSorts.
+	CatalogSort string
 }
 
 // tagSorts are the values of REGISTRY_UI_TAG_SORT: the repo page's ?sort=
 // values, plus "version" for the order that has none.
 var tagSorts = []string{"version", "version-asc", "name", "created", "updated", "size"}
+
+// catalogSorts are the values of REGISTRY_UI_CATALOG_SORT: the catalog's
+// ?sort= values, plus "name" for the order that has none.
+var catalogSorts = []string{"name", "name-desc", "created", "updated", "tags"}
 
 // Load reads the REGISTRY_UI_* variables through getenv (usually os.Getenv).
 // An empty value counts as unset. Every invalid value is reported in the
@@ -150,6 +157,16 @@ func Load(getenv func(string) string) (Config, error) {
 		}
 	}
 
+	c.CatalogSort = "name"
+	if v := getenv("REGISTRY_UI_CATALOG_SORT"); v != "" {
+		c.CatalogSort = v
+		if !slices.Contains(catalogSorts, v) {
+			bad("REGISTRY_UI_CATALOG_SORT", "%q is not one of name, name-desc, created, updated or tags", v)
+		} else if v == "updated" && c.StoragePath == "" {
+			bad("REGISTRY_UI_CATALOG_SORT", "%q needs REGISTRY_UI_STORAGE_PATH: only the registry's storage records when a tag was updated", v)
+		}
+	}
+
 	return c, errors.Join(errs...)
 }
 
@@ -172,5 +189,6 @@ func (c Config) LogValue() slog.Value {
 		slog.String("storage_path", c.StoragePath),
 		slog.String("tag_sort", c.TagSort),
 		slog.Int("tags_per_page", c.TagsPerPage),
+		slog.String("catalog_sort", c.CatalogSort),
 	)
 }

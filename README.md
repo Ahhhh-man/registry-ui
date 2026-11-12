@@ -75,6 +75,7 @@ Everything is an environment variable. There are no config files or flags, and a
 | `REGISTRY_UI_STORAGE_PATH` | unset | Read the registry's storage folder directly instead of its API. See [Pull-through caches](#pull-through-caches). |
 | `REGISTRY_UI_TAG_SORT` | `version` | The order a repository's tags are listed in until someone picks another: `version` (newest first), `version-asc`, `name`, `created`, `updated` (storage mode only) or `size`. |
 | `REGISTRY_UI_TAGS_PER_PAGE` | `100` | Tags per page, from 10 to 500. |
+| `REGISTRY_UI_CATALOG_SORT` | `name` | The order the catalog is in until someone picks another: `name`, `name-desc`, `created`, `updated` (storage mode only) or `tags`. Every order except the two by name loads each repository's details before the page renders, so it's slower on a large registry. |
 
 If a value is invalid, the UI won't start, and it prints one line per problem.
 

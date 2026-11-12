@@ -49,10 +49,11 @@
 {{/* repo-tile: a repository's coloured letter tile, or an anchor for a Helm
      chart. The colour is fixed per name. Decorative, so hidden from
      screen readers.
-     dict "Repo" string, "Helm" bool, "Large" bool (the page header size). */}}
+     dict "Repo" string, "Helm" bool, "Large" bool (the page header size),
+          "Small" bool (a compact row's). */}}
 {{define "repo-tile" -}}
-<span aria-hidden="true" class="grid shrink-0 place-items-center font-bold text-tile-fg {{tileClass .Repo}} {{if .Large}}size-16 rounded-lg text-2xl{{else}}size-10 rounded-md text-lg{{end}}">
-{{- if .Helm}}{{if .Large}}{{icon "anchor" "size-8"}}{{else}}{{icon "anchor" "size-5"}}{{end}}{{else}}{{tileLetter .Repo}}{{end -}}
+<span aria-hidden="true" class="grid shrink-0 place-items-center font-bold text-tile-fg {{tileClass .Repo}} {{if .Large}}size-16 rounded-lg text-2xl{{else if .Small}}size-5 rounded-sm text-xs{{else}}size-9 rounded-md text-lg{{end}}">
+{{- if .Helm}}{{if .Large}}{{icon "anchor" "size-8"}}{{else if .Small}}{{icon "anchor" "size-3"}}{{else}}{{icon "anchor" "size-5"}}{{end}}{{else}}{{tileLetter .Repo}}{{end -}}
 </span>
 {{- end}}
 

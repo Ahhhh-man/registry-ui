@@ -89,7 +89,7 @@ func TestLayout(t *testing.T) {
 			`src="/-/static/` + StaticName("app.js") + `"`,
 			`value="ngi&#34;nx"`,
 			"<p>placeholder</p>",
-			"registry-ui</span>",
+			`<span class="min-w-0 truncate font-semibold">registry.example.com</span>`,
 			"data-theme-toggle",
 		} {
 			if !strings.Contains(s, want) {

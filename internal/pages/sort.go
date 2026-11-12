@@ -15,13 +15,12 @@ import (
 var sortTimeout = 10 * time.Second
 
 // sortChoice is one order a list can be sorted in. A page's default has
-// Value "" so default URLs stay clean: the catalog's first, and whichever
-// of the tags' withDefault picks.
+// Value "" so default URLs stay clean: whichever withDefault picks.
 type sortChoice struct{ Value, Label string }
 
 var (
 	// "updated" is only offered when the source has tag times; see sorts.
-	catalogSorts = []sortChoice{{"", "Name A–Z"}, {"name-desc", "Name Z–A"}, {"created", "Recently created"}, {"updated", "Recently updated"}, {"tags", "Most tags"}}
+	catalogSorts = []sortChoice{{"name", "Name A–Z"}, {"name-desc", "Name Z–A"}, {"created", "Recently created"}, {"updated", "Recently updated"}, {"tags", "Most tags"}}
 	tagSorts     = []sortChoice{{"version", "Version, newest first"}, {"version-asc", "Version, oldest first"}, {"name", "Name A–Z"}, {"created", "Recently created"}, {"updated", "Recently updated"}, {"size", "Largest first"}}
 )
 

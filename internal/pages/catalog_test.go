@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -80,12 +81,12 @@ func TestCatalogPage(t *testing.T) {
 		"<!doctype html>",
 		"<title>Repositories · registry.example.com</title>",
 		">registry.example.com</span>",
-		">8</div>",     // Repositories
-		`<div hidden>`, // Tags, shown and filled in by app.js
+		`>Repositories <span class="text-[15px] font-normal tracking-normal text-muted">on registry.example.com</span></h1>`,
+		`>8</b> <span>repositories</span>`,
+		`<span hidden>`, // tags, shown and filled in by app.js
 		`data-stat="tags"`,
-		"All repositories", // unfiltered
-		"data-repo-list",   // so the rows add up to the total
-		`<div data-row aria-busy="true" hx-get="/?fragment=row&amp;repo=library/nginx" hx-trigger="intersect once"`,
+		"data-repo-list", // so the rows add up to the total
+		`<div data-row aria-busy="true" hx-get="/?fragment=row&amp;repo=library/nginx&amp;view=comfortable" hx-trigger="intersect once"`,
 		`<a href="/library/nginx" class=`,
 		// A nested namespace is one link.
 		`<a href="/?q=myteam/web/" aria-label="Repositories in myteam/web/" class=`,
@@ -94,6 +95,20 @@ func TestCatalogPage(t *testing.T) {
 	if n := strings.Count(body, "data-row"); n != 8 {
 		t.Errorf("%d rows, want 8", n)
 	}
+	// The figures are plain text: no tiles, heading, tagline or chips.
+	_, main, _ := strings.Cut(body, "<main")
+	for _, gone := range []string{"All repositories", "Every image", " bg-accent-soft", "<h2", `aria-label="Content type" class="flex`, "No description label"} {
+		if strings.Contains(main, gone) {
+			t.Errorf("the page still has %q", gone)
+		}
+	}
+	if got := pressed(body, "Content type") + "," + pressed(body, "View"); got != "All,Comfortable" {
+		t.Errorf("pressed = %s, want All,Comfortable", got)
+	}
+	if n := strings.Count(segmented(body, "Content type"), "<button "); n != 5 {
+		t.Errorf("%d types, want all 5", n)
+	}
+	checkMarkup(t, main)
 	if strings.Index(body, `"/bitnami/kafka"`) > strings.Index(body, `"/myteam/api"`) {
 		t.Error("rows aren't A–Z")
 	}
@@ -105,7 +120,7 @@ func TestCatalogPage(t *testing.T) {
 func TestCatalogFilter(t *testing.T) {
 	rec, _ := getCatalog(t, "/", "/?q=+Kafka", false, nil)
 	body := rec.Body.String()
-	contains(t, body, `value="Kafka"`, "Matching “Kafka”", `href="/bitnami/kafka"`, ">8</div>")
+	contains(t, body, `value="Kafka"`, "Matching “Kafka”</h2>", `href="/bitnami/kafka"`, ">8</b> <span>repositories</span>")
 	if n := strings.Count(body, "data-row"); n != 1 || strings.Contains(body, "data-repo-list") {
 		t.Errorf("%d rows (want 1), or the filtered list is marked for the tag total", n)
 	}
@@ -157,7 +172,7 @@ func TestCatalogEmpty(t *testing.T) {
 
 	rec, _ = getCatalog(t, "/", "/", false, func(c *countingSource) { c.repos = []string{} })
 	body := rec.Body.String()
-	contains(t, body, "No repositories yet", ">0</div>")
+	contains(t, body, "No repositories yet", ">0</b> <span>repositories</span>", ">0</b> <span>tags</span>")
 	if strings.Contains(body, `data-stat="tags"`) {
 		t.Error("an empty registry's tag total should be 0, not loading")
 	}
@@ -169,16 +184,20 @@ func TestCatalogRow(t *testing.T) {
 	if strings.Contains(body, "<!doctype") || strings.Contains(body, "hx-get") || strings.Contains(body, "aria-busy") {
 		t.Errorf("want a loaded row alone, got\n%s", body)
 	}
-	contains(t, body, `<div data-row data-tags="15"`, `<a href="/library/nginx" class=`, "Official build of Nginx", "6 platforms", "15 tags", `<time datetime="`, ` UTC" data-title="Latest created {}">2 days ago</time>`)
+	contains(t, body, `<div data-row data-tags="15"`, `<a href="/library/nginx" class=`, "Official build of Nginx", `title="Newest tag: latest">latest</span>`, "15 tags", `<time datetime="`, ` UTC" data-title="Latest created {}">2 days ago</time>`)
+	if strings.Contains(body, "platform") || strings.Contains(body, "docker pull") {
+		t.Errorf("a comfortable row shows platforms or a pull command:\n%s", body)
+	}
 	if src.catalog != 0 || src.tags != 1 || src.resolve != 1 || src.config != 1 {
 		t.Errorf("calls: catalog %d, tags %d, resolve %d, config %d", src.catalog, src.tags, src.resolve, src.config)
 	}
 
 	rec, _ = getCatalog(t, "/", "/?fragment=row&repo=charts/podinfo", true, nil)
-	contains(t, rec.Body.String(), "Helm chart", "2 tags", "No description label")
-
-	rec, _ = getCatalog(t, "/", "/?fragment=row&repo=myteam/web/frontend", true, nil)
-	contains(t, rec.Body.String(), "1 platform<", "2 tags")
+	body = rec.Body.String()
+	contains(t, body, "2 tags")
+	if strings.Contains(body, "No description label") {
+		t.Error("a row without a description should say nothing about it")
+	}
 
 	rec, _ = getCatalog(t, "/", "/?fragment=row&repo=gone/away", true, nil)
 	body = rec.Body.String()
@@ -186,6 +205,158 @@ func TestCatalogRow(t *testing.T) {
 	if strings.Contains(body, "data-tags") {
 		t.Error("a failed row must not count towards the tag total")
 	}
+}
+
+// segmented returns the segmented control named label in body.
+func segmented(body, label string) string {
+	return regexp.MustCompile(`(?s)<form method="get" role="group" aria-label="` + label + `".*?</form>`).FindString(body)
+}
+
+// pressed returns the label of the one pressed button of the segmented
+// control named label in body.
+func pressed(body, label string) string {
+	m := regexp.MustCompile(`aria-pressed="true"(?: aria-label="([^"]+)")?[^>]*>(?:<svg.*?</svg>)?([^<]*)<`).FindAllStringSubmatch(segmented(body, label), -1)
+	if len(m) != 1 {
+		return fmt.Sprintf("%d pressed", len(m))
+	}
+	return m[0][1] + m[0][2]
+}
+
+// tagless empties one repository of its tags.
+type tagless struct {
+	registry.Source
+	repo string
+}
+
+func (s tagless) Tags(ctx context.Context, repo string) ([]string, error) {
+	if repo == s.repo {
+		return nil, nil
+	}
+	return s.Source.Tags(ctx, repo)
+}
+
+// Each view renders a loaded row, a loading row, a failed row and an empty
+// repository, and a row costs the same calls whichever view it's in.
+func TestCatalogViews(t *testing.T) {
+	const pull = "docker pull registry.example.com/library/nginx:latest"
+	for view, c := range map[string]struct{ list, loaded, not []string }{
+		"compact": {
+			[]string{`<div class="divide-y divide-row-border rounded-md border`},
+			[]string{"size-5", `title="Newest tag: latest">latest</span>`, "15 tags", "2 days ago</time>"},
+			[]string{"Official build of Nginx", pull, "<dl"},
+		},
+		"comfortable": {
+			[]string{`<div class="flex flex-col gap-2">`},
+			[]string{"size-9", "Official build of Nginx", `title="Newest tag: latest">latest</span>`, "15 tags", "2 days ago</time>"},
+			[]string{pull, "<dl"},
+		},
+		"detailed": {
+			[]string{`<div class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,400px),1fr))] gap-3">`},
+			[]string{
+				"size-9", "Official build of Nginx", `<dt>Newest tag</dt><dd><a href="/library/nginx:latest" class="relative z-10`, `<dt>Platforms</dt><dd title="linux/amd64, linux/arm64, `,
+				`<dt>Tags</dt><dd class="tabular-nums">15</dd>`, "<dt>Created</dt>", "2 days ago</time>", `</span>` + pull + `</code>`, `data-copy="` + pull + `" aria-label="Copy pull command" title="Copy pull command"`,
+			},
+			[]string{"<dt>Type</dt>"},
+		},
+	} {
+		s := newTestServer(t, "/")
+		src := &countingSource{Source: tagless{s.Src, "library/redis"}}
+		s.Src = src
+		row := func(repo string) string {
+			t.Helper()
+			body := get(t, s, "/", "/?fragment=row&view="+view+"&repo="+repo, true).Body.String()
+			checkMarkup(t, body)
+			return body
+		}
+
+		// The page: the view's list, its button pressed, and loading rows that ask for the same view.
+		body := get(t, s, "/", "/?view="+view, false).Body.String()
+		contains(t, body, c.list...)
+		contains(t, body, `<div data-row aria-busy="true" hx-get="/?fragment=row&amp;repo=library/nginx&amp;view=`+view+`" hx-trigger="intersect once"`, "animate-pulse")
+		if got := pressed(body, "View"); !strings.EqualFold(got, view) {
+			t.Errorf("%s: %s is pressed", view, got)
+		}
+		_, main, _ := strings.Cut(body, "<main")
+		checkMarkup(t, main)
+
+		*src = countingSource{Source: src.Source}
+		body = row("library/nginx")
+		contains(t, body, append(c.loaded, `<div data-row data-tags="15"`, `<a href="/?q=library/"`, `<a href="/library/nginx" class="after:absolute`)...)
+		for _, n := range append(c.not, "aria-busy", "hx-get", "animate-pulse") {
+			if strings.Contains(body, n) {
+				t.Errorf("%s: a loaded row has %q:\n%s", view, n, body)
+			}
+		}
+		if src.catalog != 0 || src.tags != 1 || src.resolve != 1 || src.config != 1 {
+			t.Errorf("%s row calls: catalog %d, tags %d, resolve %d, config %d; want one each of tags, resolve and config", view, src.catalog, src.tags, src.resolve, src.config)
+		}
+
+		body = row("gone/away")
+		contains(t, body, "Couldn't load details", `<a href="/gone/away" class="after:absolute`)
+		if strings.Contains(body, "data-tags") || strings.Contains(body, "hx-get") {
+			t.Errorf("%s: a failed row counts tags or loads again:\n%s", view, body)
+		}
+
+		body = row("library/redis")
+		contains(t, body, `data-tags="0"`, "opacity-50", "font-semibold text-muted", ">no tags</span>")
+		if strings.Contains(body, "docker pull") {
+			t.Errorf("%s: an empty repository has a pull command:\n%s", view, body)
+		}
+	}
+
+	// Anything but an image says what it is, and a chart pulls with helm.
+	body := get(t, newTestServer(t, "/"), "/", "/?fragment=row&view=detailed&repo=charts/podinfo", true).Body.String()
+	contains(t, body, "<dt>Type</dt><dd>Helm chart</dd>", "</span>helm pull oci://registry.example.com/charts/podinfo --version ")
+	// The description's line stays without one, so a grid row's cards line up.
+	contains(t, body, `<p class="h-5 truncate leading-5 text-muted"></p>`)
+}
+
+// ?view= picks the view, then the catalog's own cookie; the repository
+// page's "view" cookie doesn't.
+func TestCatalogViewChoice(t *testing.T) {
+	for _, c := range []struct{ target, cookie, want, keep string }{
+		{"/", "", "Comfortable", ""},
+		{"/?view=nope", "", "Comfortable", ""},
+		{"/?view=compact", "", "Compact", "compact"},
+		{"/", "catalog-view=detailed", "Detailed", ""},
+		{"/?view=compact", "catalog-view=detailed", "Compact", "compact"},
+		{"/?view=comfortable", "catalog-view=detailed", "Comfortable", "comfortable"},
+		{"/", "catalog-view=nope", "Comfortable", ""},
+		{"/", "view=list", "Comfortable", ""},
+		{"/", "view=detailed", "Comfortable", ""},
+		{"/?fragment=row&repo=library/nginx", "catalog-view=detailed", "", ""},
+	} {
+		r := httptest.NewRequest("GET", c.target, nil)
+		if c.cookie != "" {
+			r.Header.Set("Cookie", c.cookie)
+		}
+		rec := httptest.NewRecorder()
+		newTestServer(t, "/").Catalog(rec, r, web.Ref{})
+		body := rec.Body.String()
+		if c.want == "" { // the row fragment follows the cookie too
+			contains(t, body, "<dt>Newest tag</dt>")
+			continue
+		}
+		if got := pressed(body, "View"); got != c.want {
+			t.Errorf("%s with cookie %q: %s is pressed, want %s", c.target, c.cookie, got, c.want)
+		}
+		// Only a view named in the URL is kept by the search, the sort and the type filter.
+		if c.keep == "" {
+			if strings.Contains(body, `<input type="hidden" name="view"`) || strings.Contains(body, "tags&amp;view=") || strings.Contains(body, `hx-get="/?view=`) {
+				t.Errorf("%s with cookie %q: links name a view the URL didn't", c.target, c.cookie)
+			}
+			continue
+		}
+		hidden := `<input type="hidden" name="view" value="` + c.keep + `">`
+		contains(t, body, hidden+"\n    <input type=\"search\"", `sort=tags&amp;view=`+c.keep+`"`, `<section id="repo-list" hx-get="/?view=`+c.keep+`"`)
+		contains(t, segmented(body, "Content type"), hidden)
+	}
+	// The view switch keeps the search, sort and type.
+	body := get(t, newTestServer(t, "/"), "/", "/?q=a&sort=tags&type=image", false).Body.String()
+	contains(t, segmented(body, "View"), `data-cookie="catalog-view"`, `<input type="hidden" name="q" value="a">`, `<input type="hidden" name="sort" value="tags">`, `<input type="hidden" name="type" value="image">`,
+		`<button type="submit" name="view" value="compact" aria-pressed="false" aria-label="Compact" title="Compact"`)
+	// A toolbar click swaps the list in place.
+	contains(t, body, `hx-boost="true" hx-target="#repo-list" hx-select="#repo-list"`)
 }
 
 func TestCatalogError(t *testing.T) {
@@ -200,7 +371,7 @@ func TestCatalogError(t *testing.T) {
 func TestCatalogBasePath(t *testing.T) {
 	rec, _ := getCatalog(t, "/registry/", "/registry/", false, nil)
 	contains(t, rec.Body.String(),
-		`<div data-row aria-busy="true" hx-get="/registry/?fragment=row&amp;repo=library/nginx"`,
+		`<div data-row aria-busy="true" hx-get="/registry/?fragment=row&amp;repo=library/nginx&amp;view=comfortable"`,
 		`<a href="/registry/?q=library/" aria-label="Repositories in library/" class=`,
 		`<a href="/registry/library/nginx" class=`,
 		`<section id="repo-list" hx-get="/registry/"`,
@@ -255,7 +426,7 @@ func TestDiskUsage(t *testing.T) {
 
 	// The page doesn't wait for the walk: the stat loads after it.
 	contains(t, get(t, s, "/", "/", false).Body.String(), `hx-get="/?fragment=disk" hx-trigger="load"`)
-	contains(t, get(t, s, "/", "/?fragment=disk", true).Body.String(), ">"+usage("")+"</div>", ">On disk</div>")
+	contains(t, get(t, s, "/", "/?fragment=disk", true).Body.String(), ">"+usage("")+"</b> <span>on disk</span>")
 
 	for _, path := range []string{"/" + registrytest.RepoSingle, "/" + registrytest.RepoSingle + "?tab=tags"} {
 		contains(t, get(t, s, "/", path, false).Body.String(),

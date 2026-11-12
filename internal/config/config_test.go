@@ -187,6 +187,46 @@ func TestLoadTagSortAndPageSize(t *testing.T) {
 	}
 }
 
+func TestLoadCatalogSort(t *testing.T) {
+	api := func(v string) map[string]string {
+		return map[string]string{"REGISTRY_UI_REGISTRY_URL": "http://registry:5000", "REGISTRY_UI_CATALOG_SORT": v}
+	}
+	storage := map[string]string{"REGISTRY_UI_STORAGE_PATH": t.TempDir(), "REGISTRY_UI_PULL_URL": "cache.example.com", "REGISTRY_UI_CATALOG_SORT": "updated"}
+	tests := []struct {
+		name string
+		env  map[string]string
+		sort string
+		err  string // "" if the environment is valid
+	}{
+		{name: "default", env: api(""), sort: "name"},
+		{name: "name", env: api("name"), sort: "name"},
+		{name: "name-desc", env: api("name-desc"), sort: "name-desc"},
+		{name: "created", env: api("created"), sort: "created"},
+		{name: "tags", env: api("tags"), sort: "tags"},
+		{name: "updated in storage mode", env: storage, sort: "updated"},
+		{name: "updated without storage mode", env: api("updated"), err: `REGISTRY_UI_CATALOG_SORT: "updated" needs REGISTRY_UI_STORAGE_PATH`},
+		{name: "unknown sort", env: api("newest"), err: `REGISTRY_UI_CATALOG_SORT: "newest" is not one of name, name-desc, created, updated or tags`},
+		{name: "tags-only sort", env: api("size"), err: "REGISTRY_UI_CATALOG_SORT:"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, err := load(tt.env)
+			if tt.err != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.err) {
+					t.Errorf("got %v, want an error containing %q", err, tt.err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if c.CatalogSort != tt.sort {
+				t.Errorf("got %q, want %q", c.CatalogSort, tt.sort)
+			}
+		})
+	}
+}
+
 func TestLoadReportsEveryError(t *testing.T) {
 	_, err := load(map[string]string{
 		"REGISTRY_UI_LISTEN":    "nope",

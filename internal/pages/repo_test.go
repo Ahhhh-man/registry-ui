@@ -569,7 +569,7 @@ func TestEmptyReposInRegistry(t *testing.T) {
 		for _, repo := range empty {
 			// The catalog row is dimmed, says so and counts no tags.
 			row := get(t, s, "/", "/?fragment=row&repo="+repo, true).Body.String()
-			check("catalog row", row, []string{`data-tags="0"`, "font-semibold text-muted", ">no tags</span>", ">0 tags</span>"}, []string{"Couldn't load", "No description label"})
+			check("catalog row", row, []string{`data-tags="0"`, "font-semibold text-muted", ">no tags</span>"}, []string{"Couldn't load", "No description label"})
 
 			// Both tabs explain, without an error.
 			for _, target := range []string{"", "?tab=tags", "?tab=tags&fragment=tags"} {

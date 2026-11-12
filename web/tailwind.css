@@ -22,17 +22,18 @@
   --drop-shadow-*: initial;
   --text-shadow-*: initial;
 
-  --color-bg: light-dark(#f5f6f8, #09090b); /* a shade off white, so surfaces stand out */
-  --color-surface: light-dark(#ffffff, #111114);
-  --color-panel: light-dark(#f4f4f5, #141417);
-  --color-border: light-dark(#e4e4e7, #26262b);
-  --color-row-border: light-dark(#f1f1f3, #1c1c20);
-  --color-text: light-dark(#09090b, #fafafa);
-  --color-muted: light-dark(#52525b, #a1a1aa);
-  --color-faint: light-dark(#6e6e77, #8b8b94); /* #71717a was 4.4:1 on panel */
+  /* The dark neutrals lean toward the accent's blue, so it has something to sit with. */
+  --color-bg: light-dark(#f5f6f8, #0c0e12); /* a shade off white, so surfaces stand out */
+  --color-surface: light-dark(#ffffff, #13161b);
+  --color-panel: light-dark(#f4f4f5, #1a1e25);
+  --color-border: light-dark(#e4e4e7, #272c35);
+  --color-row-border: light-dark(#f1f1f3, #1d2128);
+  --color-text: light-dark(#09090b, #f2f4f7);
+  --color-muted: light-dark(#52525b, #a5abb7); /* 7:1 on panel, light and dark */
+  --color-faint: light-dark(#6e6e77, #878e9b); /* 4.6:1 and 5.1:1 on panel; #71717a was 4.4:1 */
   --color-accent: light-dark(#426ba9, #7fa3d9); /* Distribution blue; lightened for dark */
   --color-accent-fg: light-dark(#ffffff, #09090b);
-  --color-accent-soft: light-dark(#edf2f9, rgb(66 107 169 / 0.22));
+  --color-accent-soft: light-dark(#edf2f9, #1b2536); /* opaque, so it looks the same on every surface */
   --color-accent-text: light-dark(#345588, #c4d5ef);
   --color-teal: #72c2d4; /* the logo's cube tops */
   --color-accent-deep: light-dark(#2f5288, #5d84c2); /* the logo's shaded cube sides */
@@ -42,7 +43,7 @@
   --color-info-fg: light-dark(#075985, #7dd3fc);
   --color-danger-bg: light-dark(#fef2f2, rgb(239 68 68 / 0.12));
   --color-danger-fg: light-dark(#b91c1c, #fca5a5);
-  --color-code-bg: light-dark(#18181b, #0c0c0f);
+  --color-code-bg: light-dark(#18181b, #090b0e);
   --color-code-fg: #e4e4e7;
 
   /* Repo letter tiles, white text; TileClass picks one by name. */
@@ -68,6 +69,7 @@
   --spacing-4: 16px;
   --spacing-5: 20px;
   --spacing-6: 24px;
+  --spacing-7: 28px;
   --spacing-8: 32px;
   --spacing-9: 36px;
   --spacing-10: 40px;
@@ -127,9 +129,6 @@
 @layer base {
   body {
     background-color: var(--color-bg);
-    /* A faint blue glow under the header, fading out down the page. */
-    background-image: radial-gradient(ellipse 70% 360px at 50% 0, color-mix(in oklab, var(--color-accent) 13%, transparent), transparent);
-    background-repeat: no-repeat;
     color: var(--color-text);
     font-size: 14px;
     line-height: 1.5;

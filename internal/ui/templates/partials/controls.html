@@ -61,7 +61,7 @@
 {{define "tabs" -}}
 <nav aria-label="{{.Label}}" class="flex gap-1 overflow-x-auto">
 {{- range .Tabs}}
-<a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}} class="group inline-flex items-center gap-2 border-b-2 border-transparent px-3 pt-2.5 pb-3 font-medium whitespace-nowrap text-muted hover:text-text aria-[current=page]:text-text aria-[current=page]:[border-image:linear-gradient(90deg,var(--color-accent),var(--color-teal))_1]">
+<a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}} class="group inline-flex items-center gap-2 border-b-2 border-transparent px-3 pt-2.5 pb-3 font-medium whitespace-nowrap text-muted hover:text-text aria-[current=page]:text-text aria-[current=page]:border-accent">
 {{- with .Icon}}{{icon . "group-aria-[current=page]:text-accent"}}{{end}}{{.Label}}
 {{- with .Count}} <span class="rounded-sm border border-border bg-panel px-2 text-xs text-muted">{{.}}</span>{{end}}</a>
 {{- end}}
@@ -69,16 +69,23 @@
 {{- end}}
 
 {{/* segmented: a Cards / List style toggle. It's a GET form of buttons,
-     so a click loads ?Name=Value (other query parameters are dropped);
-     the pressed one has aria-pressed="true".
+     so a click loads ?Name=Value (other query parameters are dropped,
+     except Keep's); the pressed one has aria-pressed="true".
      dict "Label" string (names the group, e.g. "View"), "Name" query key,
-          "Options" list of dict "Value", "Label", "Icon" (optional),
-                    "Pressed" bool, "Disabled" bool. */}}
+          "Keep" dict of query keys to values, sent along when not empty,
+          "Cookie" string (optional): the cookie app.js remembers a view
+                   toggle's choice in, when it isn't "view",
+          "IconOnly" bool: only icons show; each Label becomes its button's
+                     aria-label and title,
+          "Options" list of dict "Value" ("" leaves Name out of the URL),
+                    "Label", "Icon" (optional), "Pressed" bool,
+                    "Disabled" bool. */}}
 {{define "segmented" -}}
-<form method="get" role="group" aria-label="{{.Label}}" class="inline-flex rounded-md border border-border bg-surface">
+<form method="get" role="group" aria-label="{{.Label}}"{{with .Cookie}} data-cookie="{{.}}"{{end}} class="inline-flex gap-0.5 rounded-md border border-border bg-surface p-0.5">
+{{- range $k, $v := .Keep}}{{with $v}}<input type="hidden" name="{{$k}}" value="{{.}}">{{end}}{{end}}
 {{- range .Options}}
-<button type="submit" name="{{$.Name}}" value="{{.Value}}" aria-pressed="{{if .Pressed}}true{{else}}false{{end}}"{{if .Disabled}} disabled{{end}} class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-muted not-first:border-l not-first:border-border first:rounded-l-md last:rounded-r-md hover:text-text aria-pressed:bg-panel aria-pressed:font-medium aria-pressed:text-text disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted">
-{{- with .Icon}}{{icon .}}{{end}}{{.Label}}</button>
+<button type="submit"{{with .Value}} name="{{$.Name}}" value="{{.}}"{{end}} aria-pressed="{{if .Pressed}}true{{else}}false{{end}}"{{if .Disabled}} disabled{{end}}{{if $.IconOnly}} aria-label="{{.Label}}" title="{{.Label}}"{{end}} class="inline-flex items-center gap-1.5 rounded-sm {{if $.IconOnly}}px-2{{else}}px-3{{end}} py-1 text-sm font-medium whitespace-nowrap text-muted hover:text-text aria-pressed:bg-accent-soft aria-pressed:text-accent-text disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted">
+{{- with .Icon}}{{icon .}}{{end}}{{if not $.IconOnly}}{{.Label}}{{end}}</button>
 {{- end}}
 </form>
 {{- end}}
@@ -88,11 +95,17 @@
      it works without script; app.js closes it on Escape or a click outside.
      dict "Menu" a pages.sortMenu ("Label" the current order, "Options" list
           of "Label", "Href", "Current" bool), "Align" where the list opens,
-          e.g. "right-0". */}}
+          e.g. "right-0", "Bordered" bool: a labelled button as tall as a
+          segmented control, for a toolbar of them. */}}
 {{define "sort-menu" -}}
 <details data-menu class="group relative">
+{{- if .Bordered}}
+<summary class="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium whitespace-nowrap hover:border-faint group-open:border-faint [&::-webkit-details-marker]:hidden">
+<span class="font-normal text-muted">Sort </span>{{.Menu.Label}}{{icon "chevron-down" "text-faint group-open:rotate-180"}}</summary>
+{{- else}}
 <summary class="inline-flex cursor-pointer list-none items-center gap-1.5 rounded-md px-2 py-1 text-xs whitespace-nowrap text-muted hover:bg-panel hover:text-text group-open:bg-panel group-open:text-text [&::-webkit-details-marker]:hidden">
 {{- icon "arrow-down-wide-narrow"}}<span class="sr-only">Sort by </span>{{.Menu.Label}}{{icon "chevron-down" "group-open:rotate-180"}}</summary>
+{{- end}}
 <ul class="absolute {{.Align}} z-20 mt-1 flex flex-col rounded-md border border-border bg-surface p-1">
 {{- range .Menu.Options}}
 <li><a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}} class="flex items-center justify-between gap-4 rounded-sm px-3 py-1.5 text-sm whitespace-nowrap text-muted hover:bg-panel hover:text-text aria-[current]:font-medium aria-[current]:text-text">{{.Label}}{{if .Current}}{{icon "check" "text-accent"}}{{end}}</a></li>
