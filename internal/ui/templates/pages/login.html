@@ -12,10 +12,10 @@
   <input type="hidden" name="next" value="{{.Next}}">
   <label for="username" class="mt-5 block text-sm font-medium">Username</label>
   <input id="username" name="username" value="{{.User}}" required autocomplete="username" autocapitalize="none" spellcheck="false"{{if not .User}} autofocus{{end}}{{if .Failed}} aria-describedby="login-error"{{end}}
-    class="mt-1.5 w-full rounded-md border border-border bg-surface px-3 py-2 text-text focus:border-accent">
+    class="mt-1.5 w-full rounded-md border border-control bg-surface px-3 py-2 text-text focus:border-accent">
   <label for="password" class="mt-4 block text-sm font-medium">Password</label>
   <input id="password" name="password" type="password" required autocomplete="current-password"{{if .User}} autofocus{{end}}{{if .Failed}} aria-describedby="login-error"{{end}}
-    class="mt-1.5 w-full rounded-md border border-border bg-surface px-3 py-2 text-text focus:border-accent">
+    class="mt-1.5 w-full rounded-md border border-control bg-surface px-3 py-2 text-text focus:border-accent">
   <button type="submit" class="mt-6 flex w-full items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 font-medium text-accent-fg hover:opacity-90">Sign in{{icon "arrow-right"}}</button>
 </form>
 </div>
