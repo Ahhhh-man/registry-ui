@@ -48,6 +48,10 @@ jobs:
       - name: Test
         run: go test -race ./...
 
+      # Each benchmark once, so they keep working. Shared runners are too noisy to gate on timings.
+      - name: Benchmarks
+        run: go test -run '^$' -bench . -benchtime 1x ./...
+
       - name: Vendor manifest
         run: govendor --check
 

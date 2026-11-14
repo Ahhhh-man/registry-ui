@@ -24,6 +24,20 @@ tasks:
     cmds:
       - go test ./...
 
+  bench:
+    desc: >-
+      Run the benchmarks and save them to bench-<commit>-<time>.txt (about two minutes).
+      Pass go test flags after --, e.g. `task bench -- -bench Catalog`;
+      to compare before and after, run each with `-- -count 6` (about ten minutes for all of them)
+      and then `go run golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e old.txt new.txt`.
+    vars:
+      OUT:
+        sh: echo "bench-$(git describe --always --dirty)-$(date +%Y%m%d-%H%M%S).txt"
+    set: [pipefail]
+    cmds:
+      - go test -run '^$' -bench . -timeout 0 {{.CLI_ARGS}} ./... | tee {{.OUT}}
+      - echo "Saved to {{.OUT}}."
+
   lint:
     desc: Vet and lint
     cmds:

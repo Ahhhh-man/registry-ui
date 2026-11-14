@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
+	"github.com/Ahhhh-man/registry-ui/internal/registry/registrytest"
 )
 
 func TestSize(t *testing.T) {
@@ -182,6 +183,22 @@ func TestSortTags(t *testing.T) {
 		if !slices.Equal(got, tc.out) {
 			t.Errorf("%s (reversed input): got %v, want %v", tc.name, got, tc.out)
 		}
+	}
+}
+
+// BenchmarkSortTags sorts a long tag list in the A–Z order the registry
+// lists it in, as every visit to the repository page does.
+func BenchmarkSortTags(b *testing.B) {
+	tags := make([]string, 5000)
+	for j := range tags {
+		tags[j] = registrytest.LargeTag(j)
+	}
+	slices.Sort(tags)
+	got := make([]string, len(tags))
+	b.ReportAllocs()
+	for b.Loop() {
+		copy(got, tags)
+		SortTags(got)
 	}
 }
 
