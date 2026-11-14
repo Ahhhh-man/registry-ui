@@ -69,7 +69,7 @@
 <h2 id="summary-title" class="mb-4 text-base font-semibold">Tag summary</h2>
 <form method="get" action="{{repoURL $.Repo}}" hx-get="{{repoURL $.Repo}}" hx-trigger="change" hx-target="#summary" hx-sync="this:replace" hx-vals='{"fragment": "summary"}' class="flex items-end gap-2">
 <label class="min-w-0 flex-1 text-xs text-muted">Tag
-<select name="tag" class="mt-1.5 block w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:border-accent">
+<select name="tag" class="mt-1.5 block w-full rounded-md border border-control bg-surface px-3 py-2 text-sm text-text focus:border-accent">
 {{- range $.Tags}}<option value="{{.}}"{{if eq . $.Summary.Tag}} selected{{end}}>{{.}}</option>{{end}}
 </select></label>
 <noscript>{{template "button" (dict "Label" "Show" "Type" "submit")}}</noscript>

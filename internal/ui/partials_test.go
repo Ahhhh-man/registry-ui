@@ -62,7 +62,7 @@ var partialCases = []struct {
 	},
 	{
 		"segmented", `{{template "segmented" (dict "Label" "View" "Name" "view" "Options" (list (dict "Value" "cards" "Label" "Cards" "Icon" "layers" "Pressed" true) (dict "Value" "list" "Label" "List" "Icon" "list" "Disabled" true)))}}`,
-		[]string{`<form method="get" class="inline-flex">`, `<div role="group" aria-label="View" class=`, `id="view:cards">`, `<button type="submit" name="view" value="cards" aria-pressed="true"`, `value="list" aria-pressed="false" disabled`, "aria-pressed:bg-accent-soft", "</svg>Cards</button>"},
+		[]string{`<form method="get" class="inline-flex">`, `<div role="group" aria-label="View" class=`, `id="view:cards">`, `<button type="submit" name="view" value="cards" aria-pressed="true"`, `value="list" aria-pressed="false" disabled`, "aria-pressed:bg-accent-soft", "aria-pressed:inset-ring-accent", "</svg>Cards</button>"},
 	},
 	{
 		"segmented keep", `{{template "segmented" (dict "Label" "Content type" "Name" "type" "Keep" (dict "q" "ngi\"nx" "sort" "" "view" "compact") "Options" (list (dict "Label" "All" "Pressed" true) (dict "Value" "image" "Label" "Images")))}}`,
@@ -96,7 +96,7 @@ var partialCases = []struct {
 	},
 	{
 		"filter", `<form>{{template "filter" (dict "Name" "q" "Value" "1.27" "Placeholder" "Filter tags" "Label" "Filter tags")}}</form>`,
-		[]string{`<input type="search" name="q" value="1.27" placeholder="Filter tags" aria-label="Filter tags"`},
+		[]string{`<input type="search" name="q" value="1.27" placeholder="Filter tags" aria-label="Filter tags"`, "border-control"},
 	},
 	{"badge", `{{template "badge" (dict "Label" "linux/amd64")}}`, []string{"bg-panel text-muted", ">linux/amd64</span>"}},
 	{"badge accent", `{{template "badge" (dict "Label" "latest" "Variant" "accent")}}`, []string{"bg-accent-soft text-accent-text", ">latest</span>"}},

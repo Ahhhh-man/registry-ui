@@ -28,6 +28,7 @@
   --color-panel: light-dark(#f4f4f5, #1a1e25);
   --color-border: light-dark(#e4e4e7, #272c35);
   --color-row-border: light-dark(#f1f1f3, #1d2128);
+  --color-control: light-dark(#85858e, #676d7b); /* input edges: 3.2:1 or more on bg, surface and panel (WCAG 1.4.11) */
   --color-text: light-dark(#09090b, #f2f4f7);
   --color-muted: light-dark(#52525b, #a5abb7); /* 7:1 on panel, light and dark */
   --color-faint: light-dark(#6e6e77, #878e9b); /* 4.6:1 and 5.1:1 on panel; #71717a was 4.4:1 */

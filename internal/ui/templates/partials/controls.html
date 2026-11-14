@@ -87,7 +87,7 @@
 {{- range $k, $v := .Keep}}{{with $v}}<input type="hidden" name="{{$k}}" value="{{.}}">{{end}}{{end}}
 <div role="group" aria-label="{{.Label}}" class="inline-flex gap-0.5 rounded-md border border-border bg-surface p-0.5">
 {{- range .Options}}
-<button type="submit"{{with .Value}} name="{{$.Name}}" value="{{.}}"{{end}} aria-pressed="{{if .Pressed}}true{{else}}false{{end}}"{{if .Disabled}} disabled{{end}}{{if $.IconOnly}} aria-label="{{.Label}}" title="{{.Label}}"{{end}} class="inline-flex items-center gap-1.5 rounded-sm {{if $.IconOnly}}px-2{{else}}px-3{{end}} py-1 text-sm font-medium whitespace-nowrap text-muted hover:text-text aria-pressed:bg-accent-soft aria-pressed:text-accent-text disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted" id="{{$.Name}}:{{.Value}}">
+<button type="submit"{{with .Value}} name="{{$.Name}}" value="{{.}}"{{end}} aria-pressed="{{if .Pressed}}true{{else}}false{{end}}"{{if .Disabled}} disabled{{end}}{{if $.IconOnly}} aria-label="{{.Label}}" title="{{.Label}}"{{end}} class="inline-flex items-center gap-1.5 rounded-sm {{if $.IconOnly}}px-2{{else}}px-3{{end}} py-1 text-sm font-medium whitespace-nowrap text-muted hover:text-text aria-pressed:bg-accent-soft aria-pressed:text-accent-text aria-pressed:inset-ring aria-pressed:inset-ring-accent disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted" id="{{$.Name}}:{{.Value}}">
 {{- with .Icon}}{{icon .}}{{end}}{{if not $.IconOnly}}{{.Label}}{{end}}</button>
 {{- end}}
 </div>
@@ -127,7 +127,7 @@
 {{define "filter" -}}
 <div class="relative w-full">
 <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-faint">{{icon "search"}}</span>
-<input type="search" name="{{.Name}}" value="{{.Value}}" placeholder="{{.Placeholder}}" aria-label="{{.Label}}" autocomplete="off" class="w-full rounded-md border border-border bg-surface py-2 pr-3 pl-10 text-text placeholder:text-muted focus:border-accent">
+<input type="search" name="{{.Name}}" value="{{.Value}}" placeholder="{{.Placeholder}}" aria-label="{{.Label}}" autocomplete="off" class="w-full rounded-md border border-control bg-surface py-2 pr-3 pl-10 text-text placeholder:text-muted focus:border-accent">
 </div>
 {{- end}}
 
