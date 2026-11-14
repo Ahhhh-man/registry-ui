@@ -14,7 +14,7 @@
 {{- if not .TagCount}}<div class="mt-5">{{template "repo-empty" .}}</div>
 {{- else if .Overview}}{{template "repo-overview" .}}{{else}}
 <div class="mt-5 mb-4 flex flex-wrap items-center justify-between gap-3">
-<form method="get" action="{{repoURL .Repo}}" role="search" hx-get="{{repoURL .Repo}}" hx-trigger="input delay:250ms, submit" hx-target="#tags" hx-sync="this:replace" hx-vals='{"fragment": "tags"}' class="w-full sm:max-w-xs">
+<form method="get" action="{{repoURL .Repo}}" role="search" aria-label="Tags" hx-get="{{repoURL .Repo}}" hx-trigger="input delay:250ms, submit" hx-target="#tags" hx-sync="this:replace" hx-vals='{"fragment": "tags"}' class="w-full sm:max-w-xs">
 <input type="hidden" name="tab" value="tags">
 {{- template "filter" (dict "Name" "q" "Value" .Query "Placeholder" "Filter tags" "Label" "Filter tags")}}
 {{- with .View}}<input type="hidden" name="view" value="{{.}}">{{end}}
@@ -156,8 +156,8 @@
      copies, and data-ref the reference "Copy references" copies. */}}
 {{define "tag-row" -}}
 <tr data-tag="{{.Tag}}" data-pull="{{.Command}}" data-ref="{{.Ref}}"{{with .Load}} hx-get="{{.}}" hx-trigger="revealed" hx-swap="outerHTML" aria-busy="true"{{end}}>
-<td><input type="checkbox" aria-label="Select {{.Tag}}" class="size-4 cursor-pointer align-middle accent-accent"></td>
-<td><div class="flex flex-wrap items-center gap-x-2 gap-y-1"><a href="{{tagURL .Repo .Tag}}" title="{{.Tag}}" class="font-medium whitespace-nowrap hover:text-accent-text">{{.Label}}</a>{{range .Badges}}{{template "badge" .}}{{end}}</div></td>
+<td><input type="checkbox" aria-label="Select {{.Tag}}" class="size-4 cursor-pointer align-middle accent-accent" id="select:{{.Tag}}"></td>
+<td><div class="flex flex-wrap items-center gap-x-2 gap-y-1"><a href="{{tagURL .Repo .Tag}}" title="{{.Tag}}" class="font-medium whitespace-nowrap hover:text-accent-text" id="tag:{{.Tag}}">{{.Label}}</a>{{range .Badges}}{{template "badge" .}}{{end}}</div></td>
 {{- if .Load}}
 <td class="hidden md:table-cell">{{template "skeleton" "w-16"}}</td><td class="hidden md:table-cell">{{template "skeleton" "w-16"}}</td><td class="text-right">{{template "skeleton" "w-12"}}</td><td class="hidden text-right sm:table-cell">{{template "skeleton" "w-16"}}</td>{{if .TagTimes}}<td class="hidden text-right sm:table-cell">{{template "skeleton" "w-16"}}</td>{{end}}<td></td>
 {{- else if .Missing}}
@@ -175,7 +175,7 @@
 {{- if .TagTimes}}
 <td class="hidden text-right whitespace-nowrap text-muted sm:table-cell">{{if not .Updated.IsZero}}{{time .Updated}}{{end}}</td>
 {{- end}}
-<td class="py-1! text-right">{{with .Command}}<button type="button" data-copy="{{.}}" aria-label="Copy pull command for {{$.Tag}}" title="Copy pull command" class="group grid size-8 place-items-center rounded-md text-muted hover:bg-panel hover:text-accent-text data-copied:text-accent-text">{{icon "copy" "group-data-copied:hidden"}}{{icon "check" "hidden group-data-copied:block"}}</button>{{end}}</td>
+<td class="py-1! text-right">{{with .Command}}<button type="button" data-copy="{{.}}" aria-label="Copy pull command for {{$.Tag}}" title="Copy pull command" class="group grid size-8 place-items-center rounded-md text-muted hover:bg-panel hover:text-accent-text data-copied:text-accent-text">{{icon "copy" "group-data-copied:hidden"}}{{icon "check" "hidden group-data-copied:block"}}<span data-copy-label aria-live="polite" class="sr-only"></span></button>{{end}}</td>
 {{- end}}
 </tr>
 {{- end}}
@@ -185,7 +185,7 @@
 <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
 <div class="min-w-0">
 <div class="flex flex-wrap items-center gap-2">
-<a href="{{tagURL .Repo .Tag}}" title="{{.Tag}}" class="inline-flex min-w-0 items-center gap-2 font-semibold hover:text-accent-text">{{icon "tag" "text-accent"}}<span class="truncate">{{.Label}}</span></a>
+<a href="{{tagURL .Repo .Tag}}" title="{{.Tag}}" class="inline-flex min-w-0 items-center gap-2 font-semibold hover:text-accent-text" id="tag:{{.Tag}}">{{icon "tag" "text-accent"}}<span class="truncate">{{.Label}}</span></a>
 {{- range .Badges}}{{template "badge" .}}{{end}}
 </div>
 <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">

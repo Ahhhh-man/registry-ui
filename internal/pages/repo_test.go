@@ -185,6 +185,10 @@ func TestRepoListView(t *testing.T) {
 		`data-action="names"`, `data-action="refs"`, `data-action="pulls"`, `data-action="clear"`, `role="status"`,
 		`<input type="checkbox" data-select-all aria-label="Select all tags on this page"`,
 		`<input type="checkbox" aria-label="Select 1.27.3"`,
+		// Ids put focus back on a row's checkbox or link once it loads.
+		`id="select:1.27.3">`, `id="tag:1.27.3">`,
+		// Two search landmarks, told apart.
+		`role="search" aria-label="Repositories"`, `role="search" aria-label="Tags"`,
 		// Rows load like cards, and guess their command until they do.
 		`<tr data-tag="1.27.3" data-pull="docker pull registry.example.com/library/nginx:1.27.3" data-ref="registry.example.com/library/nginx:1.27.3" hx-get="/library/nginx?fragment=row&amp;tag=1.27.3&amp;view=list" hx-trigger="revealed"`,
 		// A signature's reference is its own tag, not the image it signs.
