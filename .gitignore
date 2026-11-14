@@ -11,6 +11,7 @@
 !/main.go
 !/fake.go
 !/main_test.go
+!/budget_test.go
 !/*.nix
 !/flake.lock
 !/govendor.toml

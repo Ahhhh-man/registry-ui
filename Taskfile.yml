@@ -28,6 +28,7 @@ tasks:
     desc: Vet and lint
     cmds:
       - go vet ./...
+      - go vet -tags budget .
       - golangci-lint run
 
   css:
@@ -46,3 +47,13 @@ tasks:
     cmds:
       - nix build .#image
       - docker load < result
+
+  budget:
+    desc: Check the image size, idle memory and idle work budgets (Linux, about two minutes)
+    cmds:
+      - nix build .#image
+      - |
+        size=$(gzip -dc result | wc -c)
+        echo "Image is $((size / 1000)) kB uncompressed (budget 20000 kB)."
+        test "$size" -lt 20000000
+      - go test -tags budget -run TestBudget -count=1 -v -timeout 10m .

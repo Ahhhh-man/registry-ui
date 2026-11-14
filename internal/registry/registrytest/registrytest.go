@@ -126,6 +126,9 @@ type Registry struct {
 	SignatureTag string
 	// Helm is a Helm chart with config media type MediaHelmConfig.
 	Helm v1.Image
+
+	// large replaces the seeded content, for NewLarge.
+	large []tagged
 }
 
 // Labels and created times in the seeded image configs.
@@ -143,16 +146,31 @@ var (
 
 // New starts a seeded registry that allows anonymous access. It shuts down
 // when the test ends.
-func New(t testing.TB) *Registry { return start(t, "", "") }
+func New(t testing.TB) *Registry { return start(t, &Registry{}, "", "") }
 
 // NewWithBasicAuth is New, but every request must carry the given basic-auth
 // credentials. Others get a 401 with a Basic WWW-Authenticate challenge.
-func NewWithBasicAuth(t testing.TB, user, pass string) *Registry { return start(t, user, pass) }
+func NewWithBasicAuth(t testing.TB, user, pass string) *Registry {
+	return start(t, &Registry{}, user, pass)
+}
 
-func start(t testing.TB, user, pass string) *Registry {
+// NewLarge is New, but holds a generated registry of repos repositories
+// with tags tags each instead of the seeded content, for measuring how the
+// UI copes with a big one. Repository i is LargeRepo(i) and tag j in it
+// LargeTag(j). Every tag is its own OCI index of a linux/amd64 and a
+// linux/arm64 image, whose configs carry a created time and a description.
+func NewLarge(t testing.TB, repos, tags int) *Registry {
+	return start(t, &Registry{large: large(repos, tags)}, "", "")
+}
+
+// NewLargeStorage writes NewLarge's content to disk, as NewStorage does New's.
+func NewLargeStorage(t testing.TB, repos, tags int) *Registry {
+	return writeStorage(t, &Registry{large: large(repos, tags)})
+}
+
+func start(t testing.TB, r *Registry, user, pass string) *Registry {
 	t.Helper()
 
-	r := &Registry{}
 	r.build(t)
 	h := notFound(paginate(registry.New(registry.Logger(log.New(io.Discard, "", 0)))), r.content())
 	if user != "" {
@@ -199,9 +217,11 @@ func start(t testing.TB, user, pass string) *Registry {
 // laid out the way Distribution's filesystem storage driver lays it out, and
 // returns it with StoragePath set. Nothing is served, so URL and Host are
 // empty.
-func NewStorage(t testing.TB) *Registry {
+func NewStorage(t testing.TB) *Registry { return writeStorage(t, &Registry{}) }
+
+func writeStorage(t testing.TB, r *Registry) *Registry {
 	t.Helper()
-	r := &Registry{StoragePath: t.TempDir()}
+	r.StoragePath = t.TempDir()
 	r.build(t)
 	v2 := filepath.Join(r.StoragePath, "docker", "registry", "v2")
 	write := func(path, data string) {
@@ -278,6 +298,9 @@ func (r *Registry) SetTagTime(t testing.TB, repo, tag string, when time.Time) {
 
 // content lists every tag in the seeded registry, in push order.
 func (r *Registry) content() []tagged {
+	if r.large != nil {
+		return r.large
+	}
 	c := []tagged{
 		{repo: RepoIndex, tag: TagVersion, obj: r.Index},
 		{repo: RepoIndex, tag: TagLatest, obj: r.Index},
@@ -314,6 +337,41 @@ type tagged struct {
 	// untagged leaves obj in the repository under no tag and without a
 	// tags folder, as a push by digest would.
 	untagged bool
+}
+
+// LargeRepo names repository i of NewLarge, e.g. "team07/app0007".
+func LargeRepo(i int) string { return fmt.Sprintf("team%02d/app%04d", i%25, i) }
+
+// LargeTag names tag j of every repository in NewLarge, e.g. "1.7.0".
+func LargeTag(j int) string { return fmt.Sprintf("1.%d.0", j) }
+
+// large generates NewLarge's content. The layers are shared, so only the
+// manifests and configs, which are what the UI reads, differ between tags.
+func large(repos, tags int) []tagged {
+	platforms := []v1.Platform{{OS: "linux", Architecture: "amd64"}, {OS: "linux", Architecture: "arm64"}}
+	layers := make([]v1.Layer, len(platforms))
+	for i, p := range platforms {
+		layers[i] = static.NewLayer([]byte("large "+p.String()), types.OCILayer)
+	}
+	created := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	c := make([]tagged, 0, repos*tags)
+	for i := range repos {
+		for j := range tags {
+			idx := mutate.IndexMediaType(empty.Index, types.OCIImageIndex)
+			for k, p := range platforms {
+				img := must(mutate.Append(empty.Image, mutate.Addendum{Layer: layers[k]}))
+				img = mutate.ConfigMediaType(mutate.MediaType(img, types.OCIManifestSchema1), types.OCIConfigJSON)
+				img = must(mutate.ConfigFile(img, &v1.ConfigFile{
+					OS: p.OS, Architecture: p.Architecture,
+					Created: v1.Time{Time: created.Add(time.Duration(i*tags+j) * time.Minute)},
+					Config:  v1.Config{Labels: map[string]string{"org.opencontainers.image.description": "Generated repository " + strconv.Itoa(i) + "."}},
+				}))
+				idx = mutate.AppendManifests(idx, mutate.IndexAddendum{Add: img, Descriptor: v1.Descriptor{Platform: &p}})
+			}
+			c = append(c, tagged{repo: LargeRepo(i), tag: LargeTag(j), obj: idx})
+		}
+	}
+	return c
 }
 
 // must panics on an error building fixtures from in-memory images, which
