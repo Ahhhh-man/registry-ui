@@ -95,7 +95,10 @@
 {{- with .Command}}{{template "copy-field" .}}{{end}}
 {{- end}}
 
+{{/* repo-tags: the chips and the tags, as cards or rows, that the filter
+     swaps. data-announce is what app.js reads out once it has. */}}
 {{define "repo-tags" -}}
+<span data-announce="{{.Found}}" hidden></span>
 {{if .TagCount}}{{template "type-chips" .Chips}}{{end}}
 {{with .Note}}{{template "warning" .}}{{end}}
 {{- if and .Cards .List}}

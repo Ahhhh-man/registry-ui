@@ -116,6 +116,26 @@ func TestRepoFilterAndPages(t *testing.T) {
 	}
 }
 
+// The tag filter's fragment says how many tags matched across every page, or
+// that none did; a card filling in says nothing.
+func TestRepoAnnounces(t *testing.T) {
+	s := newTestServer(t, "/")
+	s.Src = &manyTags{Source: s.Src, n: 250}
+	for path, want := range map[string]string{
+		"/many?q=v&fragment=tags":    `<span data-announce="250 tags" hidden></span>`,
+		"/many?q=V24&fragment=tags":  `<span data-announce="11 tags" hidden></span>`,
+		"/many?q=v250&fragment=tags": `<span data-announce="1 tag" hidden></span>`,
+		"/many?q=nope&fragment=tags": `<span data-announce="No tags match “nope”" hidden></span>`,
+	} {
+		if body := get(t, s, "/", path, true).Body.String(); !strings.Contains(body, want) {
+			t.Errorf("%s lacks %s", path, want)
+		}
+	}
+	if body := get(t, s, "/", "/many?fragment=card&tag=v1", true).Body.String(); strings.Contains(body, "data-announce") {
+		t.Error("a card fragment announces")
+	}
+}
+
 func TestRepoCard(t *testing.T) {
 	s := newTestServer(t, "/")
 	card := func(repo, tag string) string {

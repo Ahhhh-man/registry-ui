@@ -58,6 +58,7 @@ type repoView struct {
 	Chips                 []typeChip
 	Note                  string // why the tags aren't filtered or in the Sort order, when they aren't
 	Empty                 string // the title when a filter leaves no tags
+	Matches               int    // tags the filter keeps, on every page
 	List                  bool   // the list view: ?view=list, or the view cookie without ?view=
 	TagTimes              bool   // the source knows when tags were updated: storage mode
 	Storage               bool   // storage mode, which only reads, for an empty repo's explanation
@@ -109,6 +110,15 @@ type tagCard struct {
 	Missing          bool                // the tag's manifest is missing: only Repo, Tag, Label, Badges and the times are set
 }
 
+// Found is what a screen reader hears once the tag filter has swapped the
+// list: how many tags matched across every page, or Empty.
+func (v repoView) Found() string {
+	if v.Matches == 0 {
+		return v.Empty
+	}
+	return plural(v.Matches, "tag")
+}
+
 // PlatformCount is how many platforms the tag has, e.g. "3 platforms (1 missing)".
 func (c tagCard) PlatformCount() string { return platformCount(c.Platforms) }
 
@@ -153,6 +163,7 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 	f := strings.ToLower(v.Query)
 	matches := slices.DeleteFunc(slices.Clone(tags), func(t string) bool { return !strings.Contains(strings.ToLower(t), f) })
 	matches, counts, note := s.filterTags(r.Context(), ref.Repo, matches, v.Type)
+	v.Matches = len(matches)
 	v.Note = cmp.Or(s.sortTags(r.Context(), ref.Repo, matches, v.order), note)
 	per := cmp.Or(s.TagsPerPage, 100)
 	v.Pages = max(1, (len(matches)+per-1)/per)

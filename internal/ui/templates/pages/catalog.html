@@ -20,9 +20,10 @@
 {{/* catalog-list: the toolbar and the rows. It reloads itself from the
      header search as you type, keeping the sort, type and view;
      data-repo-list marks the unfiltered list, whose rows add up to the tags
-     figure, hidden until then. */}}
+     figure, hidden until then. data-announce is what app.js reads out
+     once the list is swapped. */}}
 {{define "catalog-list" -}}
-<section id="repo-list" hx-get="{{.List}}" hx-trigger="input changed delay:200ms from:#search" hx-include="#search" hx-select="#repo-list" hx-swap="outerHTML" hx-replace-url="true" hx-sync="this:replace" hx-disinherit="*"{{if not (or .Query .Type)}} data-repo-list{{end}}>
+<section id="repo-list" hx-get="{{.List}}" hx-trigger="input changed delay:200ms from:#search" hx-include="#search" hx-select="#repo-list" hx-swap="outerHTML" hx-replace-url="true" hx-sync="this:replace" hx-disinherit="*"{{if not (or .Query .Type)}} data-repo-list{{end}} data-announce="{{.Found}}">
 {{- with .Query}}<h2 class="mb-3 truncate text-base font-semibold">Matching “{{.}}”</h2>{{end}}
 {{- if .Total}}
 {{- /* Boosted: a filter, sort or view click swaps the list in place, without a page load. */}}
