@@ -141,7 +141,7 @@ func TestCacheHoldsCatalogSort(t *testing.T) {
 			_, _ = c.Resolve(ctx, repo, "latest")
 			_, _ = c.Config(ctx, repo, testDigest)
 		}
-		const repos = 5000
+		const repos = 1500 // with room to spare over the 1,000 of the memory budget
 		for i := range repos {
 			row(i)
 		}

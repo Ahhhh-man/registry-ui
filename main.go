@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime/debug"
 	"time"
 
 	"github.com/Ahhhh-man/registry-ui/internal/config"
@@ -30,6 +31,10 @@ import (
 )
 
 var version = "dev"
+
+// memoryLimit is the Go runtime's soft memory limit, under the 15 MB idle
+// budget with room for what the runtime doesn't count.
+const memoryLimit = 10 << 20
 
 func main() {
 	cmd := "serve"
@@ -66,6 +71,11 @@ func serve() error {
 	}
 	slog.SetLogLoggerLevel(cfg.LogLevel)
 	slog.Info("starting registry-ui", "version", version, "config", cfg)
+	// Collect sooner, and hand memory back to the OS, rather than let the
+	// heap double past the cache. GOMEMLIMIT overrides it.
+	if os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(memoryLimit)
+	}
 	src, err := newSource(cfg)
 	if err != nil {
 		return err

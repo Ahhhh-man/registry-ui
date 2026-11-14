@@ -16,10 +16,10 @@ const (
 	// cacheSize is how many entries the cache holds before evicting the
 	// least recently used. A catalog sort or type filter needs three per
 	// repository (tag list, manifest, config) and a repository's tag sort
-	// two per tag, for each signed-in user. This fits a catalog of several
-	// thousand repositories for a few users at once, and costs about
-	// 35 MB when full.
-	cacheSize = 20000
+	// two per tag, for each signed-in user. This fits one user's sort of
+	// about 1,600 repositories, and keeps the cache within the 15 MB idle
+	// memory budget: realistic entries cost 1–2 kB each.
+	cacheSize = 5000
 	// cacheTTL is how long the catalog, tag lists, tag lookups, tag times
 	// and disk usage are trusted. Anything addressed by digest can't change, so it never expires.
 	cacheTTL = 30 * time.Second
