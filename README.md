@@ -5,11 +5,10 @@
   </picture>
 </p>
 
-<p align="center">See what's in your container registry, including your pull-through cache.</p>
+<p align="center">A lightweight web UI for self-hosted Docker/OCI registries</p>
 
 <p align="center">
   <a href="https://github.com/Ahhhh-man/registry-ui/actions/workflows/ci.yml"><img src="https://github.com/Ahhhh-man/registry-ui/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/Ahhhh-man/registry-ui/pkgs/container/registry-ui"><img src="https://img.shields.io/badge/image-ghcr.io%2Fahhhh--man%2Fregistry--ui-blue" alt="Container image"></a>
   <a href="go.mod"><img src="https://img.shields.io/badge/go-1.27-00ADD8?logo=go&amp;logoColor=white" alt="Go version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
 </p>
@@ -46,8 +45,6 @@ volumes:
   registry-data:
 ```
 
-The same image is on Docker Hub as `ahhhhman/registry-ui`, if you'd rather pull from there.
-
 Push something, then open <http://localhost:8080>:
 
 ```sh
@@ -57,6 +54,21 @@ docker push localhost:5000/busybox
 ```
 
 The UI talks to the registry from the server. Docker clients still talk to the registry directly and browsers never do, so there's no CORS to set up. The UI starts even if the registry isn't up yet. The healthcheck only checks the UI itself, so a registry outage won't restart it.
+
+## Images
+
+Each release is one multi-arch image for `linux/amd64` and `linux/arm64`, published in two places:
+
+| Registry | Image |
+|---|---|
+| GitHub Container Registry | `ghcr.io/ahhhh-man/registry-ui` |
+| Docker Hub | `docker.io/ahhhhman/registry-ui` |
+
+They're the same image with the same digest. Prefer ghcr; Docker Hub is a mirror for networks that can only reach Docker Hub, and its pull limits apply there.
+
+Tags are the release version without the `v`, e.g. `1.0.0`, plus `latest`. There are no `1` or `1.0` tags, so pin the full version if you don't want to follow `latest`.
+
+The image runs as a non-root user and has nothing in it but the binary and CA certificates, so there's no shell to `docker exec` into. Logs go to stdout.
 
 ## Configuration
 
@@ -114,6 +126,44 @@ The UI has no users of its own. It does whatever the registry does:
 - Your credentials are sealed (AES-GCM) in an `HttpOnly` cookie that lasts 12 hours. Nothing is written to disk.
 - Without `REGISTRY_UI_SECRET`, the UI picks a new key every time it starts, so a restart signs everyone out. Set it to any long random string, e.g. `openssl rand -hex 32`.
 
+Here's the quick start with the registry behind htpasswd. Create the password file first. The `registry:3` image doesn't ship `htpasswd`, so borrow it from `httpd`:
+
+```sh
+mkdir -p auth
+docker run --rm --entrypoint htpasswd httpd:2 -Bbn alice 'change-me' > auth/htpasswd
+```
+
+```yaml
+services:
+  registry:
+    image: registry:3
+    ports: ["5000:5000"]
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: registry
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+    volumes:
+      - registry-data:/var/lib/registry
+      - ./auth:/auth:ro
+
+  registry-ui:
+    image: ghcr.io/ahhhh-man/registry-ui:latest
+    ports: ["8080:8080"]
+    environment:
+      REGISTRY_UI_REGISTRY_URL: http://registry:5000
+      REGISTRY_UI_PULL_URL: localhost:5000
+      REGISTRY_UI_SECRET: ${REGISTRY_UI_SECRET:?set it in .env}
+    healthcheck:
+      test: ["CMD", "/registry-ui", "healthcheck"]
+
+volumes:
+  registry-data:
+```
+
+Put `REGISTRY_UI_SECRET=` and a random value in a `.env` file next to `compose.yaml`. Open <http://localhost:8080> and the UI asks you to sign in as `alice`.
+
+Behind a token server (`REGISTRY_AUTH: token`), the UI signs in the same way. The token server decides what each user may see, so it has to grant `registry:catalog:*` for the repository list to work. See [The repository list says "You can't list repositories"](#the-repository-list-says-you-cant-list-repositories).
+
 ## Pull-through caches
 
 If your registry is a pull-through cache (`REGISTRY_PROXY_REMOTEURL`), use storage mode. Browsing a cache through its API asks the upstream for every tag list, and clicking a tag that isn't cached yet makes the registry pull and store it. Both eat into your upstream rate limit, and you end up looking at the upstream's tags instead of your cache.
@@ -157,9 +207,56 @@ Some limits:
 
 [CNCF Distribution](https://distribution.github.io/distribution/) (`registry:2` and `registry:3`) is the one that's supported and tested. Other registries that implement the OCI distribution API and `/v2/_catalog` should work, but nobody has tested them. GHCR, Docker Hub and ECR restrict or leave out `_catalog`, so don't expect them to work.
 
+## Troubleshooting
+
+Start with the UI's logs (`docker compose logs registry-ui`). Every request is logged, and a failed one also logs the error the registry gave. `REGISTRY_UI_LOG_LEVEL=debug` adds the reasons for not-found pages and sign-in redirects.
+
+### "Can't reach the registry"
+
+The UI couldn't connect to the registry, or the registry answered with a server error. Things to check:
+
+- `REGISTRY_UI_REGISTRY_URL` is the address *the UI's container* uses, not your browser. In Compose that's the service name, e.g. `http://registry:5000`, not `localhost`.
+- The scheme matches. A registry without TLS needs `http://`. A registry with TLS needs `https://`.
+- The registry is up: `docker compose logs registry`. The page has a Try again button, so it's fine if the UI starts first.
+
+### TLS errors and private CAs
+
+If the log shows `x509: certificate signed by unknown authority`, the registry's certificate comes from a CA the image doesn't trust. Mount your CA certificate and point `SSL_CERT_DIR` at its folder:
+
+```yaml
+    environment:
+      SSL_CERT_DIR: /certs
+    volumes: ["./ca:/certs:ro"]
+```
+
+`x509: certificate is valid for …, not …` means `REGISTRY_UI_REGISTRY_URL` uses a different host name than the certificate. Use the name on the certificate. `REGISTRY_UI_REGISTRY_INSECURE=true` skips verification, which is fine for a quick test but not for good.
+
+### The repository list says "You can't list repositories"
+
+The registry answered `403` (or `401` while signed in) to `/v2/_catalog`. With htpasswd every signed-in user may list repositories, so this nearly always means a token server that doesn't grant the `registry:catalog:*` scope to that user, or to anonymous users. Grant it there. Until then you can still open a repository by typing its address after the UI's URL, e.g. `/library/nginx`.
+
+### Pages are blank, unstyled or 404 under a sub-path
+
+- `REGISTRY_UI_BASE_PATH` has to match the path the proxy forwards, e.g. `/registry/`.
+- The proxy has to pass the path through *with* the prefix. If it strips `/registry`, the UI answers every page with "Not found". In nginx that means `proxy_pass http://registry-ui:8080;` with no path after the port. In Caddy, use `handle`, not `handle_path`.
+- Opening `/registry` without the trailing slash redirects to `/registry/`, which is expected.
+
+### Sign-in says "cross-origin request refused"
+
+The sign-in form only accepts posts from its own site. It compares the browser's `Origin` with the `Host` the UI sees, or with `X-Forwarded-Host`. Make the proxy pass the original `Host`, or set `X-Forwarded-Host`, and pass `X-Forwarded-Proto` so the cookie is marked `Secure`. See [TLS and reverse proxies](#tls-and-reverse-proxies).
+
+Sign-in also lasts only until the UI restarts unless `REGISTRY_UI_SECRET` is set.
+
+### Storage mode won't start, or shows nothing
+
+- `not a registry storage root (no docker/registry/v2 inside)` means `REGISTRY_UI_STORAGE_PATH` points at the wrong folder. It has to be the folder the registry has at `/var/lib/registry`, the one that contains `docker/registry/v2`, not that folder itself or its parent.
+- The UI starts but the list is empty: the UI is probably looking at a different volume from the registry. Both services have to mount *the same* named volume or host folder. A typo in the volume name gives you a new, empty one. `docker compose exec registry ls /var/lib/registry/docker/registry/v2/repositories` shows what the registry has.
+- A permission error in the log means the UI's user (UID 65532) can't read the files. Make the storage world-readable, or run the UI with the registry's user (`user:` in Compose).
+- Storage mode needs the `filesystem` storage driver. With S3 or another driver there's nothing on disk to read, so use the API instead.
+
 ## No telemetry
 
-The UI only ever talks to the registry you point it at. No telemetry, no update checks, no CDNs. Fonts, scripts and styles are all embedded in the binary. The footer's links to GitHub are plain links: nothing is fetched from GitHub, and the UI never checks whether a newer version exists.
+The UI only ever talks to the registry you point it at. It has no telemetry and loads nothing from a CDN, because fonts, scripts and styles are all embedded in the binary. The footer links to GitHub, but they're plain links. Nothing is fetched from GitHub, and the UI never checks for a newer version.
 
 ## Footprint
 
@@ -169,42 +266,21 @@ The UI is meant to cost next to nothing while nobody is using it. It has three b
 |---|---|
 | Image under 20 MB uncompressed | 12.2 MB on amd64, 11.4 MB on arm64 |
 | Idle memory under 15 MB, after browsing 1,000 repositories with 5,000 tags | About 11.5 MB in storage mode and 13 MB in API mode |
-| Nothing running while idle | One goroutine, waiting for a connection. No CPU time over 100 seconds in storage mode, and 20–30 ms in API mode, where the registry connections close during the wait |
+| Nothing running while idle | One goroutine, waiting for a connection. No CPU time over 100 seconds in storage mode, and 20 to 30 ms in API mode, where the registry connections close during the wait |
 
 How they're measured:
 
-- **Image size** is the uncompressed image tarball from `nix build .#image`, the sum of its layers. CI fails a pull request whose amd64 image is over the limit, and the release workflow checks both architectures before it pushes anything.
-- **Idle memory** is the private resident memory (`RssAnon` in `/proc/<pid>/status`) of the release binary. It's what the process allocated, and about what `docker stats` shows: 11.8 MiB for the storage mode run in a container. Total RSS is about 10 MB higher, because it also counts the executable's own pages, which are shared with the page cache. The test serves a generated registry of 1,000 repositories, each with 5 tags that are two-platform images. It loads the catalog in every view, then sorted and filtered in the ways that read every repository's details, then each repository sorted by created date, which reads every tag, and one tag page per repository. Then it leaves the UI alone for 100 seconds and reads the memory.
-- **Nothing running** comes from the same run. After the idle wait, the test sends `SIGQUIT`, which makes the Go runtime print every goroutine as it exits. Apart from the runtime's own, only the server's listener may be left. The registry client keeps idle connections open for 90 seconds, which is why the wait is 100. The test also reads the process's CPU time before and after the wait.
+- Image size is the uncompressed image tarball from `nix build .#image`, the sum of its layers. CI fails a pull request whose amd64 image is over the limit, and the release workflow checks both architectures before it pushes anything.
+- Idle memory is the private resident memory (`RssAnon` in `/proc/<pid>/status`) of the release binary. It's what the process allocated, and about what `docker stats` shows: 11.8 MiB for the storage mode run in a container. Total RSS is about 10 MB higher, because it also counts the executable's own pages, which are shared with the page cache. The test serves a generated registry of 1,000 repositories, each with 5 tags that are two-platform images. It loads the catalog in every view, then sorted and filtered in the ways that read every repository's details, then each repository sorted by created date, which reads every tag, and one tag page per repository. Then it leaves the UI alone for 100 seconds and reads the memory.
+- Nothing running comes from the same run. After the idle wait, the test sends `SIGQUIT`, which makes the Go runtime print every goroutine as it exits. Apart from the runtime's own, only the server's listener may be left. The registry client keeps idle connections open for 90 seconds, which is why the wait is 100. The test also reads the process's CPU time before and after the wait.
 
 To stay inside the memory budget, the cache holds 5,000 entries, enough for one person to sort a catalog of about 1,600 repositories. The UI also sets the Go runtime's soft memory limit to 10 MiB, so it collects garbage sooner and hands memory back to the OS. Setting `GOMEMLIMIT` replaces that limit.
 
 To check all three on Linux, run `task budget`. It takes about two minutes. It builds the image for your own architecture only.
 
-## Development
+## Contributing
 
-You need [Nix](https://nixos.org) with flakes. The dev shell has Go, the linters, the Tailwind CLI and [Task](https://taskfile.dev).
-
-```sh
-nix develop
-task dev     # serves on :8080, templates and CSS reload on refresh
-task test
-task lint
-task build   # ./registry-ui
-task image   # builds the container image with Nix and loads it into Docker
-```
-
-With [direnv](https://direnv.net) and [nix-direnv](https://github.com/nix-community/nix-direnv), run `direnv allow` once and the dev shell loads whenever you `cd` into the repo.
-
-`task dev` needs `REGISTRY_UI_REGISTRY_URL` pointing at a registry. To work on the UI without one, build with `-tags fake`. That serves built-in sample data. The URL still has to be set, but it isn't used:
-
-```sh
-REGISTRY_UI_REGISTRY_URL=http://unused go run -tags fake .
-```
-
-The CSS is built from `web/tailwind.css` into `internal/ui/static/app.css` with the Tailwind standalone CLI (`task css`, or watched by `task dev`). The output is committed, so building and running the UI needs only Go, with no Node or Tailwind. CI checks that the committed file is up to date, so run `task css` before you commit a template or style change.
-
-No Nix? The `Dockerfile` builds an equivalent image: `docker build -t registry-ui .`. The published image is the Nix one.
+Bug reports and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the dev setup and the checks CI runs.
 
 ## License
 

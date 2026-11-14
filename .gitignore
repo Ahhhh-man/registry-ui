@@ -5,6 +5,7 @@
 !/.gitignore
 !/.envrc
 !/README.md
+!/CONTRIBUTING.md
 !/LICENSE
 !/go.mod
 !/go.sum
