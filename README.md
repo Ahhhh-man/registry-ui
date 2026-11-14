@@ -161,6 +161,26 @@ Some limits:
 
 The UI only ever talks to the registry you point it at. No telemetry, no update checks, no CDNs. Fonts, scripts and styles are all embedded in the binary. The footer's links to GitHub are plain links: nothing is fetched from GitHub, and the UI never checks whether a newer version exists.
 
+## Footprint
+
+The UI is meant to cost next to nothing while nobody is using it. It has three budgets:
+
+| Budget | Measured |
+|---|---|
+| Image under 20 MB uncompressed | 12.2 MB on amd64, 11.4 MB on arm64 |
+| Idle memory under 15 MB, after browsing 1,000 repositories with 5,000 tags | About 11.5 MB in storage mode and 13 MB in API mode |
+| Nothing running while idle | One goroutine, waiting for a connection. No CPU time over 100 seconds in storage mode, and 20–30 ms in API mode, where the registry connections close during the wait |
+
+How they're measured:
+
+- **Image size** is the uncompressed image tarball from `nix build .#image`, the sum of its layers. CI fails a pull request whose amd64 image is over the limit, and the release workflow checks both architectures before it pushes anything.
+- **Idle memory** is the private resident memory (`RssAnon` in `/proc/<pid>/status`) of the release binary. It's what the process allocated, and about what `docker stats` shows: 11.8 MiB for the storage mode run in a container. Total RSS is about 10 MB higher, because it also counts the executable's own pages, which are shared with the page cache. The test serves a generated registry of 1,000 repositories, each with 5 tags that are two-platform images. It loads the catalog in every view, then sorted and filtered in the ways that read every repository's details, then each repository sorted by created date, which reads every tag, and one tag page per repository. Then it leaves the UI alone for 100 seconds and reads the memory.
+- **Nothing running** comes from the same run. After the idle wait, the test sends `SIGQUIT`, which makes the Go runtime print every goroutine as it exits. Apart from the runtime's own, only the server's listener may be left. The registry client keeps idle connections open for 90 seconds, which is why the wait is 100. The test also reads the process's CPU time before and after the wait.
+
+To stay inside the memory budget, the cache holds 5,000 entries, enough for one person to sort a catalog of about 1,600 repositories. The UI also sets the Go runtime's soft memory limit to 10 MiB, so it collects garbage sooner and hands memory back to the OS. Setting `GOMEMLIMIT` replaces that limit.
+
+To check all three on Linux, run `task budget`. It takes about two minutes. It builds the image for your own architecture only.
+
 ## Development
 
 You need [Nix](https://nixos.org) with flakes. The dev shell has Go, the linters, the Tailwind CLI and [Task](https://taskfile.dev).
