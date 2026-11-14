@@ -92,7 +92,8 @@ func TestLayout(t *testing.T) {
 			`<span class="min-w-0 truncate font-semibold">registry.example.com</span>`,
 			"data-theme-toggle",
 			`role="search" aria-label="Repositories"`,
-			`data-hotkey="/" aria-keyshortcuts="/"`,
+			`data-hotkey aria-keyshortcuts="Control+K Meta+K"`,
+			`aria-hidden="true" data-hotkey-hint>Ctrl K</kbd>`,
 		} {
 			if !strings.Contains(s, want) {
 				t.Errorf("theme %q: layout lacks %s", theme, want)
