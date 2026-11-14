@@ -62,27 +62,27 @@ var partialCases = []struct {
 	},
 	{
 		"segmented", `{{template "segmented" (dict "Label" "View" "Name" "view" "Options" (list (dict "Value" "cards" "Label" "Cards" "Icon" "layers" "Pressed" true) (dict "Value" "list" "Label" "List" "Icon" "list" "Disabled" true)))}}`,
-		[]string{`<form method="get" role="group" aria-label="View" class=`, `<button type="submit" name="view" value="cards" aria-pressed="true"`, `value="list" aria-pressed="false" disabled`, "aria-pressed:bg-accent-soft", "</svg>Cards</button>"},
+		[]string{`<form method="get" class="inline-flex">`, `<div role="group" aria-label="View" class=`, `id="view:cards">`, `<button type="submit" name="view" value="cards" aria-pressed="true"`, `value="list" aria-pressed="false" disabled`, "aria-pressed:bg-accent-soft", "</svg>Cards</button>"},
 	},
 	{
 		"segmented keep", `{{template "segmented" (dict "Label" "Content type" "Name" "type" "Keep" (dict "q" "ngi\"nx" "sort" "" "view" "compact") "Options" (list (dict "Label" "All" "Pressed" true) (dict "Value" "image" "Label" "Images")))}}`,
-		[]string{`<input type="hidden" name="q" value="ngi&#34;nx"><input type="hidden" name="view" value="compact">`, `<button type="submit" aria-pressed="true" class=`, `>All</button>`, `<button type="submit" name="type" value="image" aria-pressed="false"`},
+		[]string{`<input type="hidden" name="q" value="ngi&#34;nx"><input type="hidden" name="view" value="compact">`, `<button type="submit" aria-pressed="true" class=`, `id="type:">All</button>`, `<button type="submit" name="type" value="image" aria-pressed="false"`},
 	},
 	{
 		"segmented icons", `{{template "segmented" (dict "Label" "View" "Name" "view" "Cookie" "catalog-view" "IconOnly" true "Options" (list (dict "Value" "compact" "Label" "Compact" "Icon" "rows-dense" "Pressed" true)))}}`,
-		[]string{`aria-label="View" data-cookie="catalog-view"`, `<button type="submit" name="view" value="compact" aria-pressed="true" aria-label="Compact" title="Compact"`, "</svg></button>"},
+		[]string{`<form method="get" data-cookie="catalog-view" class="inline-flex">`, `<button type="submit" name="view" value="compact" aria-pressed="true" aria-label="Compact" title="Compact"`, "</svg></button>"},
 	},
 	{
 		"sort-menu bordered", `{{template "sort-menu" (dict "Bordered" true "Align" "right-0" "Menu" (dict "Label" "Name A–Z" "Options" (list (dict "Label" "Name A–Z" "Href" "/" "Current" true) (dict "Label" "Most tags" "Href" "/?sort=tags"))))}}`,
 		[]string{
-			`<details data-menu class="group relative">`, "border border-border bg-surface px-3 py-1.5 text-sm", `<span class="font-normal text-muted">Sort </span>Name A–Z<svg`, `<ul class="absolute right-0 `,
+			`<details data-menu class="group relative">`, "border border-border bg-surface px-3 py-1.5 text-sm", `[&::-webkit-details-marker]:hidden" id="sort">`, `<span class="font-normal text-muted">Sort </span>Name A–Z<svg`, `<ul class="absolute right-0 `,
 			`<li><a href="/" aria-current="true" class=`, `<li><a href="/?sort=tags" class=`, ">Most tags</a></li>",
 		},
 	},
 	{
 		"type-chips", `{{template "type-chips" (list (dict "Value" "" "Label" "All" "Href" "/" "Count" 8) (dict "Value" "image" "Label" "Images" "Href" "/?type=image" "Count" 7 "Current" true) (dict "Value" "helm" "Label" "Helm charts" "Href" "/?type=helm" "Count" -1) (dict "Value" "signature" "Label" "Signatures" "Href" "/?type=signature" "Count" -1))}}`,
 		[]string{
-			`<nav aria-label="Content type"`, `<a href="/" class=`, `All<span class="tabular-nums opacity-70">8</span></a>`,
+			`<nav aria-label="Content type"`, `<a href="/" class=`, `All<span class="tabular-nums opacity-85">8</span></a>`,
 			`<a href="/?type=image" aria-current="true" class=`, "bg-accent-soft text-accent-text", `<svg class="icon size-3 text-info-fg"`, "Helm charts</a>",
 		},
 	},
@@ -106,7 +106,7 @@ var partialCases = []struct {
 	{"pill", `{{template "pill" (dict "Icon" "hash" "Text" "3f2a9c1b7e44" "Mono" true)}}`, []string{"rounded-sm border", `<span class="truncate font-mono">3f2a9c1b7e44</span>`}},
 	{
 		"pill copy", `{{template "pill" (dict "Icon" "hash" "Text" "3f2a9c1b7e44" "Mono" true "Copy" "sha256:3f2a")}}`,
-		[]string{`data-copy="sha256:3f2a" aria-label="Copy digest"`, "group-data-copied:block"},
+		[]string{`data-copy="sha256:3f2a" aria-label="Copy digest"`, "group-data-copied:block", `<span data-copy-label aria-live="polite" class="sr-only"></span></button>`},
 	},
 	{
 		"pill time", `{{template "pill" (dict "Icon" "history" "Text" "Updated " "Time" . "Title" "{}: when it was pushed")}}`,
@@ -154,8 +154,9 @@ var partialCases = []struct {
 	{"skeleton", `<p aria-busy="true">{{template "skeleton" "w-1/2"}}</p>`, []string{`<span aria-hidden="true" class="inline-block`, "w-1/2"}},
 	{
 		"empty", `{{template "empty" (dict "Title" "No tags match “zzz”" "Href" "/library/nginx" "Link" "Clear the filter")}}`,
-		[]string{"border-dashed", "No tags match “zzz”", `<a href="/library/nginx"`, "Clear the filter</a>"},
+		[]string{"border-dashed", `<p class="font-medium text-text">No tags match “zzz”</p>`, `<a href="/library/nginx"`, "Clear the filter</a>"},
 	},
+	{"empty heading", `{{template "empty" (dict "Title" "Digest not found" "Heading" true)}}`, []string{`<h1 class="font-medium text-text">Digest not found</h1>`}},
 	{
 		"error-state", `{{template "error-state" (dict "Title" "Can't reach the registry" "Text" "registry:5000 refused the connection." "Retry" "/")}}`,
 		[]string{"bg-danger-bg", "Can&#39;t reach the registry", `<a href="/" class=`, "Retry</a>"},
@@ -166,7 +167,7 @@ var partialCases = []struct {
 	},
 	{
 		"repo-row loading", `{{template "repo-row" (dict "View" "comfortable" "Repo" "library/nginx" "Namespace" "library/" "Name" "nginx")}}`,
-		[]string{`<div data-row aria-busy="true" hx-get="/?fragment=row&amp;repo=library/nginx&amp;view=comfortable" hx-trigger="intersect once" hx-swap="outerHTML"`, `<a href="/?q=library/" aria-label="Repositories in library/" class=`, `>library/</a><a href="/library/nginx" class=`, `>nginx</a></div>`, "animate-pulse w-12"},
+		[]string{`<div data-row aria-busy="true" hx-get="/?fragment=row&amp;repo=library/nginx&amp;view=comfortable" hx-trigger="intersect once" hx-swap="outerHTML"`, `<a href="/?q=library/" aria-label="Repositories in library/" class=`, `id="ns:library/nginx">library/</a><a href="/library/nginx" class=`, `id="repo:library/nginx">nginx</a>`, `>nginx</a></div>`, "animate-pulse w-12"},
 	},
 	{
 		"repo-row loaded", `{{template "repo-row" (dict "View" "comfortable" "Repo" "charts/podinfo" "Namespace" "charts/" "Name" "podinfo" "Loaded" true "Helm" true "Tags" 1 "Tag" "6.7.1" "Description" "A chart." "Created" .)}}`,
@@ -180,7 +181,7 @@ var partialCases = []struct {
 		"repo-row detailed", `{{template "repo-row" (dict "View" "detailed" "Repo" "charts/podinfo" "Namespace" "charts/" "Name" "podinfo" "Loaded" true "Helm" true "Tags" 1 "Tag" "6.7.1" "Type" "helm" "Kind" "Helm chart" "Command" "helm pull oci://r/charts/podinfo --version 6.7.1" "Created" .)}}`,
 		[]string{
 			`<p class="h-5 truncate leading-5 text-muted"></p>`, `<dt>Newest tag</dt><dd><a href="/charts/podinfo:6.7.1" class="relative z-10`, "<dt>Type</dt><dd>Helm chart</dd>", `<dt>Tags</dt><dd class="tabular-nums">1</dd>`,
-			`<dt>Created</dt><dd><span class="relative z-10"><time `, "bg-code-bg", `</span>helm pull oci://r/charts/podinfo --version 6.7.1</code>`, `data-copy="helm pull oci://r/charts/podinfo --version 6.7.1" aria-label="Copy pull command" title="Copy pull command"`,
+			`<dt>Created</dt><dd><span class="relative z-10"><time `, "bg-code-bg", `</span>helm pull oci://r/charts/podinfo --version 6.7.1</code>`, `data-copy="helm pull oci://r/charts/podinfo --version 6.7.1" aria-label="Copy pull command" title="Copy pull command"`, `<span data-copy-label aria-live="polite" class="sr-only"></span></button>`,
 		},
 	},
 	{"repo-row failed", `{{template "repo-row" (dict "View" "compact" "Repo" "x/y" "Namespace" "x/" "Name" "y" "Failed" true)}}`, []string{"Couldn't load details"}},

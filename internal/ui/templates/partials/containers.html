@@ -43,11 +43,12 @@
 
 {{/* empty: nothing to show, such as a filter with no matches.
      dict "Icon" icon name (default "search"), "Title" string, "Text" string,
-          "Href" and "Link" for an optional way out ("Back to repositories"). */}}
+          "Href" and "Link" for an optional way out ("Back to repositories"),
+          "Heading" bool: the Title is the page's <h1>. */}}
 {{define "empty" -}}
 <div class="rounded-md border border-dashed border-border bg-surface px-5 py-12 text-center text-muted">
 <div class="mx-auto mb-3 grid size-12 place-items-center rounded-lg bg-panel text-faint">{{icon (or .Icon "search") "size-5"}}</div>
-{{- with .Title}}<p class="font-medium text-text">{{.}}</p>{{end}}
+{{- with .Title}}{{if $.Heading}}<h1 class="font-medium text-text">{{.}}</h1>{{else}}<p class="font-medium text-text">{{.}}</p>{{end}}{{end}}
 {{- with .Text}}<p class="mx-auto mt-1 max-w-prose">{{.}}</p>{{end}}
 {{- with .Href}}<a href="{{.}}" class="mt-3 inline-block font-medium text-accent-text hover:underline">{{$.Link}}</a>{{end}}
 </div>

@@ -135,11 +135,14 @@
   tagTotal();
 
   // Menus (<details data-menu>, the "sort-menu" partial) close on Escape,
-  // handing focus back to their button, or on a click outside them.
+  // handing focus back to their button, or on a click outside them. Picking
+  // an option focuses the button too: where htmx swaps the menu, it puts
+  // focus back on the new button by its id.
   document.addEventListener("click", (e) => {
     for (const menu of document.querySelectorAll("details[data-menu][open]")) {
       if (!menu.contains(e.target)) menu.open = false;
     }
+    e.target.closest("details[data-menu] li a")?.closest("details").querySelector("summary").focus();
   });
   document.addEventListener("keydown", (e) => {
     const menu = e.key === "Escape" && e.target.closest?.("details[data-menu][open]");

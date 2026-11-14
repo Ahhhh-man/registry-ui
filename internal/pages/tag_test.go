@@ -149,7 +149,7 @@ func TestTagPage(t *testing.T) {
 		{
 			name: "helm", path: "/charts/podinfo:6.7.1", status: 200, cards: 1,
 			want: []string{
-				"</svg>helm chart</span>", ">Helm chart</span></h3>", ">14 KB</span>", ">OCI artifact</dd>",
+				"</svg>helm chart</span>", `<h2 class="sr-only">Contents</h2>`, ">Helm chart</span></h3>", ">14 KB</span>", ">OCI artifact</dd>",
 				">helm pull oci://registry.example.com/charts/podinfo --version 6.7.1</code>", `data-copy="` + chart.Digest + `"`,
 				`data-copy="registry.example.com/charts/podinfo:6.7.1" class=`, // no oci://
 			},
@@ -179,11 +179,11 @@ func TestTagPage(t *testing.T) {
 		},
 		{
 			name: "unknown tag", path: "/library/nginx:9.9.9", status: 404,
-			want: []string{"Tag “9.9.9” doesn&#39;t exist", `<a href="/library/nginx" class="mt-3`, "Back to library/nginx"},
+			want: []string{`<h1 class="font-medium text-text">Tag “9.9.9” doesn&#39;t exist</h1>`, `<a href="/library/nginx" class="mt-3`, "Back to library/nginx"},
 		},
 		{
 			name: "unknown digest", path: "/library/nginx@sha256:" + strings.Repeat("0", 64), status: 404,
-			want: []string{"Digest not found", "Back to library/nginx"},
+			want: []string{`<h1 class="font-medium text-text">Digest not found</h1>`, "Back to library/nginx"},
 		},
 		{
 			name: "unknown repo", path: "/nope/nope:1", status: 404,
