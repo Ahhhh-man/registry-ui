@@ -233,3 +233,23 @@ func TestCacheReturnsCopies(t *testing.T) {
 		}
 	})
 }
+
+// BenchmarkCacheHit looks up a manifest the cache holds, as a page does for
+// each tag or repository it shows once the cache is warm. Signed in, the key
+// carries a hash of the credentials.
+func BenchmarkCacheHit(b *testing.B) {
+	hit := func(b *testing.B, ctx context.Context) {
+		src := &counter{}
+		c := NewCache(src)
+		_, _ = c.Resolve(ctx, "repo", "tag")
+		b.ReportAllocs()
+		for b.Loop() {
+			_, _ = c.Resolve(ctx, "repo", "tag")
+		}
+		if n := src.calls.Load(); n != 1 {
+			b.Fatalf("upstream calls = %d, want 1", n)
+		}
+	}
+	b.Run("anonymous", func(b *testing.B) { hit(b, context.Background()) })
+	b.Run("signed-in", func(b *testing.B) { hit(b, WithCredentials(context.Background(), "alice", "secret")) })
+}

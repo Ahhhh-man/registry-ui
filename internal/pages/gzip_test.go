@@ -124,23 +124,3 @@ func TestGzipLeavesStaticFilesAlone(t *testing.T) {
 		}
 	}
 }
-
-// BenchmarkCatalog renders a 2,000 repository catalog through the whole
-// handler chain, and reports the size of the response.
-func BenchmarkCatalog(b *testing.B) {
-	s, h := newGzipUI(b)
-	repos := make([]string, 2000)
-	for i := range repos {
-		repos[i] = fmt.Sprintf("team-%02d/service-%04d", i%40, i)
-	}
-	s.Src = &countingSource{Source: s.Src, repos: repos}
-	for _, accept := range []string{"", "gzip"} {
-		b.Run("accept="+accept, func(b *testing.B) {
-			var size int
-			for b.Loop() {
-				size = serve(h, http.MethodGet, "/", accept, false).Body.Len()
-			}
-			b.ReportMetric(float64(size), "bytes/response")
-		})
-	}
-}
