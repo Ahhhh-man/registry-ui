@@ -46,7 +46,7 @@
 {{- if .Command}}
 <div class="relative z-10 mt-auto flex h-9 items-center gap-2 rounded-md border border-border bg-code-bg pr-1 pl-3 text-code-fg">
 <code class="min-w-0 flex-1 truncate font-mono text-xs" title="{{.Command}}"><span class="text-code-fg/50 select-none" aria-hidden="true">$ </span>{{.Command}}</code>
-<button type="button" data-copy="{{.Command}}" aria-label="Copy pull command" title="Copy pull command" class="group grid shrink-0 place-items-center rounded-sm p-1.5 text-code-fg/70 outline-offset-0 hover:bg-code-fg/10 hover:text-code-fg data-copied:text-code-fg">{{icon "copy" "group-data-copied:hidden"}}{{icon "check" "hidden group-data-copied:block"}}</button>
+<button type="button" data-copy="{{.Command}}" aria-label="Copy pull command" title="Copy pull command" class="group grid shrink-0 place-items-center rounded-sm p-1.5 text-code-fg/70 outline-offset-0 hover:bg-code-fg/10 hover:text-code-fg data-copied:text-code-fg">{{icon "copy" "group-data-copied:hidden"}}{{icon "check" "hidden group-data-copied:block"}}<span data-copy-label aria-live="polite" class="sr-only"></span></button>
 </div>
 {{- else if not .Loaded}}<div aria-hidden="true" class="mt-auto h-9 rounded-md bg-border motion-safe:animate-pulse"></div>{{end}}
 {{- end}}
@@ -73,7 +73,7 @@
 <span class="shrink-0{{if $empty}} opacity-50{{end}}">{{template "repo-tile" (dict "Repo" .Repo "Helm" .Helm "Small" (eq .View "compact"))}}</span>
 <div class="min-w-0 flex-1">
 {{- /* The padding leaves room for the namespace's focus ring inside the truncation. */}}
-<div class="-mx-1 truncate px-1{{if ne .View "compact"}} text-base{{end}} font-semibold{{if $empty}} text-muted{{end}}">{{with .Namespace}}<a href="{{print catalogURL "?q=" .}}" aria-label="Repositories in {{.}}" class="relative z-10 rounded-sm font-medium text-faint outline-offset-0 hover:underline">{{.}}</a>{{end}}<a href="{{repoURL .Repo}}" class="after:absolute focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-accent {{if eq .View "compact"}}after:inset-0 focus-visible:after:-outline-offset-2{{else}}after:-inset-px after:rounded-md focus-visible:after:outline-offset-2{{end}}">{{.Name}}</a></div>
+<div class="-mx-1 truncate px-1{{if ne .View "compact"}} text-base{{end}} font-semibold{{if $empty}} text-muted{{end}}">{{with .Namespace}}<a href="{{print catalogURL "?q=" .}}" aria-label="Repositories in {{.}}" class="relative z-10 rounded-sm font-medium text-faint outline-offset-0 hover:underline" id="ns:{{$.Repo}}">{{.}}</a>{{end}}<a href="{{repoURL .Repo}}" class="after:absolute focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-accent {{if eq .View "compact"}}after:inset-0 focus-visible:after:-outline-offset-2{{else}}after:-inset-px after:rounded-md focus-visible:after:outline-offset-2{{end}}" id="repo:{{.Repo}}">{{.Name}}</a></div>
 {{- if and .Description (eq .View "comfortable")}}<div class="mt-0.5 truncate text-muted">{{.Description}}</div>{{end}}
 </div>
 {{- end}}

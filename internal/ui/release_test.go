@@ -77,7 +77,7 @@ func TestLayout(t *testing.T) {
 	}
 	for theme, html := range map[string]string{"": `<html lang="en">`, "dark": `<html lang="en" class="dark">`, "light": `<html lang="en" class="light">`} {
 		var b strings.Builder
-		page := Page{Title: "registry.example.com", PageTitle: "nginx", Theme: theme, Query: `ngi"nx`, Body: "<p>placeholder</p>"}
+		page := Page{Title: "registry.example.com", PageTitle: "nginx", Theme: theme, Query: `ngi"nx`, Band: "<p>band</p>", Body: "<p>placeholder</p>"}
 		if err := tpl.ExecuteTemplate(&b, "layout", page); err != nil {
 			t.Fatal(err)
 		}
@@ -91,10 +91,16 @@ func TestLayout(t *testing.T) {
 			"<p>placeholder</p>",
 			`<span class="min-w-0 truncate font-semibold">registry.example.com</span>`,
 			"data-theme-toggle",
+			`role="search" aria-label="Repositories"`,
+			`data-hotkey="/" aria-keyshortcuts="/"`,
 		} {
 			if !strings.Contains(s, want) {
 				t.Errorf("theme %q: layout lacks %s", theme, want)
 			}
+		}
+		// The band is page content, so it's inside <main> with the body.
+		if _, main, _ := strings.Cut(s, "<main"); !strings.Contains(main, "<p>band</p>") || !strings.Contains(main, "<p>placeholder</p>") {
+			t.Errorf("theme %q: band or body outside <main>:\n%s", theme, s)
 		}
 		// The CSP forbids inline styles and scripts.
 		if strings.Contains(s, "style=") || strings.Contains(s, "<style") || strings.Count(s, "<script") != strings.Count(s, "<script src=") {

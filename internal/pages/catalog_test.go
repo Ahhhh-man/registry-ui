@@ -207,9 +207,10 @@ func TestCatalogRow(t *testing.T) {
 	}
 }
 
-// segmented returns the segmented control named label in body.
+// segmented returns the segmented control named label in body: its form,
+// whose hidden inputs come before the labelled group of buttons.
 func segmented(body, label string) string {
-	return regexp.MustCompile(`(?s)<form method="get" role="group" aria-label="` + label + `".*?</form>`).FindString(body)
+	return regexp.MustCompile(`(?s)<form method="get"[^>]*>(?:<input[^>]*>)*\n<div role="group" aria-label="` + label + `".*?</form>`).FindString(body)
 }
 
 // pressed returns the label of the one pressed button of the segmented

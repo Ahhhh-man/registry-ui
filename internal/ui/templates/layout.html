@@ -23,12 +23,12 @@
     <span class="min-w-0 truncate font-semibold">{{.Title}}</span>
   </a>
   {{- if not .SignIn}}
-  <form action="{{catalogURL}}" method="get" role="search" class="relative order-last w-full sm:order-none">
+  <form action="{{catalogURL}}" method="get" role="search" aria-label="Repositories" class="relative order-last w-full sm:order-none">
     <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-faint">{{icon "search"}}</span>
     {{- with .Sort}}<input type="hidden" name="sort" value="{{.}}">{{end}}
     {{- with .Type}}<input type="hidden" name="type" value="{{.}}">{{end}}
     {{- with .View}}<input type="hidden" name="view" value="{{.}}">{{end}}
-    <input type="search" id="search" name="q" value="{{.Query}}" placeholder="Search repositories…" aria-label="Search repositories" autocomplete="off" data-hotkey="/"
+    <input type="search" id="search" name="q" value="{{.Query}}" placeholder="Search repositories…" aria-label="Search repositories" autocomplete="off" data-hotkey="/" aria-keyshortcuts="/"
       class="peer w-full rounded-md border border-transparent bg-panel py-2.5 pr-10 pl-10 text-[15px] text-text placeholder:text-muted focus:border-accent focus:bg-surface">
     <kbd class="pointer-events-none absolute top-1/2 right-2.5 hidden -translate-y-1/2 bg-surface text-faint sm:block sm:peer-focus:hidden" aria-hidden="true">/</kbd>
   </form>
@@ -48,11 +48,14 @@
     {{- end}}{{end}}
   </div>
 </header>
+{{- /* The band is the top of the page's content, so it sits in <main> too. */}}
+<main class="grow">
 {{- with .Band}}
 <div class="border-b border-border bg-panel"><div class="mx-auto w-full max-w-page px-4 py-6 sm:px-8">{{.}}</div></div>
 {{- end}}
-<main class="mx-auto w-full max-w-page grow px-4 py-6 sm:px-8">
+<div class="mx-auto w-full max-w-page px-4 py-6 sm:px-8">
 {{.Body}}
+</div>
 </main>
 <footer class="border-t border-border text-xs text-muted">
   <div class="mx-auto flex w-full max-w-page flex-col gap-x-6 gap-y-2 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8">

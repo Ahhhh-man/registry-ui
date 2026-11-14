@@ -23,6 +23,8 @@
 <section aria-label="{{if eq .Kind "image"}}Platforms{{else}}Contents{{end}}">
 {{- if eq .Kind "image"}}
 <h2 class="mb-3 text-base font-semibold">Platforms</h2>
+{{- else}}
+<h2 class="sr-only">Contents</h2>
 {{- end}}
 {{- if .Cards}}
 <div class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,320px),1fr))] gap-4">
@@ -55,8 +57,8 @@
 {{define "tag-not-found" -}}
 {{template "tag-breadcrumbs" .}}
 <div class="mt-6">
-{{- if .Missing}}{{template "empty" (dict "Icon" "triangle-alert" "Title" "Manifest missing" "Text" "The registry still lists this tag, but the manifest it points to is gone, usually after a delete or garbage collection." "Href" (repoURL .Repo) "Link" (print "Back to " .Repo))}}
-{{- else if .Tag}}{{template "empty" (dict "Title" (print "Tag “" .Tag "” doesn't exist") "Text" (print "There's no tag by that name in " .Repo ".") "Href" (repoURL .Repo) "Link" (print "Back to " .Repo))}}
-{{- else}}{{template "empty" (dict "Title" "Digest not found" "Text" (print "There's no manifest with that digest in " .Repo ".") "Href" (repoURL .Repo) "Link" (print "Back to " .Repo))}}{{end}}
+{{- if .Missing}}{{template "empty" (dict "Heading" true "Icon" "triangle-alert" "Title" "Manifest missing" "Text" "The registry still lists this tag, but the manifest it points to is gone, usually after a delete or garbage collection." "Href" (repoURL .Repo) "Link" (print "Back to " .Repo))}}
+{{- else if .Tag}}{{template "empty" (dict "Heading" true "Title" (print "Tag “" .Tag "” doesn't exist") "Text" (print "There's no tag by that name in " .Repo ".") "Href" (repoURL .Repo) "Link" (print "Back to " .Repo))}}
+{{- else}}{{template "empty" (dict "Heading" true "Title" "Digest not found" "Text" (print "There's no manifest with that digest in " .Repo ".") "Href" (repoURL .Repo) "Link" (print "Back to " .Repo))}}{{end}}
 </div>
 {{- end}}
