@@ -132,6 +132,29 @@ func TestCatalogFilter(t *testing.T) {
 	}
 }
 
+// A search or filter swap says how many repositories matched, for app.js to
+// read out from the status region, which sits outside the swapped list.
+func TestCatalogAnnounces(t *testing.T) {
+	rec, _ := getCatalog(t, "/", "/", false, nil)
+	body := rec.Body.String()
+	contains(t, body, `data-announce="8 repositories">`, `<div data-live role="status" class="sr-only"></div>`)
+	if strings.Index(body, "data-live") < strings.Index(body, "</section>") {
+		t.Error("the status region is inside the list htmx swaps")
+	}
+	for q, want := range map[string]string{
+		"bitnami/": `data-announce="2 repositories">`,
+		"Kafka":    `data-announce="1 repository">`,
+		"zzz":      `data-announce="No repositories match “zzz”">`,
+	} {
+		rec, _ := getCatalog(t, "/", "/?q="+q, true, nil)
+		contains(t, rec.Body.String(), want)
+	}
+	// A row filling in has nothing to say.
+	if rec, _ := getCatalog(t, "/", "/?fragment=row&repo=library/nginx", true, nil); strings.Contains(rec.Body.String(), "data-announce") {
+		t.Error("a row fragment announces")
+	}
+}
+
 // A query ending in "/" is a namespace, matched from the start of the name.
 func TestCatalogNamespaceFilter(t *testing.T) {
 	repos := []string{"library/nginx", "library/redis/exporter", "mirror/library/nginx", "my-library/app", "team/apps/api"}

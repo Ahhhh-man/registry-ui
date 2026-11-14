@@ -122,6 +122,20 @@
     field.select();
   });
 
+  // Search and filter results. A list htmx swaps in carries data-announce,
+  // its count or empty state's title, and the status region in the layout
+  // reads it out. Taking it away once read keeps the first page load, and
+  // rows that fill in later, quiet.
+  const announce = (say) => {
+    const from = document.querySelector("[data-announce]");
+    const live = document.querySelector("[data-live]");
+    if (!from) return;
+    if (say && live) live.textContent = from.dataset.announce;
+    from.removeAttribute("data-announce");
+  };
+  document.addEventListener("htmx:afterSettle", () => announce(true));
+  announce(false);
+
   // The catalog's Tags figure stays hidden until every row of the unfiltered
   // list has loaded its tag count (rows load as they scroll into view), then
   // shows their sum. Sorted by tag count or date, the rows arrive loaded.

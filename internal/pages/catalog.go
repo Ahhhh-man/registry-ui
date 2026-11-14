@@ -134,6 +134,19 @@ func (s *Server) Catalog(w http.ResponseWriter, r *http.Request, _ web.Ref) {
 	s.page(w, r, ui.Page{PageTitle: "Repositories", Query: q, Sort: data.Sort, Type: data.Type, View: data.Keep}, "catalog", data)
 }
 
+// Found is what a screen reader hears once a search or filter has swapped
+// the list: how many repositories matched, or Empty.
+func (c catalogPage) Found() string {
+	switch n := len(c.Rows); n {
+	case 0:
+		return c.Empty
+	case 1:
+		return "1 repository"
+	default:
+		return strconv.Itoa(n) + " repositories"
+	}
+}
+
 // filterRows keeps the rows whose latest (or newest) tag is of type t,
 // loading every row's details to find out. Without a type it costs nothing;
 // if it takes too long, the returned note says why the rows aren't filtered.
