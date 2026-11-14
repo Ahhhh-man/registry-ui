@@ -52,7 +52,7 @@ func TestRepoPage(t *testing.T) {
 		"Official build of Nginx",
 		">15 tags</span>", ">6 platforms</span>", `<time datetime="`, `UTC">Created 2 days ago</time>`,
 		`aria-current="page">nginx</li>`,
-		`data-hotkey="/"`, `hx-vals='{"fragment": "tags"}'`,
+		`data-hotkey `, `hx-vals='{"fragment": "tags"}'`,
 		"Version, newest first",
 		`value="list" aria-pressed="false" class=`, // cards unless asked
 		// Cards wait for their details until they scroll into view.
@@ -62,8 +62,8 @@ func TestRepoPage(t *testing.T) {
 			t.Errorf("page lacks %s", want)
 		}
 	}
-	if n := strings.Count(body, `data-hotkey="/"`); n != 1 {
-		t.Errorf("%d fields take /; only the header search should", n)
+	if n := strings.Count(body, `data-hotkey `); n != 1 {
+		t.Errorf("%d fields take Ctrl+K; only the header search should", n)
 	}
 	// latest is pinned; words sort above numbers; 1.10 is newer than 1.9.
 	if got := strings.Join(cardTags(body), " "); !strings.HasPrefix(got, "latest stable sha256-") || !strings.HasSuffix(got, "1.25.5 1.10.3 1.9.15") {

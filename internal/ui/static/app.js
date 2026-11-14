@@ -94,9 +94,14 @@
   document.addEventListener("htmx:afterSettle", localTimes);
   localTimes();
 
-  // "/" focuses the header search ([data-hotkey="/"]) on every page. Esc in
-  // any search field clears it, then leaves it; the input event lets an htmx
-  // filter catch up.
+  // Ctrl+K, or ⌘K on macOS, focuses the header search ([data-hotkey]) on
+  // every page, even from inside another field. A single-key shortcut would
+  // fire while speech-input users talk (WCAG 2.1.4). Esc in any search field
+  // clears it, then leaves it; the input event lets an htmx filter catch up.
+  if (/Mac|iPhone|iPad/.test(navigator.platform)) {
+    const hint = document.querySelector("[data-hotkey-hint]");
+    if (hint) hint.textContent = "⌘K";
+  }
   document.addEventListener("keydown", (e) => {
     const t = e.target;
     if (e.key === "Escape" && t.matches?.('input[type="search"]')) {
@@ -109,9 +114,8 @@
       }
       return;
     }
-    if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
-    if (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
-    const field = document.querySelector('[data-hotkey="/"]');
+    if (e.key?.toLowerCase() !== "k" || !(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.defaultPrevented) return;
+    const field = document.querySelector("[data-hotkey]");
     if (!field) return;
     e.preventDefault();
     field.focus();
