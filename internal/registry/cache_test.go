@@ -46,6 +46,11 @@ func (s *counter) Resolve(ctx context.Context, _, ref string) (Manifest, error) 
 	return Manifest{Digest: ref, Platforms: []Platform{{OS: "linux"}}}, err
 }
 
+func (s *counter) Digest(ctx context.Context, _, tag string) (string, error) {
+	_, err := s.call(ctx)
+	return tag, err
+}
+
 func (s *counter) Config(ctx context.Context, _, _ string) (ImageConfig, error) {
 	who, err := s.call(ctx)
 	return ImageConfig{Labels: map[string]string{"who": who}}, err
@@ -72,6 +77,32 @@ func (s *counter) want(t *testing.T, n int32) {
 
 // Every test runs in a synctest bubble: time is fake, and the test fails if
 // the cache leaves a goroutine running.
+// A tag's digest comes from its lookup while that's fresh, and is cached
+// on its own otherwise.
+func TestCacheDigest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
+		src := &counter{}
+		c := NewCache(src)
+		if _, err := c.Resolve(ctx, "r", "a"); err != nil {
+			t.Fatal(err)
+		}
+		if d, err := c.Digest(ctx, "r", "a"); err != nil || d != "a" {
+			t.Fatalf("Digest = %s, %v", d, err)
+		}
+		src.want(t, 1)
+		for range 2 {
+			if d, err := c.Digest(ctx, "r", "b"); err != nil || d != "b" {
+				t.Fatalf("Digest = %s, %v", d, err)
+			}
+		}
+		src.want(t, 2)
+		time.Sleep(cacheTTL)
+		_, _ = c.Digest(ctx, "r", "a")
+		src.want(t, 3)
+	})
+}
+
 func TestCacheTTL(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := t.Context()

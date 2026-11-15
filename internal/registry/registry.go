@@ -24,6 +24,11 @@ type Source interface {
 	// Attestation manifests inside an index are left out of Platforms.
 	Resolve(ctx context.Context, repo, ref string) (Manifest, error)
 
+	// Digest returns the digest of the manifest tag points at, as Resolve
+	// would, but without reading the manifest where it can: the API asks
+	// with a HEAD request.
+	Digest(ctx context.Context, repo, tag string) (string, error)
+
 	// Config returns the image config with the given digest, usually a
 	// Platform.Config value.
 	Config(ctx context.Context, repo, digest string) (ImageConfig, error)

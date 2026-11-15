@@ -120,6 +120,18 @@ func (s *Storage) Resolve(_ context.Context, repo, ref string) (Manifest, error)
 	return m, nil
 }
 
+// Digest implements Source.
+func (s *Storage) Digest(_ context.Context, repo, tag string) (string, error) {
+	d, err := "", ErrNotFound
+	if repoName.MatchString(repo) && tagName.MatchString(tag) {
+		d, err = s.tag(repo, tag)
+	}
+	if err != nil {
+		return "", s.fail("manifest "+repo+":"+tag, err)
+	}
+	return d, nil
+}
+
 func (s *Storage) resolve(repo, ref string) (Manifest, error) {
 	if !repoName.MatchString(repo) {
 		return Manifest{}, ErrNotFound

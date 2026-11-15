@@ -146,6 +146,12 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 		{"index with a platform missing", registrytest.RepoSomeMissing, registrytest.TagVersion, someMissing},
 		{"index with every platform missing", registrytest.RepoAllMissing, registrytest.TagVersion, allMissing},
 	} {
+		// Before Resolve, so a Cache asks its source rather than its lookup.
+		if !strings.HasPrefix(tc.ref, "sha256:") {
+			if d, err := s.Digest(ctx, tc.repo, tc.ref); err != nil || d != tc.want.Digest {
+				t.Errorf("%s: Digest(%s, %s) = %s, %v; want %s", tc.name, tc.repo, tc.ref, d, err, tc.want.Digest)
+			}
+		}
 		m, err := s.Resolve(ctx, tc.repo, tc.ref)
 		if err != nil || !manifestEqual(m, tc.want) {
 			t.Errorf("%s: Resolve(%s, %s) = %+v, %v\nwant %+v", tc.name, tc.repo, tc.ref, m, err, tc.want)
@@ -220,6 +226,9 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 		{"unknown digest", func() error { _, err := s.Resolve(ctx, registrytest.RepoIndex, zero); return err }},
 		{"digest from another repo", func() error { _, err := s.Resolve(ctx, registrytest.RepoSingle, index.Digest); return err }},
 		{"tag whose manifest is gone", func() error { _, err := s.Resolve(ctx, registrytest.RepoDangling, registrytest.TagLatest); return err }},
+		{"digest of a tag whose manifest is gone", func() error { _, err := s.Digest(ctx, registrytest.RepoDangling, registrytest.TagLatest); return err }},
+		{"digest of an unknown tag", func() error { _, err := s.Digest(ctx, registrytest.RepoIndex, "0.0.0"); return err }},
+		{"digest of an invalid tag", func() error { _, err := s.Digest(ctx, registrytest.RepoIndex, "../1.36"); return err }},
 		{"missing platform by digest", func() error { _, err := s.Resolve(ctx, registrytest.RepoSomeMissing, platforms[1].Digest); return err }},
 		{"malformed config digest", func() error { _, err := s.Config(ctx, registrytest.RepoIndex, "sha256:00"); return err }},
 		{"unknown config digest", func() error { _, err := s.Config(ctx, registrytest.RepoIndex, zero); return err }},
