@@ -8,6 +8,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -346,6 +347,91 @@ func TestRepoOverview(t *testing.T) {
 	if rec := get(t, s, "/", "/library/nginx?tab=overview&fragment=summary&tag=nope", true); rec.Code != 404 {
 		t.Errorf("unknown tag summary: %d", rec.Code)
 	}
+}
+
+func TestRepoImages(t *testing.T) {
+	s := newTestServer(t, "/")
+	if body := get(t, s, "/", "/library/nginx", false).Body.String(); !strings.Contains(body, `hx-get="/library/nginx?fragment=images" hx-trigger="load"`) || strings.Contains(body, `<ul class="divide-y`) {
+		t.Error("the overview should load Tags by image on its own")
+	}
+
+	// lines returns the fragment's lines of tags, by title.
+	lines := func(path string) ([]string, string) {
+		t.Helper()
+		rec := get(t, s, "/", path, true)
+		body := rec.Body.String()
+		if rec.Code != 200 || strings.Contains(body, "<!doctype html>") || strings.Contains(body, "hx-get") {
+			t.Fatalf("%s: status %d\n%s", path, rec.Code, body)
+		}
+		checkMarkup(t, body)
+		var out []string
+		for _, li := range strings.Split(body, "<li ")[1:] {
+			var tags []string
+			for _, m := range regexp.MustCompile(`title="([^"]+)"`).FindAllStringSubmatch(li, -1) {
+				tags = append(tags, m[1])
+			}
+			out = append(out, strings.Join(tags, " "))
+		}
+		return out, body
+	}
+
+	m, _ := s.Src.Resolve(context.Background(), "library/nginx", "1.27.3")
+	sig := "sha256-" + strings.TrimPrefix(m.Digest, "sha256:") + ".sig"
+	got, body := lines("/library/nginx?fragment=images")
+	// Aliases share a line, and the signature joins the image it signs, last.
+	for _, want := range []string{"latest mainline 1.27.3 1.27 " + sig, "stable 1.26.2 1.26", "1.9.15"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("lines lack %q:\n%s", want, strings.Join(got, "\n"))
+		}
+	}
+	if len(got) != 9 || !strings.Contains(body, ">sha256-"+sig[7:19]+"….sig</a>") || strings.Contains(body, "Showing") {
+		t.Errorf("lines:\n%s", body)
+	}
+
+	got, body = lines("/myteam/api?fragment=images")
+	if len(got) != 4 || slices.Contains(got, "v1.3.1") || !strings.Contains(body, "1 tag whose manifest is missing is left out.") {
+		t.Errorf("a missing manifest should be left out and noted:\n%s", body)
+	}
+
+	src := &digests{Source: s.Src}
+	s.Src = src
+	got, body = lines("/many?fragment=images")
+	if len(got) != 2 || strings.Count(got[0], " ")+strings.Count(got[1], " ") != 498 || !strings.Contains(body, "Showing the first 500 of 600 tags, in version order.") {
+		t.Errorf("a big repo should stop at 500 tags:\n%s", strings.Join(got, "\n"))
+	}
+	if !slices.Contains(strings.Fields(got[0]), "v600") || src.calls.Load() != 500 {
+		t.Errorf("looked up %d tags, the newest first? %s", src.calls.Load(), got[0])
+	}
+
+	src.err = registry.ErrUnavailable
+	if rec := get(t, s, "/", "/many?fragment=images", true); rec.Code != 502 {
+		t.Errorf("a failing registry: %d", rec.Code)
+	}
+}
+
+// digests is a Source whose repository "many" has 600 tags, the even ones
+// one image and the odd ones another.
+type digests struct {
+	registry.Source
+	calls atomic.Int32
+	err   error
+}
+
+func (d *digests) Tags(ctx context.Context, repo string) ([]string, error) {
+	if repo != "many" {
+		return d.Source.Tags(ctx, repo)
+	}
+	tags := make([]string, 600)
+	for i := range tags {
+		tags[i] = fmt.Sprintf("v%d", i+1)
+	}
+	return tags, nil
+}
+
+func (d *digests) Digest(_ context.Context, _, tag string) (string, error) {
+	d.calls.Add(1)
+	n, _ := strconv.Atoi(tag[1:])
+	return fmt.Sprintf("sha256:%064d", n%2), d.err
 }
 
 // labelled is a Source whose image configs all carry the given labels.

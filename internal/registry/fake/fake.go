@@ -286,6 +286,12 @@ func (s *Source) Resolve(_ context.Context, name, ref string) (registry.Manifest
 	return m, nil
 }
 
+// Digest implements registry.Source.
+func (s *Source) Digest(ctx context.Context, name, tag string) (string, error) {
+	m, err := s.Resolve(ctx, name, tag)
+	return m.Digest, err
+}
+
 // Config implements registry.Source.
 func (s *Source) Config(_ context.Context, name, dgst string) (registry.ImageConfig, error) {
 	r, err := s.repo(name)

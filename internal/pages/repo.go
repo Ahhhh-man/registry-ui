@@ -25,7 +25,10 @@ const (
 	// resolveLimit caps the manifest lookups one page makes at once.
 	resolveLimit = 8
 	// sameAsShown is how many "Same as" tags a card names before "+N".
-	sameAsShown      = 3
+	sameAsShown = 3
+	// imagesShown caps the tags "Tags by image" looks up, so one panel
+	// doesn't ask the registry about thousands of tags.
+	imagesShown      = 500
 	labelDescription = "org.opencontainers.image.description"
 	labelSource      = "org.opencontainers.image.source"
 	labelURL         = "org.opencontainers.image.url"
@@ -67,13 +70,28 @@ type repoView struct {
 	Prev, Next            string // pagination links, "" at either end
 
 	// The Overview tab: the tag whose labels fill About, its links,
-	// every tag for the dropdown, and the selected tag's summary.
+	// "Tags by image" while it loads, every tag for the dropdown, and the
+	// selected tag's summary.
 	Overview bool
 	LabelTag string
 	Links    []link
+	Images   imagesView
 	Tags     []string
 	Summary  tagCard
 }
+
+// imagesView is the data for "repo-images", the Overview's "Tags by image":
+// a line of tags per image, in the order of each line's first tag.
+type imagesView struct {
+	Repo         string
+	Load         string // URL of the panel with its lines, while they're still to come
+	Images       [][]tagChip
+	Shown, Total int    // Shown is less than Total when a big repo is cut short
+	Missing      int    // tags left out because their manifest is missing
+	Note         string // why some tags are left out, when the registry was too slow
+}
+
+type tagChip struct{ Tag, Label string }
 
 type pill struct {
 	Icon, Text, Copy string    // Copy: optional text for the pill's copy button
@@ -434,7 +452,7 @@ func tagsTab(q url.Values, fragment string) bool {
 		return false
 	}
 	if fragment != "" {
-		return fragment != "summary"
+		return fragment != "summary" && fragment != "images"
 	}
 	return q.Has("q") || q.Has("view") || q.Has("sort") || q.Has("type") || q.Has("page")
 }
@@ -544,9 +562,15 @@ func command(host, repo, tag string, kind registry.Kind) string {
 }
 
 // overview serves the Overview tab. Its fragment "summary" is the summary
-// of ?tag=, which the tag dropdown swaps in.
+// of ?tag=, which the tag dropdown swaps in, and "images" is "Tags by
+// image", which loads on its own so its lookups don't hold up the page.
 func (s *Server) overview(w http.ResponseWriter, r *http.Request, v *repoView, tags []string) {
+	if web.Fragment(r) == "images" {
+		s.images(w, r, v.Repo, tags)
+		return
+	}
 	v.Overview, v.Tags = true, tags
+	v.Images = imagesView{Repo: v.Repo, Load: r.URL.EscapedPath() + "?fragment=images"}
 	tag, summary := r.URL.Query().Get("tag"), web.Fragment(r) == "summary"
 	if !summary {
 		s.header(r.Context(), v, tags)
@@ -575,6 +599,52 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request, v *repoView, t
 		return
 	}
 	s.page(w, r, ui.Page{PageTitle: v.Repo}, "repo", v)
+}
+
+// images answers "Tags by image": tags, which arrive in version order, as a
+// line per digest. A cosign tag names the digest it signs, so it joins
+// that image's line, after its tags, without a lookup. Only the first
+// imagesShown tags are looked up.
+func (s *Server) images(w http.ResponseWriter, r *http.Request, repo string, tags []string) {
+	v := imagesView{Repo: repo, Total: len(tags)}
+	tags = tags[:min(len(tags), imagesShown)]
+	v.Shown = len(tags)
+	digests := make([]string, len(tags))
+	errs := make([]error, len(tags))
+	if fetchAll(r.Context(), len(tags), func(ctx context.Context, i int) {
+		if sm := sigTag.FindStringSubmatch(tags[i]); sm != nil {
+			digests[i] = "sha256:" + sm[1]
+		} else {
+			digests[i], errs[i] = s.Src.Digest(ctx, repo, tags[i])
+		}
+	}) != nil {
+		v.Note = "The registry took too long to answer for every tag, so some are left out."
+	}
+	for _, err := range errs {
+		switch {
+		case err == nil, v.Note != "":
+		case errors.Is(err, registry.ErrNotFound):
+			v.Missing++
+		default:
+			web.Error(w, r, err)
+			return
+		}
+	}
+	line := map[string]int{}
+	for _, sigs := range []bool{false, true} {
+		for i, t := range tags {
+			if digests[i] == "" || sigTag.MatchString(t) != sigs {
+				continue
+			}
+			j, ok := line[digests[i]]
+			if !ok {
+				j, line[digests[i]] = len(v.Images), len(v.Images)
+				v.Images = append(v.Images, nil)
+			}
+			v.Images[j] = append(v.Images[j], tagChip{t, tagLabel(t)})
+		}
+	}
+	s.fragment(w, r, "repo-images", v)
 }
 
 // resolveAll resolves tags in parallel, resolveLimit at a time.

@@ -98,6 +98,14 @@ func (c *Cache) Resolve(ctx context.Context, repo, ref string) (Manifest, error)
 	return m, err
 }
 
+// Digest implements Source. A tag's fresh lookup already knows its digest.
+func (c *Cache) Digest(ctx context.Context, repo, tag string) (string, error) {
+	if m, fresh := c.get(entryKey(ctx, "manifest", repo, tag)); fresh {
+		return m.(Manifest).Digest, nil
+	}
+	return cached(ctx, c, cacheTTL, func(ctx context.Context) (string, error) { return c.src.Digest(ctx, repo, tag) }, "digest", repo, tag)
+}
+
 // Config implements Source.
 func (c *Cache) Config(ctx context.Context, repo, digest string) (ImageConfig, error) {
 	cfg, err := cached(ctx, c, 0, func(ctx context.Context) (ImageConfig, error) { return c.src.Config(ctx, repo, digest) }, "config", repo, digest)

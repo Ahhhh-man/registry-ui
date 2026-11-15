@@ -230,6 +230,35 @@ func (a *API) Resolve(ctx context.Context, repo, ref string) (Manifest, error) {
 	return m, nil
 }
 
+// Digest implements Source with a HEAD request, which Docker Hub doesn't
+// count against its pull limit. A registry whose HEAD answer leaves out the
+// digest or the size is asked with a GET instead.
+func (a *API) Digest(ctx context.Context, repo, tag string) (string, error) {
+	r, err := a.repo(repo)
+	if err != nil {
+		return "", err
+	}
+	if !tagName.MatchString(tag) {
+		return "", fmt.Errorf("manifest %s:%s: %w", repo, tag, ErrNotFound)
+	}
+	ctx, c := a.call(ctx)
+	p, err := a.puller(ctx, c, repo)
+	if err != nil {
+		return "", err
+	}
+	desc, err := p.Head(ctx, r.Tag(tag))
+	if te := (*transport.Error)(nil); err != nil && !errors.As(err, &te) {
+		var got *remote.Descriptor
+		if got, err = p.Get(ctx, r.Tag(tag)); err == nil {
+			desc = &got.Descriptor
+		}
+	}
+	if err != nil {
+		return "", c.fail("manifest "+repo+":"+tag, err)
+	}
+	return desc.Digest.String(), nil
+}
+
 func resolve(ctx context.Context, p *remote.Puller, repo name.Repository, ref name.Reference) (Manifest, error) {
 	desc, err := p.Get(ctx, ref)
 	if err != nil {

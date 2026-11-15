@@ -50,7 +50,8 @@
      a summary of one tag, which the dropdown swaps without a reload. */}}
 {{define "repo-overview" -}}
 <div class="mt-5 grid items-start gap-5 lg:grid-cols-[1fr_22.5rem]">
-<section class="min-w-0 {{template "panel"}}">
+<div class="flex min-w-0 flex-col gap-5">
+<section class="{{template "panel"}}">
 {{template "panel-header" (dict "Icon" "book-open" "Title" "About")}}
 {{- if or .Description .Links}}
 {{- with .Description}}<p class="leading-relaxed">{{.}}</p>{{end}}
@@ -64,6 +65,8 @@
 <p class="text-muted">Nothing has been pushed to this repository.</p>
 {{- end}}
 </section>
+{{template "repo-images" .Images}}
+</div>
 {{- with .Summary.Tag}}
 <aside aria-labelledby="summary-title" class="min-w-0 {{template "panel"}}">
 <h2 id="summary-title" class="mb-4 text-base font-semibold">Tag summary</h2>
@@ -78,6 +81,28 @@
 </aside>
 {{- end}}
 </div>
+{{- end}}
+
+{{/* repo-images: "Tags by image" (a pages.imagesView), a line of tags per
+     image. It loads after the page, as it looks up every tag. */}}
+{{define "repo-images" -}}
+<section class="{{template "panel"}}"{{with .Load}} hx-get="{{.}}" hx-trigger="load" hx-swap="outerHTML" aria-busy="true"{{end}}>
+{{template "panel-header" (dict "Icon" "link" "Title" "Tags by image")}}
+{{- if .Load}}
+<div class="flex flex-col gap-3">{{template "skeleton" "w-2/3"}}{{template "skeleton" "w-1/2"}}{{template "skeleton" "w-1/3"}}</div>
+{{- else}}
+{{- with .Note}}<div class="mb-4">{{template "warning" .}}</div>{{end}}
+<ul class="divide-y divide-row-border">
+{{- range .Images}}
+<li class="flex flex-wrap items-center gap-1.5 py-2.5 first:pt-0 last:pb-0">
+{{- range .}}<a href="{{tagURL $.Repo .Tag}}" title="{{.Tag}}" class="rounded-sm border border-border bg-panel px-1.5 font-mono text-xs leading-6 hover:border-accent hover:text-accent-text">{{.Label}}</a>{{end -}}
+</li>
+{{- end}}
+</ul>
+{{- if lt .Shown .Total}}<p class="mt-4 text-xs text-muted">Showing the first {{.Shown}} of {{.Total}} tags, in version order.</p>{{end}}
+{{- with .Missing}}<p class="mt-4 text-xs text-muted">{{if eq . 1}}1 tag whose manifest is missing is{{else}}{{.}} tags whose manifests are missing are{{end}} left out.</p>{{end}}
+{{- end}}
+</section>
 {{- end}}
 
 {{/* repo-summary: one tag's facts and pull command (a pages.tagCard). */}}

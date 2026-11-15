@@ -118,6 +118,49 @@ func TestAPICheckToken(t *testing.T) {
 	}
 }
 
+// Digest asks with HEAD, and with GET when the registry's HEAD answer
+// leaves out the digest.
+func TestAPIDigestHead(t *testing.T) {
+	reg := registrytest.New(t)
+	want, err := newAPI(t, reg.URL).Resolve(t.Context(), registrytest.RepoIndex, registrytest.TagLatest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	up, _ := url.Parse(reg.URL)
+	proxy := httputil.NewSingleHostReverseProxy(up)
+	var mu sync.Mutex
+	var methods []string
+	var bare atomic.Bool
+	proxy.ModifyResponse = func(res *http.Response) error {
+		if bare.Load() && res.Request.Method == http.MethodHead {
+			res.Header.Del("Docker-Content-Digest")
+		}
+		return nil
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path != "/v2/" {
+			mu.Lock()
+			methods = append(methods, req.Method)
+			mu.Unlock()
+		}
+		proxy.ServeHTTP(w, req)
+	}))
+	t.Cleanup(srv.Close)
+
+	a := newAPI(t, srv.URL)
+	for _, b := range []bool{false, true} {
+		bare.Store(b)
+		methods = nil
+		d, err := a.Digest(t.Context(), registrytest.RepoIndex, registrytest.TagLatest)
+		if err != nil || d != want.Digest {
+			t.Errorf("bare HEAD %v: Digest = %s, %v; want %s", b, d, err, want.Digest)
+		}
+		if got, wantMethods := fmt.Sprint(methods), map[bool]string{false: "[HEAD]", true: "[HEAD GET]"}[b]; got != wantMethods {
+			t.Errorf("bare HEAD %v: requests %s, want %s", b, got, wantMethods)
+		}
+	}
+}
+
 // front is a proxy in front of a registry that counts the requests for each
 // path and can start refusing them all.
 type front struct {

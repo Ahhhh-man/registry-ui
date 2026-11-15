@@ -113,6 +113,11 @@ func (c *counted) Resolve(ctx context.Context, repo, ref string) (registry.Manif
 	return c.Source.Resolve(ctx, repo, ref)
 }
 
+func (c *counted) Digest(ctx context.Context, repo, tag string) (string, error) {
+	c.n.Add(1)
+	return c.Source.Digest(ctx, repo, tag)
+}
+
 func (c *counted) Config(ctx context.Context, repo, digest string) (registry.ImageConfig, error) {
 	c.n.Add(1)
 	return c.Source.Config(ctx, repo, digest)
