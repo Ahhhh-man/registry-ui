@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sync/errgroup"
 
@@ -240,8 +241,10 @@ func (s *Server) filterTags(ctx context.Context, repo string, tags []string, t s
 	err := fetchAll(ctx, len(tags), func(ctx context.Context, i int) {
 		if sigTag.MatchString(tags[i]) {
 			types[i] = "signature"
+		} else if sum, err := s.summariseTag(ctx, repo, tags[i]); err == nil {
+			types[i] = typeOf(sum.Kind)
 		} else if m, err := s.Src.Resolve(ctx, repo, tags[i]); err == nil {
-			types[i] = typeOf(m.Kind)
+			types[i] = typeOf(m.Kind) // the config failed, which the type doesn't need
 		}
 	})
 	if err != nil {
@@ -302,9 +305,7 @@ func (s *Server) sortTags(ctx context.Context, repo string, tags []string, by st
 			return
 		}
 		// What's missing on an error sorts last, and the card shows the error.
-		infos[i].tagSummary, _ = registry.Summary(ctx, s.Src, func(ctx context.Context, src registry.Source) (tagSummary, error) {
-			return readTagSummary(ctx, src, repo, tags[i])
-		}, "tag sort", repo, tags[i])
+		infos[i].tagSummary, _ = s.summariseTag(ctx, repo, tags[i])
 	})
 	if err != nil {
 		return "The registry took too long to describe every tag, so this list is in version order instead."
@@ -324,13 +325,27 @@ func (s *Server) sortTags(ctx context.Context, repo string, tags []string, by st
 	return ""
 }
 
-// tagSummary is what the created and size sorts compare of a tag. It's
-// kept as one small summary per tag rather than the manifest and config
-// it's read from, so a sort of thousands of tags fits in the cache.
+// tagSummary is what the created and size sorts compare of a tag, and
+// what the type filter reads. It's kept as one small summary per tag rather
+// than the manifest and config it's read from, so a sort or filter of
+// thousands of tags fits in the cache.
 type tagSummary struct {
+	Kind    registry.Kind
 	Created time.Time
 	Size    int64
 }
+
+// summariseTag returns tag's summary, cached. On an error, what was read
+// before it is still filled in.
+func (s *Server) summariseTag(ctx context.Context, repo, tag string) (tagSummary, error) {
+	return registry.Summary(ctx, s.Src, func(ctx context.Context, src registry.Source) (tagSummary, error) {
+		return readTagSummary(ctx, src, repo, tag)
+	}, "tag sort", repo, tag)
+}
+
+// CacheSize implements registry.Sizer, so a summary can be cached. A new
+// string, slice or map field needs adding here.
+func (t tagSummary) CacheSize() int { return int(unsafe.Sizeof(t)) }
 
 // readTagSummary reads tag's summary from src. Its size is the main
 // platform's, or the manifest's if there's none.
@@ -341,9 +356,9 @@ func readTagSummary(ctx context.Context, src registry.Source, repo, tag string) 
 	}
 	p, ok := mainPlatform(m)
 	if !ok {
-		return tagSummary{Size: m.Size}, nil
+		return tagSummary{Kind: m.Kind, Size: m.Size}, nil
 	}
-	sum := tagSummary{Size: p.Size}
+	sum := tagSummary{Kind: m.Kind, Size: p.Size}
 	cfg, err := src.Config(ctx, repo, p.Config)
 	if err != nil {
 		return sum, err

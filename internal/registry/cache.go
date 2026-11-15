@@ -4,24 +4,28 @@ import (
 	"container/list"
 	"context"
 	"crypto/sha256"
+	"fmt"
 	"hash/maphash"
 	"maps"
 	"slices"
 	"sync"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sync/singleflight"
 )
 
 const (
-	// cacheSize is how many entries the cache holds before evicting one. A
-	// catalog sort or type filter needs one per repository (its summary)
-	// and a repository's tag sort one per tag (its summary), plus a few
-	// hundred for the page of cards shown, for each signed-in user. This
-	// fits one user's sort of about 5,000 repositories or tags, and keeps
-	// the cache within the 15 MB idle memory budget: realistic entries cost
-	// 1–2 kB each, and a summary well under that.
-	cacheSize = 5500
+	// cacheSize is about how many bytes the cache's entries take, as
+	// entrySize estimates them, before it evicts one. A catalog sort or
+	// type filter needs one entry per repository (its summary, about 600
+	// bytes) and a repository's tag sort one per tag (its summary, about
+	// 300), plus the page of cards shown, for each signed-in user. Other
+	// realistic entries come to 250–1,000 bytes. This fits one user's sort
+	// of about 5,000 repositories or tags, and keeps the cache within the
+	// 15 MB idle memory budget. An entry bigger than a tenth of this isn't
+	// kept, so one huge tag list can't push everything else out.
+	cacheSize = 3_500_000
 	// cacheTTL is how long the catalog, tag lists, tag lookups, tag times
 	// and disk usage are trusted. Anything addressed by digest can't change, so it never expires.
 	cacheTTL = 30 * time.Second
@@ -44,14 +48,16 @@ type Cache struct {
 	// towards the newest, clearing the mark on visited entries and evicting
 	// the first one without it.
 	mu    sync.Mutex
-	max   int
+	max   int           // bytes
+	used  int           // bytes, by entrySize
 	order *list.List    // of *cacheEntry, newest first
 	hand  *list.Element // where the next eviction starts looking; nil: the oldest
 	items map[string]*list.Element
-	// gone holds hashes of the last max evicted keys, each mapped to its
-	// slot in ring. A key that comes back while it's here is being read in a
-	// cycle longer than the cache holds, such as a catalog sort, so it isn't
-	// kept the first time: keeping it would evict what the cycle needs next.
+	// gone holds hashes of the last evicted keys, as many as the cache held
+	// when it first evicted, each mapped to its slot in ring. A key that
+	// comes back while it's here is being read in a cycle longer than the
+	// cache holds, such as a catalog sort, so it isn't kept the first time:
+	// keeping it would evict what the cycle needs next.
 	seed maphash.Seed
 	gone map[uint64]int
 	ring []uint64
@@ -61,6 +67,7 @@ type Cache struct {
 type cacheEntry struct {
 	key     string
 	val     any
+	size    int
 	expires time.Time // zero: until evicted
 	visited bool
 }
@@ -130,7 +137,7 @@ func (c *Cache) DiskUsage(ctx context.Context, repo string) (int64, error) {
 // throwaway cache of its own, so the answers a summary is built from cost
 // no entries beside it. Like any entry, a summary is scoped to ctx's
 // identity and not kept when summarise fails.
-func Summary[T any](ctx context.Context, src Source, summarise func(context.Context, Source) (T, error), key ...string) (T, error) {
+func Summary[T Sizer](ctx context.Context, src Source, summarise func(context.Context, Source) (T, error), key ...string) (T, error) {
 	c, ok := src.(*Cache)
 	if !ok {
 		return summarise(ctx, src)
@@ -219,24 +226,41 @@ func (c *Cache) get(key string) (val any, fresh bool) {
 func (c *Cache) put(key string, val any, ttl time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	e := &cacheEntry{key: key, val: val}
+	e := &cacheEntry{key: key, val: val, size: entrySize(key, val)}
 	if ttl > 0 {
 		e.expires = time.Now().Add(ttl)
 	}
-	if el, ok := c.items[key]; ok {
+	el, ok := c.items[key]
+	if ok {
+		c.remove(el)
 		e.visited = true
-		el.Value = e
+	}
+	if e.size > cacheSize/10 {
 		return
 	}
-	if c.order.Len() >= c.max {
+	if !ok && c.used+e.size > c.max {
 		h := maphash.String(c.seed, key)
 		if _, ok := c.gone[h]; ok {
 			delete(c.gone, h)
 			return
 		}
+	}
+	for c.used+e.size > c.max {
 		c.evict()
 	}
+	c.used += e.size
 	c.items[key] = c.order.PushFront(e)
+}
+
+// remove drops el from the cache.
+func (c *Cache) remove(el *list.Element) {
+	if c.hand == el {
+		c.hand = el.Prev()
+	}
+	e := el.Value.(*cacheEntry)
+	c.order.Remove(el)
+	delete(c.items, e.key)
+	c.used -= e.size
 }
 
 // evict removes the first entry from the hand on that hasn't been visited
@@ -254,12 +278,11 @@ func (c *Cache) evict() {
 		}
 	}
 	c.hand = el.Prev()
-	c.order.Remove(el)
+	c.remove(el)
 	key := el.Value.(*cacheEntry).key
-	delete(c.items, key)
 
 	if c.ring == nil {
-		c.ring = make([]uint64, c.max)
+		c.ring = make([]uint64, c.order.Len()+1)
 	}
 	if old := c.ring[c.next]; c.gone[old] == c.next {
 		delete(c.gone, old)
@@ -267,4 +290,50 @@ func (c *Cache) evict() {
 	h := maphash.String(c.seed, key)
 	c.ring[c.next], c.gone[h] = h, c.next
 	c.next = (c.next + 1) % len(c.ring)
+}
+
+// entryOverhead estimates what an entry costs besides its key and value:
+// its list element, its cacheEntry, its slot in items, and once evicted,
+// in gone and ring.
+const entryOverhead = 200
+
+// Sizer is a value that roughly estimates the bytes it takes, as entrySize
+// does, so the cache can hold it as a Summary.
+type Sizer interface{ CacheSize() int }
+
+// entrySize roughly estimates the bytes an entry for key holding val
+// takes: fixed-size fields, string contents, slice elements and map
+// entries. Every type the cache holds needs a case, and a new string, slice
+// or map field needs adding to its type's case. TestEntrySize fails for a
+// Source method whose answer has no case.
+func entrySize(key string, val any) int {
+	n := entryOverhead + len(key)
+	switch v := val.(type) {
+	case Sizer:
+		n += v.CacheSize()
+	case []string:
+		n += int(unsafe.Sizeof(v))
+		for _, s := range v {
+			n += int(unsafe.Sizeof(s)) + len(s)
+		}
+	case string:
+		n += int(unsafe.Sizeof(v)) + len(v)
+	case Manifest:
+		n += int(unsafe.Sizeof(v)) + len(v.Digest) + len(v.MediaType)
+		for _, p := range v.Platforms {
+			n += int(unsafe.Sizeof(p)) + len(p.OS) + len(p.Arch) + len(p.Variant) + len(p.Digest) + len(p.MediaType) + len(p.Config)
+		}
+	case ImageConfig:
+		n += int(unsafe.Sizeof(v))
+		for k, l := range v.Labels {
+			n += 48 + len(k) + len(l) // two string headers and the map's own share
+		}
+	case time.Time:
+		n += int(unsafe.Sizeof(v))
+	case int64:
+		n += int(unsafe.Sizeof(v))
+	default:
+		panic(fmt.Sprintf("registry: no size estimate for a cached %T", val))
+	}
+	return n
 }

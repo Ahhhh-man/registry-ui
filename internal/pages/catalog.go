@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/Ahhhh-man/registry-ui/internal/format"
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
@@ -52,6 +53,12 @@ type catalogRow struct {
 	Type        string // its ?type=, "" for a repository without tags
 	Created     time.Time
 	updated     time.Time // its newest tag time, for the "updated" sort only
+}
+
+// CacheSize implements registry.Sizer, so a row can be cached as a summary. A
+// new string, slice or map field needs adding here.
+func (c catalogRow) CacheSize() int {
+	return int(unsafe.Sizeof(c)) + len(c.Repo) + len(c.View) + len(c.Tag) + len(c.Description) + len(c.Platforms) + len(c.Command) + len(c.Type)
 }
 
 // Namespace is the part of Repo before its name, "library/" or "".
