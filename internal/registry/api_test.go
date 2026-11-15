@@ -2,8 +2,12 @@ package registry_test
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -381,6 +385,59 @@ func TestAPIWithHeader(t *testing.T) {
 		if ok, been := seen[kind]; !been || !ok {
 			t.Errorf("%s requests: seen %v, all with headers %v", kind, been, ok)
 		}
+	}
+}
+
+// With WithClientCert, a registry that requires a client certificate serves
+// every kind of request. Without it, it serves none. Its server certificate
+// isn't trusted, so this also checks the pair works with insecure.
+func TestAPIWithClientCert(t *testing.T) {
+	up, err := url.Parse(registrytest.New(t).URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certPEM, keyPEM := registrytest.ClientCert(t)
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trusted := x509.NewCertPool()
+	trusted.AppendCertsFromPEM(certPEM)
+	proxy := httputil.NewSingleHostReverseProxy(up)
+	// The client takes 127.0.0.1 for a plain-HTTP registry and refuses an
+	// https next-page link from it, so serve first pages only.
+	proxy.ModifyResponse = func(r *http.Response) error { r.Header.Del("Link"); return nil }
+	srv := httptest.NewUnstartedServer(proxy)
+	srv.TLS = &tls.Config{ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: trusted}
+	srv.Config.ErrorLog = log.New(io.Discard, "", 0) // the refused handshakes
+	srv.StartTLS()
+	t.Cleanup(srv.Close)
+
+	without, err := registry.NewAPI(srv.URL, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := without.Catalog(t.Context()); err == nil {
+		t.Error("catalog without a client certificate: want an error")
+	}
+
+	a, err := registry.NewAPI(srv.URL, true, registry.WithClientCert(&cert))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	if _, err := a.Catalog(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Tags(ctx, registrytest.RepoIndex); err != nil {
+		t.Fatal(err)
+	}
+	m, err := a.Resolve(ctx, registrytest.RepoIndex, registrytest.TagLatest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Config(ctx, registrytest.RepoIndex, m.Platforms[0].Config); err != nil {
+		t.Fatal(err)
 	}
 }
 

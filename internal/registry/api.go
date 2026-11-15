@@ -89,12 +89,19 @@ type Option func(*apiOptions)
 
 type apiOptions struct {
 	header http.Header
+	cert   *tls.Certificate
 }
 
 // WithHeader sends header with every request to the registry's host. It is
 // not sent to other hosts, such as a token service or a blob redirect.
 func WithHeader(header http.Header) Option {
 	return func(o *apiOptions) { o.header = header }
+}
+
+// WithClientCert presents cert when a server asks for a client certificate
+// (mutual TLS). A nil cert presents none.
+func WithClientCert(cert *tls.Certificate) Option {
+	return func(o *apiOptions) { o.cert = cert }
 }
 
 // NewAPI returns a Source for the registry at registryURL, e.g.
@@ -117,8 +124,9 @@ func NewAPI(registryURL string, insecure bool, opts ...Option) (*API, error) {
 		return nil, fmt.Errorf("registry URL %q: %w", registryURL, err)
 	}
 	t := remote.DefaultTransport.(*http.Transport).Clone()
-	if insecure {
-		t.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	t.TLSClientConfig = &tls.Config{InsecureSkipVerify: insecure}
+	if o.cert != nil {
+		t.TLSClientConfig.Certificates = []tls.Certificate{*o.cert}
 	}
 	a.transport = roundTripper{inner: t, host: a.reg.RegistryStr(), header: o.header}
 	return a, nil

@@ -124,9 +124,12 @@ var newSource = func(cfg config.Config) (registry.Source, error) {
 		if len(cfg.RegistryHeaders) > 0 {
 			slog.Warn("storage mode: REGISTRY_UI_REGISTRY_HEADER_* is ignored, since the registry's API isn't used")
 		}
+		if cfg.RegistryClientCert != nil {
+			slog.Warn("storage mode: REGISTRY_UI_REGISTRY_CLIENT_CERT and REGISTRY_UI_REGISTRY_CLIENT_KEY are ignored, since the registry's API isn't used")
+		}
 		return registry.NewStorage(cfg.StoragePath)
 	}
-	return registry.NewAPI(cfg.RegistryURL.String(), cfg.RegistryInsecure, registry.WithHeader(cfg.RegistryHeaders))
+	return registry.NewAPI(cfg.RegistryURL.String(), cfg.RegistryInsecure, registry.WithHeader(cfg.RegistryHeaders), registry.WithClientCert(cfg.RegistryClientCert))
 }
 
 // healthcheck fetches one embedded static asset from the UI's own listener.
