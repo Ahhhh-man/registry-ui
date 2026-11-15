@@ -222,6 +222,35 @@ func (s *Storage) Config(_ context.Context, repo, digest string) (ImageConfig, e
 	return shown(cfg), nil
 }
 
+// History implements Source.
+func (s *Storage) History(_ context.Context, repo, digest string) (History, error) {
+	h, err := func() (History, error) {
+		if !repoName.MatchString(repo) {
+			return History{}, ErrNotFound
+		}
+		raw, err := s.manifest(repo, digest)
+		if err != nil {
+			return History{}, err
+		}
+		if !mediaType(raw).IsImage() {
+			return History{}, ErrNotFound
+		}
+		mf, err := v1.ParseManifest(bytes.NewReader(raw))
+		if err != nil {
+			return History{}, err
+		}
+		cfg, err := s.config(repo, mf.Config.Digest.String())
+		if err != nil {
+			return History{}, err
+		}
+		return history(mf, cfg), nil
+	}()
+	if err != nil {
+		return History{}, s.fail("history "+repo+"@"+digest, err)
+	}
+	return h, nil
+}
+
 // TagTime implements Source with the modification time of the tag's link.
 func (s *Storage) TagTime(_ context.Context, repo, tag string) (time.Time, error) {
 	if !repoName.MatchString(repo) || !tagName.MatchString(tag) {

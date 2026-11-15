@@ -86,13 +86,17 @@ func TestTagPage(t *testing.T) {
 				`data-copy="` + pull + "@" + amd64.Digest + `" aria-label="Copy pull command for linux/amd64"`,
 				`data-copy="registry.example.com/library/nginx@` + amd64.Digest + `" aria-label="Copy reference for linux/amd64"`,
 				`data-copy="` + arm64.Digest + `" aria-label="Copy digest of linux/arm64"`,
+				// Layers and history per platform: the main one's loads with
+				// the page, the others when they're opened.
+				`<h2 id="history-title" class="mb-3 text-base font-semibold">Layers and history</h2>`,
+				`<details open hx-get="/library/nginx@` + amd64.Digest + `?fragment=history" hx-trigger="load"`,
+				`<details hx-get="/library/nginx@` + arm64.Digest + `?fragment=history" hx-trigger="toggle once"`,
 				// Technical details, closed.
-				"<details class=", "Index digest</dt>", ">" + nginx.Digest + "</code>",
+				`<details class="mt-8 border-t`, "Index digest</dt>", ">" + nginx.Digest + "</code>",
 				"application/vnd.oci.image.index.v1&#43;json",
 				"<dd>" + created.Created.UTC().Format("2006-01-02 15:04:05") + " UTC</dd>",
-				"Layers and build history are coming",
 			},
-			not: []string{"Pushed", ">latest</span>", `aria-current="true"`, "fragment=platform", "<details open", `role="note"`},
+			not: []string{"Pushed", ">latest</span>", `aria-current="true"`, "fragment=platform", `role="note"`, "coming in a later version"},
 		},
 		{
 			name: "latest gets its badge", path: "/library/nginx:latest", status: 200, cards: 6,
@@ -523,5 +527,65 @@ func TestResolveErrorsAreNotMissingManifests(t *testing.T) {
 		if body := get(t, s, "/", "/?fragment=row&repo=myteam/api", true).Body.String(); !strings.Contains(body, "Couldn't load") {
 			t.Errorf("%v: catalog row doesn't fail:\n%s", err, body)
 		}
+	}
+}
+
+// A platform's history panel loads its layers, build steps and labels.
+// Steps line up with layers only when every layer has one.
+func TestHistoryFragment(t *testing.T) {
+	nginx := resolve(t, "library/nginx", "1.27.3").Platforms[0]
+	api := resolve(t, "myteam/api", "main").Platforms[0]
+	frontend := resolve(t, "myteam/web/frontend", "main").Platforms[0]
+	s := newTestServer(t, "/")
+	for _, c := range []struct {
+		name, path string
+		status     int
+		want, not  []string
+	}{
+		{
+			name: "docker build", path: "/library/nginx@" + nginx.Digest, status: 200,
+			want: []string{
+				"Layers <span class=\"font-normal text-muted\">4 · ",
+				// The base layer, with its step tidied, and the biggest layer's full bar.
+				`title="ADD file:9a1f3c7b2e4d5f60718293a4b5c6d7e8f9012345 in /">`, `<rect width="100" height="1" class="fill-accent"/>`,
+				`>RUN set -x &amp;&amp; groupadd`,
+				// Every step, those that made no layer dimmed.
+				`text-muted">CMD [&#34;nginx&#34;]</code>`, "ENV APP_VERSION=1.27.3",
+				// Labels, sorted by key.
+				`>org.opencontainers.image.description</dt>`, "Official build of Nginx",
+			},
+			not: []string{"/bin/sh -c", "#(nop)", "Unknown", "<html"},
+		},
+		{
+			name: "BuildKit", path: "/myteam/api@" + api.Digest, status: 200,
+			want: []string{`title="COPY /out/api /app/api">`, `title="RUN apk add --no-cache ca-certificates tzdata">`, `text-muted">USER 65532:65532</code>`},
+			not:  []string{"# buildkit", "Unknown"},
+		},
+		{
+			name: "no history", path: "/myteam/web/frontend@" + frontend.Digest, status: 200,
+			want: []string{`<span class="text-faint">Unknown</span>`, "records no build history", "No labels."},
+		},
+		{name: "unknown digest", path: "/library/nginx@sha256:" + strings.Repeat("0", 64), status: 404, want: []string{"Not found"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			status, body := getPage(t, s, "/", c.path+"?fragment=history", true)
+			if status != c.status {
+				t.Errorf("status = %d, want %d", status, c.status)
+			}
+			for _, w := range c.want {
+				if !strings.Contains(body, w) {
+					t.Errorf("lacks %q", w)
+				}
+			}
+			for _, n := range c.not {
+				if strings.Contains(body, n) {
+					t.Errorf("has %q", n)
+				}
+			}
+			checkMarkup(t, body)
+			if t.Failed() {
+				t.Log(body)
+			}
+		})
 	}
 }

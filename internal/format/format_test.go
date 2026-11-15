@@ -219,3 +219,20 @@ func TestFuncs(t *testing.T) {
 		t.Errorf("got %q, want %q followed by an age", got, want)
 	}
 }
+
+func TestCommand(t *testing.T) {
+	for in, want := range map[string]string{
+		`/bin/sh -c #(nop)  CMD ["nginx" "-g" "daemon off;"]`:  `CMD ["nginx" "-g" "daemon off;"]`,
+		`/bin/sh -c #(nop) ADD file:1a2b3c in / `:              `ADD file:1a2b3c in /`,
+		`/bin/sh -c set -x && apt-get update`:                  `RUN set -x && apt-get update`,
+		`|2 TARGETARCH=amd64 GOOS=linux /bin/sh -c go build .`: `RUN go build .`,
+		`RUN /bin/sh -c apk add --no-cache tzdata # buildkit`:  `RUN apk add --no-cache tzdata`,
+		`COPY /out/api /app/api # buildkit`:                    `COPY /out/api /app/api`,
+		`ENTRYPOINT ["/app/api"]`:                              `ENTRYPOINT ["/app/api"]`,
+		`  `:                                                   ``,
+	} {
+		if got := Command(in); got != want {
+			t.Errorf("Command(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

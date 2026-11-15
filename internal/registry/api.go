@@ -394,6 +394,18 @@ func shown(cfg *v1.ConfigFile) ImageConfig {
 	return ImageConfig{Created: created, Labels: cfg.Config.Labels}
 }
 
+// history is what History answers for a manifest and its config.
+func history(mf *v1.Manifest, cfg *v1.ConfigFile) History {
+	h := History{Layers: make([]Layer, len(mf.Layers)), Labels: cfg.Config.Labels}
+	for i, l := range mf.Layers {
+		h.Layers[i] = Layer{Digest: l.Digest.String(), Size: l.Size}
+	}
+	for _, s := range cfg.History {
+		h.Steps = append(h.Steps, Step{Created: s.Created.Time, CreatedBy: s.CreatedBy, Empty: s.EmptyLayer})
+	}
+	return h
+}
+
 // annotated is the first RFC 3339 org.opencontainers.image.created among
 // labels or annotations, or zero if none parses.
 func annotated(maps ...map[string]string) time.Time {
@@ -414,6 +426,44 @@ func (a *API) TagTime(context.Context, string, string) (time.Time, error) {
 // tell, which is too many requests.
 func (a *API) DiskUsage(context.Context, string) (int64, error) {
 	return 0, errors.ErrUnsupported
+}
+
+// History implements Source.
+func (a *API) History(ctx context.Context, repo, digest string) (History, error) {
+	r, err := a.repo(repo)
+	if err != nil {
+		return History{}, err
+	}
+	if !digestRef.MatchString(digest) {
+		return History{}, fmt.Errorf("manifest %s@%s: %w", repo, digest, ErrNotFound)
+	}
+	ctx, c := a.call(ctx)
+	p, err := a.puller(ctx, c, repo)
+	if err != nil {
+		return History{}, err
+	}
+	h, err := func() (History, error) {
+		desc, err := p.Get(ctx, r.Digest(digest))
+		if err != nil {
+			return History{}, err
+		}
+		if !desc.MediaType.IsImage() {
+			return History{}, ErrNotFound
+		}
+		mf, err := v1.ParseManifest(bytes.NewReader(desc.Manifest))
+		if err != nil {
+			return History{}, err
+		}
+		cfg, err := config(ctx, p, r, mf.Config.Digest.String())
+		if err != nil {
+			return History{}, err
+		}
+		return history(mf, cfg), nil
+	}()
+	if err != nil {
+		return History{}, c.fail("history "+repo+"@"+digest, err)
+	}
+	return h, nil
 }
 
 func config(ctx context.Context, p *remote.Puller, repo name.Repository, digest string) (*v1.ConfigFile, error) {

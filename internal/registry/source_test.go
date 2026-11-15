@@ -169,6 +169,33 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 		t.Errorf("Config(%s) = %+v, %v", single.Config, cfg, err)
 	}
 
+	// History lists the manifest's layers and the config's steps and labels.
+	layers := func(img v1.Image) []registry.Layer {
+		m, err := img.Manifest()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ls []registry.Layer
+		for _, l := range m.Layers {
+			ls = append(ls, registry.Layer{Digest: l.Digest.String(), Size: l.Size})
+		}
+		return ls
+	}
+	h, err := s.History(ctx, registrytest.RepoSingle, single.Digest)
+	wantSteps := make([]registry.Step, len(registrytest.SingleHistory))
+	for i, st := range registrytest.SingleHistory {
+		wantSteps[i] = registry.Step{Created: st.Created.Time, CreatedBy: st.CreatedBy, Empty: st.EmptyLayer}
+	}
+	if err != nil || !slices.Equal(h.Layers, layers(r.Single)) || !slices.EqualFunc(h.Steps, wantSteps, func(a, b registry.Step) bool {
+		return a.Created.Equal(b.Created) && a.CreatedBy == b.CreatedBy && a.Empty == b.Empty
+	}) || len(h.Labels) != 0 {
+		t.Errorf("History(single) = %+v, %v", h, err)
+	}
+	h, err = s.History(ctx, registrytest.RepoIndex, platforms[1].Digest)
+	if err != nil || !slices.Equal(h.Layers, layers(r.Platforms[1])) || len(h.Steps) != 0 || !maps.Equal(h.Labels, registrytest.PlatformsLabels) {
+		t.Errorf("History(platform) = %+v, %v", h, err)
+	}
+
 	// Without a created date in the config, the label dates the image, then
 	// the manifest's annotation, then the index's. The config's date wins.
 	for _, tc := range []struct {
@@ -232,6 +259,14 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 		{"missing platform by digest", func() error { _, err := s.Resolve(ctx, registrytest.RepoSomeMissing, platforms[1].Digest); return err }},
 		{"malformed config digest", func() error { _, err := s.Config(ctx, registrytest.RepoIndex, "sha256:00"); return err }},
 		{"unknown config digest", func() error { _, err := s.Config(ctx, registrytest.RepoIndex, zero); return err }},
+		{"history of an index", func() error { _, err := s.History(ctx, registrytest.RepoIndex, index.Digest); return err }},
+		{"history of an unknown digest", func() error { _, err := s.History(ctx, registrytest.RepoIndex, zero); return err }},
+		{"history of a tag", func() error { _, err := s.History(ctx, registrytest.RepoSingle, registrytest.TagSingle); return err }},
+		{"history of a missing platform", func() error {
+			_, err := s.History(ctx, registrytest.RepoSomeMissing, platforms[1].Digest)
+			return err
+		}},
+		{"history in an invalid name", func() error { _, err := s.History(ctx, "Not A Repo", single.Digest); return err }},
 	} {
 		if err := tc.call(); !errors.Is(err, registry.ErrNotFound) {
 			t.Errorf("%s: got %v, want ErrNotFound", tc.name, err)

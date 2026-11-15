@@ -132,6 +132,13 @@ func (c *Cache) DiskUsage(ctx context.Context, repo string) (int64, error) {
 	return cached(ctx, c, cacheTTL, func(ctx context.Context) (int64, error) { return c.src.DiskUsage(ctx, repo) }, "disk usage", repo)
 }
 
+// History implements Source without caching: only the history panel asks,
+// once per visit, and an image's history can be much bigger than its
+// summary.
+func (c *Cache) History(ctx context.Context, repo, digest string) (History, error) {
+	return c.src.History(ctx, repo, digest)
+}
+
 // Summary returns what summarise makes of src, which is filed under key and
 // kept for cacheTTL when src is a Cache. summarise then reads through a
 // throwaway cache of its own, so the answers a summary is built from cost
