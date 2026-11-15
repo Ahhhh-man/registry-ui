@@ -1,0 +1,84 @@
+{#- The release-note default, with two changes: commits of every other type
+    (chore, docs, test, ci...) are listed too, and AI co-authors are named in
+    plain text, since @claude would mention an unrelated GitHub account. -#}
+
+{%- macro commit_contributors(commit) -%}
+{%- set humans = commit.contributors | rejectattr("is_ai") -%}
+{%- if humans %} ({{ humans | mention | join(", ") }}){% endif -%}
+{%- endmacro -%}
+
+{%- macro commit_list(title, commits) -%}
+## {{ title }}
+{%- for commit in commits %}
+- {{ commit_url(sha = commit.hash) }} {{ commit.description }}{{ commit_contributors(commit=commit) }}
+{%- if commit.body %}
+
+{{ commit.body | unwrap | indent(2, first=true) }}
+{%- endif %}
+{%- if commit.breaking_description %}
+
+> [!IMPORTANT]
+{{ "> " ~ (commit.breaking_description | unwrap) | replace("\n", "\n> ") }}
+{%- endif %}
+{%- endfor %}
+
+{% endmacro -%}
+
+{%- macro plural(n, word) -%}
+{{ n }} {{ word }}{% if n != 1 %}s{% endif %}
+{%- endmacro -%}
+
+{%- set breaking = commits | selectattr("breaking") -%}
+{%- set non_breaking = commits | rejectattr("breaking") -%}
+{%- set dependencies = non_breaking | scoped(include="deps") -%}
+{%- set changes = non_breaking | scoped(exclude="deps") -%}
+{%- set features = changes | typed(include="feat") -%}
+{%- set fixes = changes | typed(include="fix") -%}
+{%- set perf = changes | typed(include="perf") -%}
+{%- set other = changes | typed(exclude=["feat", "fix", "perf"]) -%}
+
+## {{ git_ref }} - {{ release_date | date(format="%B %d, %Y") }}
+
+{%- macro stat(items, anchor, one, many) -%}
+[**`{{ items | length }}`**](#{{ anchor }}) {% if items | length == 1 %}{{ one }}{% else %}{{ many }}{% endif %}
+{%- endmacro -%}
+
+{%- set stats = [] -%}
+{%- if breaking %}{% set stats = stats + [stat(breaking, "breaking-changes", "breaking change", "breaking changes")] %}{% endif -%}
+{%- if features %}{% set stats = stats + [stat(features, "new-features", "new feature", "new features")] %}{% endif -%}
+{%- if fixes %}{% set stats = stats + [stat(fixes, "bug-fixes", "bug fix", "bug fixes")] %}{% endif -%}
+{%- if stats %}
+
+{{ stats | join(" • ") }}
+{% endif %}
+{%- set people = contributors | rejectattr("is_bot") -%}
+{%- if people %}
+## Contributors
+{%- for contributor in people %}
+{%- if contributor.is_ai %}
+- {{ contributor.username | capitalize }} ({{ plural(contributor.count, "commit") }})
+{%- else %}
+{%- set url = contributor_commits_url(author=contributor.username, since=contributor.first_commit_timestamp | date(format="%Y-%m-%d"), until=contributor.last_commit_timestamp | date(format="%Y-%m-%d")) %}
+- <img src="{{ contributor.avatar_url }}{% if "?" in contributor.avatar_url %}&{% else %}?{% endif %}size=20&width=20" width="20" height="20" align="center">&nbsp;&nbsp;@{{ contributor.username }} ({% if url %}[{{ plural(contributor.count, "commit") }}]({{ url }}){% else %}{{ plural(contributor.count, "commit") }}{% endif %})
+{%- endif %}
+{%- endfor %}
+{% endif %}
+{% if breaking %}{{ commit_list("Breaking Changes", breaking) }}{% endif -%}
+{% if features %}{{ commit_list("New Features", features) }}{% endif -%}
+{% if fixes %}{{ commit_list("Bug Fixes", fixes) }}{% endif -%}
+{% if perf %}{{ commit_list("Performance Improvements", perf) }}{% endif -%}
+{% if other %}{{ commit_list("Other Changes", other) }}{% endif -%}
+{%- if dependencies %}
+## Dependency Updates
+
+| Commit | Update | Contributors |
+|--------|--------|--------------|
+{%- for commit in dependencies %}
+| {{ commit_url(sha = commit.hash) }} | {{ commit.description | table_escape }} |{{ commit_contributors(commit=commit) }} |
+{%- endfor %}
+
+{% endif %}
+{%- set compare = compare_url() %}
+{%- if compare %}**Full Changelog**: [`{{ to_ref }}...{{ from_ref }}`]({{ compare }})
+{% endif %}
+*Generated with [release-note](https://github.com/purpleclay/release-note)*
