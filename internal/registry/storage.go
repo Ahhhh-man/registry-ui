@@ -169,7 +169,7 @@ func (s *Storage) resolve(repo, ref string) (Manifest, error) {
 				if err != nil {
 					return Manifest{}, err
 				}
-				pl.Config, pl.Size = mf.Config.Digest.String(), size(mf)
+				pl.Config, pl.Size, pl.Created = mf.Config.Digest.String(), size(mf), annotated(mf.Annotations, idx.Annotations)
 			}
 			m.Platforms = append(m.Platforms, pl)
 		}
@@ -185,7 +185,7 @@ func (s *Storage) resolve(repo, ref string) (Manifest, error) {
 	if m.Kind != KindImage {
 		return m, nil
 	}
-	pl := Platform{Digest: m.Digest, MediaType: m.MediaType, Config: mf.Config.Digest.String(), Size: m.Size}
+	pl := Platform{Digest: m.Digest, MediaType: m.MediaType, Config: mf.Config.Digest.String(), Size: m.Size, Created: annotated(mf.Annotations)}
 	// A manifest fetched without its config (e.g. by `docker manifest
 	// inspect` through a cache) still shows, just without its platform.
 	cfg, err := s.config(repo, pl.Config)
@@ -207,7 +207,7 @@ func (s *Storage) Config(_ context.Context, repo, digest string) (ImageConfig, e
 	if err != nil {
 		return ImageConfig{}, s.fail("config "+repo+"@"+digest, err)
 	}
-	return ImageConfig{Created: cfg.Created.Time, Labels: cfg.Config.Labels}, nil
+	return shown(cfg), nil
 }
 
 // TagTime implements Source with the modification time of the tag's link.

@@ -90,6 +90,10 @@ type Platform struct {
 	Config string
 	// Size is the compressed size: the config plus the layers.
 	Size int64
+	// Created is the org.opencontainers.image.created annotation of this
+	// platform's manifest, else of the index; zero if neither parses. Use it
+	// only when ImageConfig.Created is zero: the config's date wins.
+	Created time.Time
 	// Missing means the index lists this platform but its manifest isn't in
 	// the registry: a mirror never fetched it, or garbage collection removed
 	// it. Only what the index says is set: OS, Arch, Variant, Digest and

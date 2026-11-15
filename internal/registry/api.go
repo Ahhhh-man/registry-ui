@@ -239,7 +239,7 @@ func resolve(ctx context.Context, p *remote.Puller, repo name.Repository, ref na
 		errs := make([]error, len(children))
 		var wg sync.WaitGroup
 		for i, d := range children {
-			wg.Go(func() { m.Platforms[i], errs[i] = platform(ctx, p, repo, d, last) })
+			wg.Go(func() { m.Platforms[i], errs[i] = platform(ctx, p, repo, d, idx.Annotations, last) })
 		}
 		wg.Wait()
 		if err := errors.Join(errs...); err != nil {
@@ -271,6 +271,7 @@ func resolve(ctx context.Context, p *remote.Puller, repo name.Repository, ref na
 	m.Platforms = []Platform{{
 		OS: cfg.OS, Arch: cfg.Architecture, Variant: cfg.Variant,
 		Digest: m.Digest, MediaType: m.MediaType, Config: mf.Config.Digest.String(), Size: m.Size,
+		Created: annotated(mf.Annotations),
 	}}
 	return m, nil
 }
@@ -279,10 +280,10 @@ func resolve(ctx context.Context, p *remote.Puller, repo name.Repository, ref na
 // doesn't have (404) is marked missing; any other error fails. One that
 // last, the answer before this one, already summarises isn't fetched again,
 // unless it was missing then: a mirror may have fetched it since.
-func platform(ctx context.Context, p *remote.Puller, repo name.Repository, d v1.Descriptor, last Manifest) (Platform, error) {
+func platform(ctx context.Context, p *remote.Puller, repo name.Repository, d v1.Descriptor, index map[string]string, last Manifest) (Platform, error) {
 	pl := indexed(d)
 	if i := slices.IndexFunc(last.Platforms, func(was Platform) bool { return was.Digest == pl.Digest && !was.Missing }); i >= 0 {
-		pl.Config, pl.Size = last.Platforms[i].Config, last.Platforms[i].Size
+		pl.Config, pl.Size, pl.Created = last.Platforms[i].Config, last.Platforms[i].Size, last.Platforms[i].Created
 		return pl, nil
 	}
 	desc, err := p.Get(ctx, repo.Digest(d.Digest.String()))
@@ -297,7 +298,7 @@ func platform(ctx context.Context, p *remote.Puller, repo name.Repository, d v1.
 	if err != nil {
 		return Platform{}, err
 	}
-	pl.Config, pl.Size = mf.Config.Digest.String(), size(mf)
+	pl.Config, pl.Size, pl.Created = mf.Config.Digest.String(), size(mf), annotated(mf.Annotations, index)
 	return pl, nil
 }
 
@@ -329,8 +330,24 @@ func (a *API) Config(ctx context.Context, repo, digest string) (ImageConfig, err
 }
 
 // shown is the part of a config that Config answers with.
+// Without a created date it falls back to the OCI created label.
 func shown(cfg *v1.ConfigFile) ImageConfig {
-	return ImageConfig{Created: cfg.Created.Time, Labels: cfg.Config.Labels}
+	created := cfg.Created.Time
+	if created.IsZero() {
+		created = annotated(cfg.Config.Labels)
+	}
+	return ImageConfig{Created: created, Labels: cfg.Config.Labels}
+}
+
+// annotated is the first RFC 3339 org.opencontainers.image.created among
+// labels or annotations, or zero if none parses.
+func annotated(maps ...map[string]string) time.Time {
+	for _, m := range maps {
+		if t, err := time.Parse(time.RFC3339, m["org.opencontainers.image.created"]); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
 }
 
 // TagTime implements Source. The registry API records no push time.
