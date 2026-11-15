@@ -68,6 +68,11 @@ func (s *counter) DiskUsage(ctx context.Context, _ string) (int64, error) {
 	return 1, err
 }
 
+func (s *counter) History(ctx context.Context, _, _ string) (History, error) {
+	_, err := s.call(ctx)
+	return History{Layers: []Layer{{Size: 1}}}, err
+}
+
 const testDigest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 func (s *counter) want(t *testing.T, n int32) {
@@ -219,6 +224,9 @@ func TestEntrySize(t *testing.T) {
 	src := reflect.TypeFor[Source]()
 	for i := range src.NumMethod() {
 		m := src.Method(i)
+		if m.Name == "History" {
+			continue // passed through, never cached
+		}
 		t.Run(m.Name, func(t *testing.T) {
 			defer func() {
 				if r := recover(); r != nil {
@@ -230,6 +238,24 @@ func TestEntrySize(t *testing.T) {
 			}
 		})
 	}
+}
+
+// History is read once per visit to the history panel and can be big, so
+// the cache passes it through instead of keeping it.
+func TestCacheHistoryNotKept(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		src := &counter{}
+		c := NewCache(src)
+		for range 2 {
+			if _, err := c.History(t.Context(), "repo", testDigest); err != nil {
+				t.Fatal(err)
+			}
+		}
+		src.want(t, 2)
+		if c.used != 0 {
+			t.Errorf("used = %d, want 0", c.used)
+		}
+	})
 }
 
 // A catalog sort reads every repository in the same order on each visit.

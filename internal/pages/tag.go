@@ -37,8 +37,16 @@ type tagView struct {
 	// for a chart, signature or artifact. An image with none has nothing
 	// in storage yet.
 	Cards   []map[string]any
-	Created string // the main platform's created time in UTC; "" if unknown
-	Missing bool   // for "tag-not-found": the tag is listed, but its manifest is missing
+	History []historyPanel // one per platform in the registry
+	Created string         // the main platform's created time in UTC; "" if unknown
+	Missing bool           // for "tag-not-found": the tag is listed, but its manifest is missing
+}
+
+// historyPanel is a platform's closed panel of layers and history on the
+// tag page, which loads its "history" fragment from Load when opened.
+type historyPanel struct {
+	Title, Size, Load string
+	Open              bool // opened, and loaded, with the page
 }
 
 // Tag serves a tag's detail page (#14).
@@ -48,6 +56,10 @@ func (s *Server) Tag(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 
 // Digest serves a manifest by digest, on the same page as Tag (#14).
 func (s *Server) Digest(w http.ResponseWriter, r *http.Request, ref web.Ref) {
+	if web.Fragment(r) == "history" {
+		s.history(w, r, ref.Repo, ref.Digest)
+		return
+	}
 	s.manifest(w, r, ref.Repo, "", ref.Digest)
 }
 
@@ -206,6 +218,7 @@ func (s *Server) platformCards(ctx context.Context, r *http.Request, v *tagView)
 	var main time.Time
 	want := r.URL.Query().Get("platform")
 	mp, ok := mainPlatform(v.Manifest)
+	open := historyOpen(v.Manifest, want)
 	note := "This platform's manifest isn't in the registry. A mirror may not have fetched it, or garbage collection may have removed it."
 	if s.Storage {
 		note = "Not cached. Nobody has pulled this platform through the cache yet."
@@ -227,6 +240,10 @@ func (s *Server) platformCards(ctx context.Context, r *http.Request, v *tagView)
 			})
 			continue
 		}
+		v.History = append(v.History, historyPanel{
+			Title: name, Size: format.Size(p.Size), Open: p.Digest == open,
+			Load: s.BasePath + v.Repo + "@" + p.Digest + "?fragment=history",
+		})
 		v.Cards = append(v.Cards, map[string]any{
 			"ID": id, "Current": name == want,
 			"Icon": "cpu", "Title": name, "Size": format.Size(p.Size),

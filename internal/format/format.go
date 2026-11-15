@@ -130,3 +130,25 @@ func ShortPlatform(p registry.Platform) string {
 	}
 	return strings.TrimPrefix(Platform(p), "linux/")
 }
+
+// Command tidies a build step's created_by for reading. docker build
+// records "/bin/sh -c #(nop) " before instructions that run nothing and
+// "/bin/sh -c " before RUN commands, after any "|N ARG=value" build
+// arguments; BuildKit writes the instruction itself and ends with
+// " # buildkit".
+func Command(createdBy string) string {
+	s := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(createdBy), "# buildkit"))
+	s = strings.Replace(s, "RUN /bin/sh -c ", "RUN ", 1)
+	if strings.HasPrefix(s, "|") {
+		if _, cmd, ok := strings.Cut(s, " /bin/sh -c "); ok {
+			s = "/bin/sh -c " + cmd
+		}
+	}
+	if cmd, ok := strings.CutPrefix(s, "/bin/sh -c #(nop) "); ok {
+		return strings.TrimSpace(cmd)
+	}
+	if cmd, ok := strings.CutPrefix(s, "/bin/sh -c "); ok {
+		return "RUN " + strings.TrimSpace(cmd)
+	}
+	return s
+}

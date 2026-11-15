@@ -130,7 +130,8 @@ type Registry struct {
 	// Attestation is Index's buildx-style attestation manifest, listed as
 	// unknown/unknown.
 	Attestation v1.Image
-	// Single is a single-platform linux/amd64 image without labels.
+	// Single is a single-platform linux/amd64 image without labels. Its
+	// config's history is SingleHistory; the other images have none.
 	Single v1.Image
 	// Signature is a cosign-style signature of Index.
 	Signature v1.Image
@@ -162,6 +163,13 @@ var (
 		"org.opencontainers.image.documentation": "https://example.com/nginx/docs",
 	}
 )
+
+// SingleHistory is the build history in Single's config: its one layer,
+// then a step that made none.
+var SingleHistory = []v1.History{
+	{Created: v1.Time{Time: SingleCreated}, CreatedBy: "/bin/sh -c #(nop) ADD file:6f2b1c in / "},
+	{Created: v1.Time{Time: SingleCreated}, CreatedBy: `/bin/sh -c #(nop)  CMD ["sh"]`, EmptyLayer: true},
+}
 
 // New starts a seeded registry that allows anonymous access. It shuts down
 // when the test ends.
@@ -459,6 +467,7 @@ func (r *Registry) build(t testing.TB) {
 	r.Single = image("busybox", types.OCILayer, v1.ConfigFile{
 		OS: "linux", Architecture: "amd64",
 		Created: v1.Time{Time: SingleCreated},
+		History: SingleHistory,
 	})
 
 	r.SignatureTag = "sha256-" + indexDigest.Hex + ".sig"

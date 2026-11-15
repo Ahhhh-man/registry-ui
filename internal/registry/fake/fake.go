@@ -138,6 +138,7 @@ type repo struct {
 	tags      []string
 	manifests map[string]registry.Manifest // by tag and by digest
 	configs   map[string]registry.ImageConfig
+	histories map[string]registry.History // by platform manifest digest
 }
 
 // Source is the fake registry. It is read-only after New, so it is safe for
@@ -155,7 +156,7 @@ func New() *Source {
 	s := &Source{repos: map[string]*repo{}}
 
 	for name, rs := range seed {
-		r := &repo{manifests: map[string]registry.Manifest{}, configs: map[string]registry.ImageConfig{}}
+		r := &repo{manifests: map[string]registry.Manifest{}, configs: map[string]registry.ImageConfig{}, histories: map[string]registry.History{}}
 		labels := map[string]string{}
 		if rs.description != "" {
 			labels[labelDescription] = rs.description
@@ -226,6 +227,7 @@ func (r *repo) add(name, tag string, e entry, created time.Time, labels map[stri
 			pl.Config, pl.Size, pl.Missing = "", 0, true
 		} else {
 			r.configs[pl.Config] = registry.ImageConfig{Created: created, Labels: labels}
+			r.histories[pl.Digest] = history(name, tag, p, pl.Size, created, labels)
 		}
 		platforms[i] = pl
 	}
@@ -247,6 +249,75 @@ func (r *repo) add(name, tag string, e entry, created time.Time, labels map[stri
 		r.manifests[pl.Digest] = registry.Manifest{Digest: pl.Digest, MediaType: mediaManifest, Kind: registry.KindImage, Size: pl.Size, Platforms: []registry.Platform{pl}}
 	}
 	return m
+}
+
+// step is one build step of a made-up image: its command, and the share of
+// the image's size its layer takes, or 0 for a step with no layer.
+type step struct {
+	cmd   string
+	share float64
+}
+
+var (
+	// classic is how docker build without BuildKit records a Debian-based
+	// image, like the official images.
+	classic = []step{
+		{"/bin/sh -c #(nop) ADD file:9a1f3c7b2e4d5f60718293a4b5c6d7e8f9012345 in / ", .38},
+		{`/bin/sh -c #(nop)  CMD ["bash"]`, 0},
+		{"/bin/sh -c #(nop)  LABEL maintainer=Docker Official Images", 0},
+		{"/bin/sh -c #(nop)  ENV APP_VERSION=%[1]s", 0},
+		{"/bin/sh -c set -x && groupadd --system --gid 101 %[2]s && useradd --system --gid %[2]s --no-create-home --home /nonexistent --shell /bin/false --uid 101 %[2]s && apt-get update && apt-get install --no-install-recommends --no-install-suggests -y ca-certificates curl gnupg && rm -rf /var/lib/apt/lists/*", .58},
+		{"/bin/sh -c #(nop) COPY file:e57eef3fd1b6a4d5c2f7b8e9a0c1d2e3f4a5b6c7 in /docker-entrypoint.sh ", .001},
+		{"/bin/sh -c #(nop) COPY dir:5d8a0f2c1b3e4d6f7a8b9c0d1e2f3a4b5c6d7e8f in /docker-entrypoint.d ", .039},
+		{`/bin/sh -c #(nop)  ENTRYPOINT ["/docker-entrypoint.sh"]`, 0},
+		{"/bin/sh -c #(nop)  EXPOSE 80", 0},
+		{"/bin/sh -c #(nop)  STOPSIGNAL SIGQUIT", 0},
+		{`/bin/sh -c #(nop)  CMD ["%[2]s"]`, 0},
+	}
+	// buildkit is how BuildKit records a multi-stage Go build on Alpine.
+	buildkit = []step{
+		{"ADD alpine-minirootfs-3.20.3-x86_64.tar.gz / # buildkit", .3},
+		{`CMD ["/bin/sh"]`, 0},
+		{"RUN /bin/sh -c apk add --no-cache ca-certificates tzdata # buildkit", .05},
+		{"WORKDIR /app", 0},
+		{"COPY /out/%[2]s /app/%[2]s # buildkit", .65},
+		{"USER 65532:65532", 0},
+		{"EXPOSE map[8080/tcp:{}]", 0},
+		{`ENTRYPOINT ["/app/%[2]s"]`, 0},
+	}
+)
+
+// history makes up the build history of one platform of name:tag in the
+// style of its builder. myteam/web/frontend has none, as images built by
+// ko or Nix don't. The base image's steps are older than the rest.
+func history(name, tag, platform string, size int64, created time.Time, labels map[string]string) registry.History {
+	steps := classic
+	switch name {
+	case "myteam/api":
+		steps = buildkit
+	case "myteam/web/frontend":
+		return registry.History{
+			Layers: []registry.Layer{{Digest: digest(name, tag, platform, "layer"), Size: size}},
+			Labels: labels,
+		}
+	}
+	app := name[strings.LastIndexByte(name, '/')+1:]
+	h := registry.History{Labels: labels}
+	for i, st := range steps {
+		when := created
+		if i < 2 {
+			when = created.Add(-20 * 24 * time.Hour)
+		}
+		cmd := st.cmd
+		if strings.Contains(cmd, "%[") {
+			cmd = fmt.Sprintf(cmd, tag, app)
+		}
+		h.Steps = append(h.Steps, registry.Step{Created: when, CreatedBy: cmd, Empty: st.share == 0})
+		if st.share > 0 {
+			h.Layers = append(h.Layers, registry.Layer{Digest: digest(name, tag, platform, "layer", cmd), Size: int64(float64(size) * st.share)})
+		}
+	}
+	return h
 }
 
 func digest(parts ...string) string {
@@ -304,6 +375,20 @@ func (s *Source) Config(_ context.Context, name, dgst string) (registry.ImageCon
 	}
 	c.Labels = maps.Clone(c.Labels)
 	return c, nil
+}
+
+// History implements registry.Source.
+func (s *Source) History(_ context.Context, name, dgst string) (registry.History, error) {
+	r, err := s.repo(name)
+	if err != nil {
+		return registry.History{}, err
+	}
+	h, ok := r.histories[dgst]
+	if !ok {
+		return registry.History{}, fmt.Errorf("history %s@%s: %w", name, dgst, registry.ErrNotFound)
+	}
+	h.Labels = maps.Clone(h.Labels)
+	return h, nil
 }
 
 // TagTime implements registry.Source. Like the registry API, the fake has

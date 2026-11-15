@@ -45,6 +45,11 @@ type Source interface {
 	// but once in the registry. It returns errors.ErrUnsupported when the
 	// source can't tell, as the registry API can't.
 	DiskUsage(ctx context.Context, repo string) (int64, error)
+
+	// History returns the layers, build steps and labels of the image
+	// manifest with the given digest, usually a Platform.Digest. It reads
+	// the manifest and its config, so pages load it only when asked to.
+	History(ctx context.Context, repo, digest string) (History, error)
 }
 
 // Kind says what a manifest holds, so pages can pick how to show it.
@@ -121,6 +126,31 @@ type ImageConfig struct {
 	// Created is the image's build time. Registries record no push time.
 	Created time.Time
 	Labels  map[string]string
+}
+
+// History is what an image is built from, for its history panel.
+type History struct {
+	Layers []Layer
+	// Steps is the config's build history, oldest first, if the builder
+	// recorded one.
+	Steps  []Step
+	Labels map[string]string
+}
+
+// Layer is one layer of an image manifest.
+type Layer struct {
+	Digest string
+	Size   int64 // compressed
+}
+
+// Step is one entry of an image's build history.
+type Step struct {
+	Created time.Time
+	// CreatedBy is the command as the builder recorded it, e.g.
+	// "/bin/sh -c #(nop)  CMD [\"nginx\"]".
+	CreatedBy string
+	// Empty means the step made no layer, as ENV or CMD don't.
+	Empty bool
 }
 
 // Errors a Source returns, wrapped or as-is, so the web layer can pick the
