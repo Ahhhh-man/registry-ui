@@ -20,6 +20,7 @@ func testRouter(base string) http.Handler {
 		Catalog: page, Repo: page, Tag: page, Digest: page,
 		Login:  func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, "login") },
 		Logout: func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, "logout") },
+		Delete: func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, "delete") },
 		Static: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			_, _ = fmt.Fprintf(w, "static %s", r.URL.Path)
 		}),
@@ -56,6 +57,7 @@ func TestRouter(t *testing.T) {
 		{"-/static/fonts/inter.woff2", "static /fonts/inter.woff2"},
 		{"-/login", "login"},
 		{"-/logout", "logout"},
+		{"-/delete", "delete"},
 		{"-/login/", ""},
 		{"-/static", ""},
 		{"-/unknown", ""},
@@ -169,8 +171,8 @@ func TestFuncMap(t *testing.T) {
 		hashed func(string) string
 		want   []string
 	}{
-		{"/", nil, []string{"/", "/a/b", "/a/b:1.0", "/a/b@" + dgst, "/-/login", "/-/logout", "/-/static/app.css"}},
-		{"/registry/", hashed, []string{"/registry/", "/registry/a/b", "/registry/a/b:1.0", "/registry/a/b@" + dgst, "/registry/-/login", "/registry/-/logout", "/registry/-/static/app.3f2a.css"}},
+		{"/", nil, []string{"/", "/a/b", "/a/b:1.0", "/a/b@" + dgst, "/-/login", "/-/logout", "/-/delete", "/-/static/app.css"}},
+		{"/registry/", hashed, []string{"/registry/", "/registry/a/b", "/registry/a/b:1.0", "/registry/a/b@" + dgst, "/registry/-/login", "/registry/-/logout", "/registry/-/delete", "/registry/-/static/app.3f2a.css"}},
 	} {
 		fm := FuncMap(tt.base, tt.hashed)
 		got := []string{
@@ -180,6 +182,7 @@ func TestFuncMap(t *testing.T) {
 			fm["digestURL"].(func(string, string) string)("a/b", dgst),
 			fm["loginURL"].(func() string)(),
 			fm["logoutURL"].(func() string)(),
+			fm["deleteURL"].(func() string)(),
 			fm["staticURL"].(func(string) string)("app.css"),
 		}
 		if fmt.Sprint(got) != fmt.Sprint(tt.want) {
@@ -187,7 +190,7 @@ func TestFuncMap(t *testing.T) {
 		}
 		// Every page URL the helpers build must route.
 		h := testRouter(tt.base)
-		for _, u := range got[:6] {
+		for _, u := range got[:7] {
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, u, nil))
 			if rec.Code != http.StatusOK {

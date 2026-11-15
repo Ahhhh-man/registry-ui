@@ -44,6 +44,10 @@ type Server struct {
 	// Challenged reports whether the registry has asked an anonymous
 	// request for credentials; until then the header offers no sign-in.
 	Challenged func() bool
+
+	// Delete offers deleting tags from the list view, where the registry
+	// allows it, through /-/delete. Src must be a registry.Deleter.
+	Delete bool
 }
 
 // Handlers returns the router's page handlers.
@@ -53,6 +57,9 @@ func (s *Server) Handlers() web.Handlers {
 		h.Login, h.Logout = s.Login, s.Logout
 		h.Catalog, h.Repo, h.Tag, h.Digest = s.auth(h.Catalog), s.auth(h.Repo), s.auth(h.Tag), s.auth(h.Digest)
 	}
+	if s.Delete {
+		h.Delete = s.DeleteTags
+	}
 	return h
 }
 
@@ -61,12 +68,23 @@ func (s *Server) Handlers() web.Handlers {
 // a registry 401 to the sign-in page.
 func (s *Server) auth(page web.PageFunc) web.PageFunc {
 	return func(w http.ResponseWriter, r *http.Request, ref web.Ref) {
-		user, pass, ok := s.Sessions.Get(r)
-		if ok {
-			r = r.WithContext(registry.WithCredentials(r.Context(), user, pass))
-		}
+		r, ok := s.signIn(r)
 		page(w, web.WithAuth(r, web.Auth{Login: s.BasePath + "-/login", SignedIn: ok, Catalog: ref.Kind == web.KindCatalog}), ref)
 	}
+}
+
+// signIn returns r with its registry requests signed in as the session's
+// user, and whether there is one. Without sign-in configured, or a session,
+// they go anonymous.
+func (s *Server) signIn(r *http.Request) (*http.Request, bool) {
+	if s.Sessions == nil || s.Check == nil {
+		return r, false
+	}
+	user, pass, ok := s.Sessions.Get(r)
+	if ok {
+		r = r.WithContext(registry.WithCredentials(r.Context(), user, pass))
+	}
+	return r, ok
 }
 
 // Header returns the layout data every page shares: the registry title, the

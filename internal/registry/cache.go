@@ -4,10 +4,12 @@ import (
 	"container/list"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"hash/maphash"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -72,7 +74,7 @@ type cacheEntry struct {
 	visited bool
 }
 
-var _ Source = (*Cache)(nil)
+var _ Deleter = (*Cache)(nil)
 
 // NewCache returns a Cache in front of src.
 func NewCache(src Source) *Cache {
@@ -137,6 +139,76 @@ func (c *Cache) DiskUsage(ctx context.Context, repo string) (int64, error) {
 // summary.
 func (c *Cache) History(ctx context.Context, repo, digest string) (History, error) {
 	return c.src.History(ctx, repo, digest)
+}
+
+// CanDelete implements Deleter. Its answer is kept like a tag list's, so
+// the list view can ask on every load; a Source that can't delete, such as
+// storage, answers ErrDeleteDisabled.
+func (c *Cache) CanDelete(ctx context.Context, repo string) error {
+	d, ok := c.src.(Deleter)
+	if !ok {
+		return ErrDeleteDisabled
+	}
+	v, err := cached(ctx, c, cacheTTL, func(ctx context.Context) (canDelete, error) {
+		err := d.CanDelete(ctx, repo)
+		if err == nil || errors.Is(err, ErrDeleteDisabled) || errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrForbidden) {
+			return canDelete{err}, nil // an answer, unlike a registry that failed
+		}
+		return canDelete{}, err
+	}, "can delete", repo)
+	if err != nil {
+		return err
+	}
+	return v.err
+}
+
+// canDelete is a CanDelete answer, kept as a value since errors aren't.
+type canDelete struct{ err error }
+
+// CacheSize implements Sizer.
+func (canDelete) CacheSize() int { return 16 }
+
+// Delete implements Deleter, then forgets everything about repo, for
+// every identity, so nobody is shown the tags it removed. It forgets even
+// when the delete fails, which may have happened anyway.
+func (c *Cache) Delete(ctx context.Context, repo, digest string) error {
+	d, ok := c.src.(Deleter)
+	if !ok {
+		return ErrDeleteDisabled
+	}
+	defer c.forget(repo)
+	return d.Delete(ctx, repo, digest)
+}
+
+// forget drops every entry about repo, for every identity: its tags, their
+// lookups, manifests and times, and the summaries of the repository and
+// its tags. A scan, which is fine for something as rare as a delete.
+func (c *Cache) forget(repo string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for k, el := range c.items {
+		if about(k) == repo {
+			c.remove(el)
+		}
+	}
+}
+
+// about is the repository an entry's key is about, "" for none. A key is
+// the identity, then the kind ("summary" and its own kind for a Summary),
+// then usually the repository; see entryKey and identity.
+func about(key string) string {
+	n := 1 // "a"
+	if key[0] == 'u' {
+		n += sha256.Size
+	}
+	parts := strings.Split(key[n:], "\x00") // starts with a separator: parts[0] is ""
+	if len(parts) > 2 && parts[1] == "summary" {
+		parts = parts[1:]
+	}
+	if len(parts) < 3 {
+		return ""
+	}
+	return parts[2]
 }
 
 // Summary returns what summarise makes of src, which is filed under key and

@@ -104,3 +104,26 @@ func TestUnauthorizedError(t *testing.T) {
 		t.Error("UnauthorizedError should match ErrUnauthorized")
 	}
 }
+
+// Deleting latest's digest takes its aliases, and the plan its signature.
+func TestDelete(t *testing.T) {
+	ctx, s := t.Context(), fake.New()
+	plan, err := registry.PlanDelete(ctx, s, "library/nginx", []string{"latest"})
+	if err != nil || len(plan.Images) != 1 || len(plan.Images[0].Tags) != 4 || len(plan.Images[0].Signatures) != 1 {
+		t.Fatalf("plan = %+v, %v", plan, err)
+	}
+	for _, res := range plan.Apply(ctx, s) {
+		if res.Err != nil {
+			t.Error(res.Err)
+		}
+	}
+	tags, _ := s.Tags(ctx, "library/nginx")
+	for _, gone := range plan.Tags() {
+		if slices.Contains(tags, gone) {
+			t.Errorf("%s is still there", gone)
+		}
+	}
+	if len(tags) != 10 {
+		t.Errorf("%d tags left, want 10: %v", len(tags), tags)
+	}
+}

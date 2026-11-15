@@ -56,6 +56,9 @@ type Config struct {
 	// CatalogSort is the order the catalog is in when the URL doesn't say,
 	// one of catalogSorts.
 	CatalogSort string
+	// EnableDelete offers deleting tags from the list view, where the
+	// registry allows it. Storage mode only reads, so it ignores this.
+	EnableDelete bool
 }
 
 // tagSorts are the values of REGISTRY_UI_TAG_SORT: the repo page's ?sort=
@@ -149,6 +152,14 @@ func Load(environ []string) (Config, error) {
 			bad("REGISTRY_UI_REGISTRY_INSECURE", "%q is not a boolean (true or false)", v)
 		}
 		c.RegistryInsecure = b
+	}
+
+	if v := getenv("REGISTRY_UI_ENABLE_DELETE"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			bad("REGISTRY_UI_ENABLE_DELETE", "%q is not a boolean (true or false)", v)
+		}
+		c.EnableDelete = b
 	}
 
 	switch certFile, keyFile := getenv("REGISTRY_UI_REGISTRY_CLIENT_CERT"), getenv("REGISTRY_UI_REGISTRY_CLIENT_KEY"); {
@@ -254,5 +265,6 @@ func (c Config) LogValue() slog.Value {
 		slog.String("tag_sort", c.TagSort),
 		slog.Int("tags_per_page", c.TagsPerPage),
 		slog.String("catalog_sort", c.CatalogSort),
+		slog.Bool("enable_delete", c.EnableDelete),
 	)
 }

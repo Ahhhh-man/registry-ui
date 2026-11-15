@@ -8,7 +8,9 @@
 // header to the next page, so clients have to follow pagination. Another
 // answers 404 where Distribution does but the in-memory registry wouldn't:
 // for a dangling tag's manifest, and for the tag list of a repository
-// without a tags folder.
+// without a tags folder. Deleting a manifest by digest also deletes the
+// tags pointing at it, as in Distribution, and RefuseDelete makes deletes
+// fail.
 //
 // NewStorage writes the same content to disk in Distribution's filesystem
 // layout instead, for tests of storage mode.
@@ -31,6 +33,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -146,6 +149,11 @@ type Registry struct {
 
 	// large replaces the seeded content, for NewLarge.
 	large []tagged
+
+	mu sync.Mutex
+	// refused maps "repo@digest" to the status a DELETE of that manifest
+	// gets instead of deleting it; "" is any manifest. See RefuseDelete.
+	refused map[string]int
 }
 
 // Labels and created times in the seeded image configs.
@@ -181,6 +189,31 @@ func NewWithBasicAuth(t testing.TB, user, pass string) *Registry {
 	return start(t, &Registry{}, user, pass)
 }
 
+// NewDeleteDisabled is New, but answers every DELETE of a manifest with
+// 405 UNSUPPORTED, as Distribution does without
+// REGISTRY_STORAGE_DELETE_ENABLED=true and as every pull-through cache does.
+func NewDeleteDisabled(t testing.TB) *Registry {
+	r := New(t)
+	r.RefuseDelete("", "", http.StatusMethodNotAllowed)
+	return r
+}
+
+// RefuseDelete makes a DELETE of digest in repo, or of any manifest when
+// both are "", answer status without deleting: 405 UNSUPPORTED, 403 DENIED,
+// or any other status as a server error.
+func (r *Registry) RefuseDelete(repo, digest string, status int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.refused == nil {
+		r.refused = map[string]int{}
+	}
+	key := ""
+	if repo != "" {
+		key = repo + "@" + digest
+	}
+	r.refused[key] = status
+}
+
 // NewLarge is New, but holds a generated registry of repos repositories
 // with tags tags each instead of the seeded content, for measuring how the
 // UI copes with a big one. Repository i is LargeRepo(i) and tag j in it
@@ -199,7 +232,7 @@ func start(t testing.TB, r *Registry, user, pass string) *Registry {
 	t.Helper()
 
 	r.build(t)
-	h := notFound(paginate(registry.New(registry.Logger(log.New(io.Discard, "", 0)))), r.content())
+	h := r.refuse(notFound(paginate(deleteTags(registry.New(registry.Logger(log.New(io.Discard, "", 0))))), r.content()))
 	if user != "" {
 		h = requireBasicAuth(h, user, pass)
 	}
@@ -577,6 +610,67 @@ func notFound(next http.Handler, content []tagged) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, req)
+	})
+}
+
+// deleteTags deletes every tag of a repository that points at a manifest
+// deleted by digest, as Distribution does. The in-memory registry keeps a
+// copy of the manifest under each tag, so it would leave them.
+func deleteTags(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		repo, ref, ok := strings.Cut(strings.TrimPrefix(req.URL.Path, "/v2/"), "/manifests/")
+		if req.Method != http.MethodDelete || !ok || !strings.HasPrefix(ref, "sha256:") {
+			next.ServeHTTP(w, req)
+			return
+		}
+		ask := func(method, path string) *httptest.ResponseRecorder {
+			rec := httptest.NewRecorder()
+			next.ServeHTTP(rec, httptest.NewRequestWithContext(req.Context(), method, path, nil))
+			return rec
+		}
+		var list struct{ Tags []string }
+		_ = json.Unmarshal(ask(http.MethodGet, "/v2/"+repo+"/tags/list").Body.Bytes(), &list)
+		rec := httptest.NewRecorder()
+		next.ServeHTTP(rec, req)
+		if rec.Code == http.StatusAccepted {
+			for _, tag := range list.Tags {
+				if ask(http.MethodHead, "/v2/"+repo+"/manifests/"+tag).Header().Get("Docker-Content-Digest") == ref {
+					ask(http.MethodDelete, "/v2/"+repo+"/manifests/"+tag)
+				}
+			}
+		}
+		maps.Copy(w.Header(), rec.Header())
+		w.WriteHeader(rec.Code)
+		_, _ = w.Write(rec.Body.Bytes())
+	})
+}
+
+// refuse answers a DELETE of a manifest that RefuseDelete names with the
+// status it gave, the way Distribution words it.
+func (r *Registry) refuse(next http.Handler) http.Handler {
+	errs := map[int]string{
+		http.StatusMethodNotAllowed: `{"code":"UNSUPPORTED","message":"The operation is unsupported."}`,
+		http.StatusForbidden:        `{"code":"DENIED","message":"requested access to the resource is denied"}`,
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		repo, digest, ok := strings.Cut(strings.TrimPrefix(req.URL.Path, "/v2/"), "/manifests/")
+		r.mu.Lock()
+		status, refused := r.refused[repo+"@"+digest]
+		if !refused {
+			status, refused = r.refused[""]
+		}
+		r.mu.Unlock()
+		if req.Method != http.MethodDelete || !ok || !refused {
+			next.ServeHTTP(w, req)
+			return
+		}
+		e, ok := errs[status]
+		if !ok {
+			e = `{"code":"UNKNOWN","message":"unknown error"}`
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, `{"errors":[`+e+`]}`)
 	})
 }
 

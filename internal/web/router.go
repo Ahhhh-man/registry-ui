@@ -17,6 +17,8 @@ type Handlers struct {
 	Digest  PageFunc
 	// Login and Logout serve /-/login and /-/logout, every method.
 	Login, Logout http.HandlerFunc
+	// Delete serves /-/delete, every method: deleting tags from the list view.
+	Delete http.HandlerFunc
 	// Static serves /-/static/. It sees the path below that, e.g. "/app.3f2a.css".
 	Static http.Handler
 }
@@ -52,6 +54,8 @@ func New(base string, h Handlers) http.Handler {
 			h.Login(w, r)
 		case p == "-/logout" && h.Logout != nil:
 			h.Logout(w, r)
+		case p == "-/delete" && h.Delete != nil:
+			h.Delete(w, r)
 		case strings.HasPrefix(p, "-/"):
 			renderError(w, r, notFound)
 		default:
@@ -91,5 +95,6 @@ func FuncMap(base string, hashed func(string) string) template.FuncMap {
 		"staticURL":  func(name string) string { return base + "-/static/" + hashed(name) },
 		"loginURL":   func() string { return base + "-/login" },
 		"logoutURL":  func() string { return base + "-/logout" },
+		"deleteURL":  func() string { return base + "-/delete" },
 	}
 }

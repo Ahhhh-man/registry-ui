@@ -12,6 +12,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
@@ -141,13 +142,13 @@ type repo struct {
 	histories map[string]registry.History // by platform manifest digest
 }
 
-// Source is the fake registry. It is read-only after New, so it is safe for
-// concurrent use.
+// Source is the fake registry. It is safe for concurrent use.
 type Source struct {
+	mu    sync.RWMutex // guards repos' tags and manifests, which Delete changes
 	repos map[string]*repo
 }
 
-var _ registry.Source = (*Source)(nil)
+var _ registry.Deleter = (*Source)(nil)
 
 // New builds the fake registry. Created dates are relative to now, so the
 // UI shows sensible ages ("2 days ago").
@@ -334,12 +335,43 @@ func (s *Source) Catalog(context.Context) ([]string, error) {
 	return slices.Sorted(maps.Keys(s.repos)), nil
 }
 
+// CanDelete implements registry.Deleter: the fake allows deletes.
+func (s *Source) CanDelete(_ context.Context, name string) error {
+	_, err := s.repo(name)
+	return err
+}
+
+// Delete implements registry.Deleter in memory, as Distribution does: the
+// manifest goes, and every tag pointing at it.
+func (s *Source) Delete(_ context.Context, name, dgst string) error {
+	r, err := s.repo(name)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := r.manifests[dgst]; !ok {
+		return fmt.Errorf("manifest %s@%s: %w", name, dgst, registry.ErrNotFound)
+	}
+	delete(r.manifests, dgst)
+	r.tags = slices.DeleteFunc(r.tags, func(tag string) bool {
+		if m, ok := r.manifests[tag]; ok && m.Digest == dgst {
+			delete(r.manifests, tag)
+			return true
+		}
+		return false
+	})
+	return nil
+}
+
 // Tags implements registry.Source.
 func (s *Source) Tags(_ context.Context, name string) ([]string, error) {
 	r, err := s.repo(name)
 	if err != nil {
 		return nil, err
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return slices.Clone(r.tags), nil
 }
 
@@ -349,7 +381,9 @@ func (s *Source) Resolve(_ context.Context, name, ref string) (registry.Manifest
 	if err != nil {
 		return registry.Manifest{}, err
 	}
+	s.mu.RLock()
 	m, ok := r.manifests[ref]
+	s.mu.RUnlock()
 	if !ok {
 		return registry.Manifest{}, fmt.Errorf("manifest %s:%s: %w", name, ref, registry.ErrNotFound)
 	}

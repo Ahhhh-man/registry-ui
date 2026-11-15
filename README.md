@@ -19,7 +19,7 @@ You run a [CNCF Distribution](https://distribution.github.io/distribution/) regi
 
 registry-ui shows you every repository, tag and platform, with digests, sizes and created dates. You can search, sort, filter by type (images, Helm charts, signatures, other artifacts) and copy a pull command for any tag or platform.
 
-It's read-only. It doesn't push, manage users, replicate or scan, so it won't replace Harbor or Zot. It's one static binary in an image under 20 MB, and it sits next to your registry doing nothing until someone opens it.
+It's read-only unless you [turn on deleting tags](#deleting-tags). It doesn't push, manage users, replicate or scan, so it won't replace Harbor or Zot. It's one static binary in an image under 20 MB, and it sits next to your registry doing nothing until someone opens it.
 
 ## Quick start
 
@@ -90,6 +90,7 @@ Everything is an environment variable. There are no config files or flags, and a
 | `REGISTRY_UI_TAG_SORT` | `version` | The order a repository's tags are listed in until someone picks another: `version` (newest first), `version-asc`, `name`, `created`, `updated` (storage mode only) or `size`. |
 | `REGISTRY_UI_TAGS_PER_PAGE` | `100` | Tags per page, from 10 to 500. |
 | `REGISTRY_UI_CATALOG_SORT` | `name` | The order the catalog is in until someone picks another: `name`, `name-desc`, `created`, `updated` (storage mode only) or `tags`. Every order except the two by name loads each repository's details before the page renders, so it's slower on a large registry. |
+| `REGISTRY_UI_ENABLE_DELETE` | `false` | Let people delete tags from a repository's list view. See [Deleting tags](#deleting-tags). Ignored in storage mode. |
 
 If a value is invalid, the UI won't start, and it prints one line per problem.
 
@@ -165,6 +166,14 @@ volumes:
 Put `REGISTRY_UI_SECRET=` and a random value in a `.env` file next to `compose.yaml`. Open <http://localhost:8080> and the UI asks you to sign in as `alice`.
 
 Behind a token server (`REGISTRY_AUTH: token`), the UI signs in the same way. The token server decides what each user may see, so it has to grant `registry:catalog:*` for the repository list to work. See [The repository list says "You can't list repositories"](#the-repository-list-says-you-cant-list-repositories).
+
+## Deleting tags
+
+The UI only reads unless you set `REGISTRY_UI_ENABLE_DELETE=true`. Then a repository's list view gets a **Delete…** button once you select tags. The registry has to allow deletes as well, which Distribution only does with `REGISTRY_STORAGE_DELETE_ENABLED=true`. Pull-through caches never allow them. When the registry refuses, or your account isn't allowed to delete, the button is replaced by a line saying why. Deletes use the signed-in user's own credentials, so the registry's permissions apply.
+
+Distribution deletes manifests by digest, not tags by name. Deleting `latest` also removes every other tag pointing at the same image, such as `1.27.3` or `mainline`, so the confirmation dialog lists those before anything happens. Any cosign signature, attestation and SBOM tags for that image (`sha256-<digest>.sig`, `.att`, `.sbom`) go with it, never on their own. If the tags change between opening the dialog and confirming, nothing is deleted and the dialog shows what would go now.
+
+Deleting frees no disk space by itself. The image's layers stay in storage until the registry's garbage collection runs: `registry garbage-collect` with the registry's config file, while the registry is stopped or read-only.
 
 ## Pull-through caches
 
