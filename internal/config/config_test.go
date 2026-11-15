@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Ahhhh-man/registry-ui/internal/registry/registrytest"
 )
 
 func load(env map[string]string) (Config, error) {
@@ -305,5 +307,56 @@ func TestLoadRegistryHeaders(t *testing.T) {
 		} else if strings.Contains(err.Error(), "Injected") {
 			t.Errorf("%s: the error repeats the value: %v", k, err)
 		}
+	}
+}
+
+func TestLoadRegistryClientCert(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, b []byte) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	certPEM, keyPEM := registrytest.ClientCert(t)
+	_, otherKeyPEM := registrytest.ClientCert(t)
+	cert, key, otherKey := write("cert.pem", certPEM), write("key.pem", keyPEM), write("other.pem", otherKeyPEM)
+	env := func(cert, key string) map[string]string {
+		return map[string]string{
+			"REGISTRY_UI_REGISTRY_URL":         "https://registry:5000",
+			"REGISTRY_UI_REGISTRY_CLIENT_CERT": cert,
+			"REGISTRY_UI_REGISTRY_CLIENT_KEY":  key,
+		}
+	}
+
+	c, err := load(env(cert, key))
+	if err != nil || c.RegistryClientCert == nil {
+		t.Fatalf("a matching pair: got %v, %v; want it loaded", c.RegistryClientCert, err)
+	}
+	if c, err := load(env("", "")); err != nil || c.RegistryClientCert != nil {
+		t.Errorf("neither set: got %v, %v; want nil", c.RegistryClientCert, err)
+	}
+
+	for _, tc := range []struct {
+		name, cert, key, want string
+	}{
+		{"cert without key", cert, "", "REGISTRY_UI_REGISTRY_CLIENT_KEY: required"},
+		{"key without cert", "", key, "REGISTRY_UI_REGISTRY_CLIENT_CERT: required"},
+		{"missing file", cert, filepath.Join(dir, "nope.pem"), "nope.pem"},
+		{"mismatched pair", cert, otherKey, "does not match"},
+	} {
+		_, err := load(env(tc.cert, tc.key))
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: got %v, want an error containing %q", tc.name, err, tc.want)
+		} else if strings.Contains(err.Error(), "PRIVATE KEY") {
+			t.Errorf("%s: the error repeats the key: %v", tc.name, err)
+		}
+	}
+
+	var buf bytes.Buffer
+	slog.New(slog.NewTextHandler(&buf, nil)).Info("start", "config", c)
+	if out := buf.String(); !strings.Contains(out, "config.registry_client_cert_set=true") || strings.Contains(out, "PRIVATE") {
+		t.Errorf("log output should say only that the pair is set: %s", out)
 	}
 }

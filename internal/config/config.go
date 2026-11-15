@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -39,7 +40,11 @@ type Config struct {
 	// RegistryHeaders are sent with every request to the registry in API
 	// mode, from REGISTRY_UI_REGISTRY_HEADER_<NAME>. Nil when none are set.
 	RegistryHeaders http.Header
-	LogLevel        slog.Level
+	// RegistryClientCert is presented to the registry in API mode when it
+	// asks for a client certificate, loaded from REGISTRY_UI_REGISTRY_CLIENT_CERT
+	// and REGISTRY_UI_REGISTRY_CLIENT_KEY. Nil when they are unset.
+	RegistryClientCert *tls.Certificate
+	LogLevel           slog.Level
 	// StoragePath, when set, is an existing directory holding the registry's
 	// filesystem storage (storage mode).
 	StoragePath string
@@ -146,6 +151,21 @@ func Load(environ []string) (Config, error) {
 		c.RegistryInsecure = b
 	}
 
+	switch certFile, keyFile := getenv("REGISTRY_UI_REGISTRY_CLIENT_CERT"), getenv("REGISTRY_UI_REGISTRY_CLIENT_KEY"); {
+	case certFile == "" && keyFile == "":
+	case keyFile == "":
+		bad("REGISTRY_UI_REGISTRY_CLIENT_KEY", "required when REGISTRY_UI_REGISTRY_CLIENT_CERT is set")
+	case certFile == "":
+		bad("REGISTRY_UI_REGISTRY_CLIENT_CERT", "required when REGISTRY_UI_REGISTRY_CLIENT_KEY is set")
+	default:
+		// The error names a file or the mismatch, never the key's contents.
+		if cert, err := tls.LoadX509KeyPair(certFile, keyFile); err != nil {
+			bad("REGISTRY_UI_REGISTRY_CLIENT_CERT", "loading it with REGISTRY_UI_REGISTRY_CLIENT_KEY: %v", err)
+		} else {
+			c.RegistryClientCert = &cert
+		}
+	}
+
 	if v := getenv("REGISTRY_UI_LOG_LEVEL"); v != "" {
 		if err := c.LogLevel.UnmarshalText([]byte(v)); err != nil {
 			bad("REGISTRY_UI_LOG_LEVEL", "%q is not one of debug, info, warn or error", v)
@@ -228,6 +248,7 @@ func (c Config) LogValue() slog.Value {
 		slog.Bool("secret_set", c.Secret != ""),
 		slog.Bool("registry_insecure", c.RegistryInsecure),
 		slog.Any("registry_headers", slices.Sorted(maps.Keys(c.RegistryHeaders))),
+		slog.Bool("registry_client_cert_set", c.RegistryClientCert != nil),
 		slog.String("log_level", c.LogLevel.String()),
 		slog.String("storage_path", c.StoragePath),
 		slog.String("tag_sort", c.TagSort),
