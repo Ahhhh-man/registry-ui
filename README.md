@@ -175,6 +175,36 @@ Distribution deletes manifests by digest, not tags by name. Deleting `latest` al
 
 Deleting frees no disk space by itself. The image's layers stay in storage until the registry's garbage collection runs: `registry garbage-collect` with the registry's config file, while the registry is stopped or read-only.
 
+### Purging old tags on a schedule
+
+`registry-ui purge` deletes old tags from cron, a Kubernetes CronJob or a systemd timer. It doesn't start the server, and it only prints what it would delete unless you pass `--apply`. Run it without `--apply` first and read the list.
+
+```sh
+# Every Sunday at 03:00: keep the last 30 days, the 10 newest tags in each
+# repository, latest and version tags; delete the rest.
+0 3 * * 0  docker run --rm --env-file /etc/registry-ui/purge.env ghcr.io/ahhhh-man/registry-ui:latest purge --user ci-cleaner --keep-days 30 --keep-count 10 --keep-tags '^(latest|v?\d+\.\d+\.\d+)$' --apply
+```
+
+with `/etc/registry-ui/purge.env` readable only by root:
+
+```sh
+REGISTRY_UI_REGISTRY_URL=https://registry.example.com
+REGISTRY_UI_PURGE_PASSWORD=change-me
+```
+
+It keeps a tag if any of these say so, and deletes the rest:
+
+- `--keep-days N`: its image was created within the last N days.
+- `--keep-count N`: it's one of the N newest tags in its repository by created date. Tags with the same date rank by name.
+- `--keep-tags REGEXP`: its name matches.
+- Its created date is unknown, as for Helm charts and images built without one. These are always kept.
+
+Give at least one of the three flags; purge refuses to run without one. `--repos` and `--exclude-repos` take comma-separated globs on the whole repository name, such as `team/*,library/nginx`, where `*` doesn't cross a `/`.
+
+The same caution as the UI applies. An image goes only when every tag on it would be deleted, so one kept tag keeps the image and the dry run names it. Signature, attestation and SBOM tags go with their image, never on their own. Before deciding anything, purge asks the registry whether it may delete, and stops if not, so a dry run also tells you whether the real run would work.
+
+Purge connects with the same `REGISTRY_UI_REGISTRY_*` settings as the server, but it signs in only as `--user`, with the password from `REGISTRY_UI_PURGE_PASSWORD` or else the first line of stdin. Without `--user` it's anonymous. It doesn't run in storage mode, which only reads. It prints one line per tag, then a summary, and exits non-zero if any delete or repository failed, after trying the rest. Disk space only comes back once the registry's garbage collection runs, which purge doesn't do.
+
 ## Pull-through caches
 
 If your registry is a pull-through cache (`REGISTRY_PROXY_REMOTEURL`), use storage mode. Browsing a cache through its API asks the upstream for every tag list, and clicking a tag that isn't cached yet makes the registry pull and store it. Both eat into your upstream rate limit, and you end up looking at the upstream's tags instead of your cache.

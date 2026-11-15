@@ -310,7 +310,7 @@ func (s *Server) readRow(ctx context.Context, src registry.Source, row *catalogR
 	case missing > 0:
 		row.Platforms += " (" + strconv.Itoa(missing) + " missing)"
 	}
-	p, ok := mainPlatform(m)
+	p, ok := registry.MainPlatform(m)
 	if !ok {
 		return nil
 	}

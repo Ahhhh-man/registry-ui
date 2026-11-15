@@ -362,17 +362,13 @@ func readTagSummary(ctx context.Context, src registry.Source, repo, tag string) 
 	if err != nil {
 		return tagSummary{}, err
 	}
-	p, ok := mainPlatform(m)
+	p, ok := registry.MainPlatform(m)
 	if !ok {
 		return tagSummary{Kind: m.Kind, Size: m.Size}, nil
 	}
 	sum := tagSummary{Kind: m.Kind, Size: p.Size}
-	cfg, err := src.Config(ctx, repo, p.Config)
-	if err != nil {
-		return sum, err
-	}
-	sum.Created = cmp.Or(cfg.Created, p.Created)
-	return sum, nil
+	sum.Created, err = registry.Created(ctx, src, repo, p)
+	return sum, err
 }
 
 // loadCards fills in the page's cards up front after a sort that has
@@ -412,7 +408,7 @@ func (s *Server) header(ctx context.Context, v *repoView, tags []string) {
 	if len(m.Platforms) > 0 {
 		pills = append(pills, pill{Icon: "cpu", Text: platformCount(m.Platforms)})
 	}
-	p, ok := mainPlatform(m)
+	p, ok := registry.MainPlatform(m)
 	if !ok {
 		return
 	}
@@ -568,7 +564,7 @@ func (s *Server) card(ctx context.Context, repo, tag string, m registry.Manifest
 		c.Type = "OCI artifact"
 	}
 
-	if p, ok := mainPlatform(m); ok {
+	if p, ok := registry.MainPlatform(m); ok {
 		cfg, err := s.Src.Config(ctx, repo, p.Config)
 		if err != nil {
 			return c, err
@@ -709,21 +705,6 @@ func (s *Server) resolveAll(ctx context.Context, repo string, tags []string) ([]
 // is a failure, not a missing manifest.
 func manifestMissing(err error, tags []string, tag string) bool {
 	return errors.Is(err, registry.ErrNotFound) && slices.Contains(tags, tag)
-}
-
-// mainPlatform is the platform that speaks for a tag: linux/amd64, or the
-// first. A missing platform has no size or config, so it never speaks. It
-// reports false for tags without platforms, such as Helm charts, and for
-// indexes whose platforms are all missing.
-func mainPlatform(m registry.Manifest) (registry.Platform, bool) {
-	i := slices.IndexFunc(m.Platforms, func(p registry.Platform) bool { return !p.Missing && p.OS == "linux" && p.Arch == "amd64" })
-	if i < 0 {
-		i = slices.IndexFunc(m.Platforms, func(p registry.Platform) bool { return !p.Missing })
-	}
-	if i < 0 {
-		return registry.Platform{}, false
-	}
-	return m.Platforms[i], true
 }
 
 // platformCount counts the platforms in the registry and adds how many
