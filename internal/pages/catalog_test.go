@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/Ahhhh-man/registry-ui/internal/format"
 	"github.com/Ahhhh-man/registry-ui/internal/registry"
@@ -402,6 +404,48 @@ func TestCatalogBasePath(t *testing.T) {
 	)
 	rec, _ = getCatalog(t, "/registry/", "/registry/?q=zzz", false, nil)
 	contains(t, rec.Body.String(), `<a href="/registry/" class=`)
+}
+
+// A sort keeps one summary per repository, which the row fragment reuses
+// for the same user until the tag list would have expired.
+func TestCatalogRowSummary(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := newTestServer(t, "/")
+		src := &counted{Source: s.Src}
+		s.Src = registry.NewCache(src)
+		visit := func(ctx context.Context, target string) int64 {
+			t.Helper()
+			src.n.Store(0)
+			r := httptest.NewRequestWithContext(ctx, "GET", target, nil)
+			r.Header.Set("HX-Request", "true")
+			rec := httptest.NewRecorder()
+			s.Catalog(rec, r, web.Ref{})
+			if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "Couldn't load") {
+				t.Fatalf("GET %s: %d\n%s", target, rec.Code, rec.Body)
+			}
+			return src.n.Load()
+		}
+		const row = "/?fragment=row&repo=library/nginx"
+		anon, alice := t.Context(), registry.WithCredentials(t.Context(), "alice", "secret")
+
+		if n := visit(anon, "/?sort=created"); n == 0 {
+			t.Fatal("the sort read nothing")
+		}
+		if n := visit(anon, row); n != 0 {
+			t.Errorf("the row after a sort made %d calls, want 0", n)
+		}
+		if n := visit(alice, row); n != 3 {
+			t.Errorf("another user's row made %d calls, want 3: tags, manifest, config", n)
+		}
+		time.Sleep(29 * time.Second)
+		if n := visit(anon, row); n != 0 {
+			t.Errorf("the row before the summary expired made %d calls, want 0", n)
+		}
+		time.Sleep(time.Second)
+		if n := visit(anon, row); n != 3 {
+			t.Errorf("the row once the summary expired made %d calls, want 3", n)
+		}
+	})
 }
 
 func TestNewestTag(t *testing.T) {

@@ -15,11 +15,11 @@ import (
 
 const (
 	// cacheSize is how many entries the cache holds before evicting one. A
-	// catalog sort or type filter needs three per repository (tag list,
-	// manifest, config) and a repository's tag sort two per tag, for each
-	// signed-in user. This fits one user's sort of
-	// about 1,600 repositories, and keeps the cache within the 15 MB idle
-	// memory budget: realistic entries cost 1–2 kB each.
+	// catalog sort or type filter needs one per repository (its summary)
+	// and a repository's tag sort two per tag, for each signed-in user. This
+	// fits one user's sort of about 5,000 repositories, and keeps the cache
+	// within the 15 MB idle memory budget: realistic entries cost 1–2 kB
+	// each, and a summary well under that.
 	cacheSize = 5000
 	// cacheTTL is how long the catalog, tag lists, tag lookups, tag times
 	// and disk usage are trusted. Anything addressed by digest can't change, so it never expires.
@@ -122,6 +122,21 @@ func (c *Cache) TagTime(ctx context.Context, repo, tag string) (time.Time, error
 // it mustn't run on every page view.
 func (c *Cache) DiskUsage(ctx context.Context, repo string) (int64, error) {
 	return cached(ctx, c, cacheTTL, func(ctx context.Context) (int64, error) { return c.src.DiskUsage(ctx, repo) }, "disk usage", repo)
+}
+
+// Summary returns what summarise makes of src, which is filed under key and
+// kept for cacheTTL when src is a Cache. summarise then reads through a
+// throwaway cache of its own, so the answers a summary is built from cost
+// no entries beside it. Like any entry, a summary is scoped to ctx's
+// identity and not kept when summarise fails.
+func Summary[T any](ctx context.Context, src Source, summarise func(context.Context, Source) (T, error), key ...string) (T, error) {
+	c, ok := src.(*Cache)
+	if !ok {
+		return summarise(ctx, src)
+	}
+	return cached(ctx, c, cacheTTL, func(ctx context.Context) (T, error) {
+		return summarise(ctx, NewCache(c.src))
+	}, append([]string{"summary"}, key...)...)
 }
 
 // cached returns the entry for key in ctx's identity, or calls fetch once

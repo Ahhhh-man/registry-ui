@@ -252,8 +252,23 @@ func (s *Server) catalogDisk(w http.ResponseWriter, r *http.Request) {
 
 // rowDetails fills in row's tag count, then the name, description,
 // platforms, pull command and created date of its latest (or newest) tag.
+// They're kept as one summary per repository, which the sorts, the type
+// filter and the row fragment share, rather than as the tag list, manifest
+// and config they're read from.
 func (s *Server) rowDetails(ctx context.Context, row *catalogRow) error {
-	tags, err := s.Src.Tags(ctx, row.Repo)
+	sum, err := registry.Summary(ctx, s.Src, func(ctx context.Context, src registry.Source) (catalogRow, error) {
+		sum := catalogRow{Repo: row.Repo}
+		err := s.readRow(ctx, src, &sum)
+		return sum, err
+	}, "catalog row", row.Repo)
+	sum.View = row.View
+	*row = sum
+	return err
+}
+
+// readRow fills in what rowDetails does, reading it from src.
+func (s *Server) readRow(ctx context.Context, src registry.Source, row *catalogRow) error {
+	tags, err := src.Tags(ctx, row.Repo)
 	if err != nil {
 		return err
 	}
@@ -266,7 +281,7 @@ func (s *Server) rowDetails(ctx context.Context, row *catalogRow) error {
 		}
 		return nil
 	}
-	m, err := s.Src.Resolve(ctx, row.Repo, tag)
+	m, err := src.Resolve(ctx, row.Repo, tag)
 	if manifestMissing(err, tags, tag) {
 		return nil // nothing to describe, but nothing failed either
 	}
@@ -292,7 +307,7 @@ func (s *Server) rowDetails(ctx context.Context, row *catalogRow) error {
 	if !ok {
 		return nil
 	}
-	cfg, err := s.Src.Config(ctx, row.Repo, p.Config)
+	cfg, err := src.Config(ctx, row.Repo, p.Config)
 	if err != nil {
 		return err
 	}
