@@ -84,6 +84,6 @@ func historyOpen(m registry.Manifest, want string) string {
 			return p.Digest
 		}
 	}
-	p, _ := mainPlatform(m)
+	p, _ := registry.MainPlatform(m)
 	return p.Digest
 }

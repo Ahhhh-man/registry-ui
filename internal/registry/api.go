@@ -50,6 +50,10 @@ var (
 // sigTag matches cosign's signature, attestation and SBOM tags.
 var sigTag = regexp.MustCompile(`^sha256-[0-9a-f]{64}\.(sig|att|sbom)$`)
 
+// IsSignatureTag reports whether tag names a cosign signature, attestation
+// or SBOM: "sha256-<hex>.sig", ".att" or ".sbom".
+func IsSignatureTag(tag string) bool { return sigTag.MatchString(tag) }
+
 // signatureMediaPrefixes mark the config or layers of signatures and
 // attestations.
 var signatureMediaPrefixes = []string{

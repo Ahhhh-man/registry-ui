@@ -168,7 +168,7 @@ func (s *Server) manifest(w http.ResponseWriter, r *http.Request, repo, tag, ref
 	}
 	if len(m.Platforms) > 0 {
 		text := platformCount(m.Platforms)
-		if p, ok := mainPlatform(m); ok {
+		if p, ok := registry.MainPlatform(m); ok {
 			text += " · " + format.Size(p.Size) + " on " + format.ShortPlatform(p)
 		}
 		v.Pills = append(v.Pills, pill{Icon: "cpu", Text: text})
@@ -217,7 +217,7 @@ func (s *Server) platformCards(ctx context.Context, r *http.Request, v *tagView)
 
 	var main time.Time
 	want := r.URL.Query().Get("platform")
-	mp, ok := mainPlatform(v.Manifest)
+	mp, ok := registry.MainPlatform(v.Manifest)
 	open := historyOpen(v.Manifest, want)
 	note := "This platform's manifest isn't in the registry. A mirror may not have fetched it, or garbage collection may have removed it."
 	if s.Storage {

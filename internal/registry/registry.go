@@ -4,8 +4,10 @@
 package registry
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"slices"
 	"time"
 )
 
@@ -180,3 +182,29 @@ func (e *UnauthorizedError) Error() string { return ErrUnauthorized.Error() }
 
 // Is makes errors.Is(err, ErrUnauthorized) true.
 func (e *UnauthorizedError) Is(target error) bool { return target == ErrUnauthorized }
+
+// MainPlatform is the platform that speaks for a tag: linux/amd64, or the
+// first. A missing platform has no size or config, so it never speaks. It
+// reports false for tags without platforms, such as Helm charts, and for
+// indexes whose platforms are all missing.
+func MainPlatform(m Manifest) (Platform, bool) {
+	i := slices.IndexFunc(m.Platforms, func(p Platform) bool { return !p.Missing && p.OS == "linux" && p.Arch == "amd64" })
+	if i < 0 {
+		i = slices.IndexFunc(m.Platforms, func(p Platform) bool { return !p.Missing })
+	}
+	if i < 0 {
+		return Platform{}, false
+	}
+	return m.Platforms[i], true
+}
+
+// Created returns when platform p of repo was built, as the UI shows it:
+// its config's created date, else its created annotation. It's zero when
+// neither is known.
+func Created(ctx context.Context, src Source, repo string, p Platform) (time.Time, error) {
+	cfg, err := src.Config(ctx, repo, p.Config)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return cmp.Or(cfg.Created, p.Created), nil
+}
