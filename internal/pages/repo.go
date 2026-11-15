@@ -270,7 +270,7 @@ func labelTag(tags []string) int {
 }
 
 // sortTags puts tags, which arrive newest version first, in the order by.
-// The created and size orders resolve every tag first, and the updated
+// The created and size orders read a summary of every tag, and the updated
 // order reads every tag time; if that takes too long the tags stay in
 // version order and the returned note says so.
 func (s *Server) sortTags(ctx context.Context, repo string, tags []string, by string) string {
@@ -290,9 +290,9 @@ func (s *Server) sortTags(ctx context.Context, repo string, tags []string, by st
 		return ""
 	}
 	type tagInfo struct {
-		tag              string
-		created, updated time.Time
-		size             int64
+		tag     string
+		updated time.Time
+		tagSummary
 	}
 	infos := make([]tagInfo, len(tags))
 	err := fetchAll(ctx, len(tags), func(ctx context.Context, i int) {
@@ -301,21 +301,10 @@ func (s *Server) sortTags(ctx context.Context, repo string, tags []string, by st
 			infos[i].updated, _ = s.Src.TagTime(ctx, repo, tags[i]) // zero on error: sorts last
 			return
 		}
-		m, err := s.Src.Resolve(ctx, repo, tags[i])
-		if err != nil {
-			return // sorts last, and its card shows the error or the missing manifest
-		}
-		infos[i].size = m.Size
-		p, ok := mainPlatform(m)
-		if !ok {
-			return
-		}
-		infos[i].size = p.Size
-		if by == "created" {
-			if cfg, err := s.Src.Config(ctx, repo, p.Config); err == nil {
-				infos[i].created = cmp.Or(cfg.Created, p.Created)
-			}
-		}
+		// What's missing on an error sorts last, and the card shows the error.
+		infos[i].tagSummary, _ = registry.Summary(ctx, s.Src, func(ctx context.Context, src registry.Source) (tagSummary, error) {
+			return readTagSummary(ctx, src, repo, tags[i])
+		}, "tag sort", repo, tags[i])
 	})
 	if err != nil {
 		return "The registry took too long to describe every tag, so this list is in version order instead."
@@ -323,16 +312,44 @@ func (s *Server) sortTags(ctx context.Context, repo string, tags []string, by st
 	slices.SortStableFunc(infos, func(a, b tagInfo) int {
 		switch by {
 		case "size":
-			return cmp.Compare(b.size, a.size)
+			return cmp.Compare(b.Size, a.Size)
 		case "updated":
 			return newestFirst(a.updated, b.updated)
 		}
-		return newestFirst(a.created, b.created)
+		return newestFirst(a.Created, b.Created)
 	})
 	for i, in := range infos {
 		tags[i] = in.tag
 	}
 	return ""
+}
+
+// tagSummary is what the created and size sorts compare of a tag. It's
+// kept as one small summary per tag rather than the manifest and config
+// it's read from, so a sort of thousands of tags fits in the cache.
+type tagSummary struct {
+	Created time.Time
+	Size    int64
+}
+
+// readTagSummary reads tag's summary from src. Its size is the main
+// platform's, or the manifest's if there's none.
+func readTagSummary(ctx context.Context, src registry.Source, repo, tag string) (tagSummary, error) {
+	m, err := src.Resolve(ctx, repo, tag)
+	if err != nil {
+		return tagSummary{}, err
+	}
+	p, ok := mainPlatform(m)
+	if !ok {
+		return tagSummary{Size: m.Size}, nil
+	}
+	sum := tagSummary{Size: p.Size}
+	cfg, err := src.Config(ctx, repo, p.Config)
+	if err != nil {
+		return sum, err
+	}
+	sum.Created = cmp.Or(cfg.Created, p.Created)
+	return sum, nil
 }
 
 // loadCards fills in the page's cards up front after a sort that has
