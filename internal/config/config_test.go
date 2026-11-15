@@ -131,6 +131,7 @@ func TestLoadErrors(t *testing.T) {
 		{"listen without port", with("REGISTRY_UI_LISTEN", "8080"), "REGISTRY_UI_LISTEN:"},
 		{"base path with query", with("REGISTRY_UI_BASE_PATH", "/r?x=1"), "REGISTRY_UI_BASE_PATH:"},
 		{"insecure not a bool", with("REGISTRY_UI_REGISTRY_INSECURE", "yes"), "REGISTRY_UI_REGISTRY_INSECURE:"},
+		{"enable delete not a bool", with("REGISTRY_UI_ENABLE_DELETE", "yes"), "REGISTRY_UI_ENABLE_DELETE:"},
 		{"log level unknown", with("REGISTRY_UI_LOG_LEVEL", "loud"), "REGISTRY_UI_LOG_LEVEL:"},
 		{"storage path missing", with("REGISTRY_UI_STORAGE_PATH", filepath.Join(t.TempDir(), "nope")), "REGISTRY_UI_STORAGE_PATH:"},
 		{"storage path is a file", with("REGISTRY_UI_STORAGE_PATH", file), "REGISTRY_UI_STORAGE_PATH:"},
@@ -246,6 +247,15 @@ func TestLoadReportsEveryError(t *testing.T) {
 	lines := strings.Split(err.Error(), "\n")
 	if len(lines) != 3 {
 		t.Errorf("want 3 lines (registry URL, listen, log level), got:\n%v", err)
+	}
+}
+
+func TestLoadEnableDelete(t *testing.T) {
+	for v, want := range map[string]bool{"": false, "false": false, "true": true, "1": true} {
+		c, err := load(map[string]string{"REGISTRY_UI_REGISTRY_URL": "http://registry:5000", "REGISTRY_UI_ENABLE_DELETE": v})
+		if err != nil || c.EnableDelete != want {
+			t.Errorf("%q: got %v, %v; want %v", v, c.EnableDelete, err, want)
+		}
 	}
 }
 

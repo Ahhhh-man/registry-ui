@@ -82,7 +82,7 @@ type puller struct {
 	repos map[string]struct{} // the names it has been asked about; guarded by API.mu
 }
 
-var _ Source = (*API)(nil)
+var _ Deleter = (*API)(nil)
 
 // Option configures an API made by NewAPI.
 type Option func(*apiOptions)
@@ -683,6 +683,8 @@ func (c *call) fail(what string, err error) error {
 			return &UnauthorizedError{Challenged: c.challenged.Load()}
 		case http.StatusForbidden:
 			return fmt.Errorf("%s: %w", what, ErrForbidden)
+		case http.StatusMethodNotAllowed:
+			return fmt.Errorf("%s: %w", what, ErrDeleteDisabled)
 		}
 	}
 	return fmt.Errorf("%s: %w: %w", what, ErrUnavailable, err)

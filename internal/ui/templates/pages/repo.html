@@ -158,11 +158,12 @@
      selected. It floats at the bottom of the window, so the table never
      moves under the pointer; the h-16 spacer around it lets the last rows
      scroll out from under it. app.js keeps the selection, per
-     repository, in sessionStorage and fills this in. */}}
+     repository, in sessionStorage and fills this in. With deleting on, it
+     offers Delete…, which app.js posts to data-delete, or says why not. */}}
 {{define "repo-selection" -}}
-<div data-select="{{repoURL .Repo}}">
+<div data-select="{{repoURL .Repo}}"{{if .CanDelete}} data-delete="{{deleteURL}}" data-repo="{{.Repo}}"{{end}}>
 <div data-selection-bar hidden class="h-16">
-<div class="fixed inset-x-4 bottom-4 z-10 mx-auto max-w-3xl rounded-md bg-surface shadow-[0_8px_30px_rgb(0_0_0/0.2)]">
+<div class="fixed inset-x-4 bottom-4 z-10 mx-auto {{if .CanDelete}}max-w-4xl{{else}}max-w-3xl{{end}} rounded-md bg-surface shadow-[0_8px_30px_rgb(0_0_0/0.2)]">
 <div class="flex flex-wrap items-center gap-2 rounded-md border border-accent/35 bg-accent-soft py-1.5 pr-1.5 pl-4 text-sm text-accent-text">
 {{- icon "check"}}<span><b data-selection-count class="font-semibold">0</b> selected</span>
 {{- /* On a phone the actions take their own row, below the count and Clear. */}}
@@ -171,7 +172,9 @@
 {{- template "button" (dict "Label" "Copy names" "Icon" "copy" "Action" "names")}}
 {{- template "button" (dict "Label" "Copy references" "Icon" "link" "Action" "refs")}}
 {{- template "button" (dict "Label" "Copy pull commands" "Icon" "terminal" "Action" "pulls")}}
+{{- if .CanDelete}}{{template "button" (dict "Label" "Delete…" "Icon" "trash-2" "Variant" "danger" "Action" "delete")}}{{end}}
 </span>
+{{- with .NoDelete}}<p class="flex w-full items-start gap-1.5 pb-1 text-xs">{{icon "info" "mt-0.5 shrink-0"}}<span>{{.}}</span></p>{{end}}
 </div>
 </div>
 </div>
@@ -258,4 +261,72 @@
 </div>
 {{- end}}
 </article>
+{{- end}}
+
+{{/* delete-dialog: confirming a delete from the list view, and its result
+     (a pages.deleteView). app.js opens it with showModal() and posts its
+     form; Cancel and Close just close it. The registry deletes by digest,
+     so the warning names every other tag that goes too. */}}
+{{define "delete-dialog" -}}
+{{$chip := "rounded-sm border border-border bg-panel px-1.5 font-mono text-xs leading-6 text-text"}}
+<dialog aria-labelledby="delete-title" class="m-auto w-[34rem] max-w-[calc(100%-2rem)] rounded-lg border border-border bg-surface p-5 text-text shadow-[0_20px_50px_-12px_rgb(0_0_0/0.35)] backdrop:bg-[rgb(0_0_0/0.45)]">
+<form method="post" action="{{deleteURL}}" data-delete-form class="flex flex-col gap-4">
+<input type="hidden" name="repo" value="{{.Repo}}">
+{{- range .Tags}}<input type="hidden" name="tag" value="{{.}}">{{end}}
+{{- range .Gone}}<input type="hidden" name="gone" value="{{.}}">{{end}}
+{{- range .Digests}}<input type="hidden" name="digest" value="{{.}}">{{end}}
+{{- range .Deleted}}<span hidden data-deleted="{{.}}"></span>{{end}}
+<div class="flex items-start gap-3">
+{{- if and .Done (not .Failures)}}<span class="grid size-9 shrink-0 place-items-center rounded-md bg-accent-soft text-accent-text">{{icon "check"}}</span>
+{{- else}}<span class="grid size-9 shrink-0 place-items-center rounded-md bg-danger-bg text-danger-fg">{{if .Done}}{{icon "alert-circle"}}{{else}}{{icon "trash-2"}}{{end}}</span>{{end}}
+<div class="min-w-0">
+<h2 id="delete-title" class="text-base font-semibold">
+{{- if .Done}}{{if .Failures}}Some tags couldn't be deleted{{else}}Deleted {{.Plural (len .Deleted) "tag"}}{{end}}
+{{- else if .Error}}Can't delete these tags
+{{- else if .Selected}}Delete {{.Plural (len .Selected) "tag"}}?
+{{- else}}Nothing to delete{{end}}</h2>
+<p class="mt-1 text-sm text-muted">{{if .Done}}{{if and .Deleted .Failures}}{{.Plural (len .Deleted) "tag"}} went from{{else}}From{{end}}{{else}}From{{end}} <b class="font-semibold break-all text-text">{{.Repo}}</b>.{{if not .Done}} This can't be undone.{{end}}</p>
+</div>
+</div>
+{{- with .Error}}
+<div role="alert" class="flex items-start gap-2.5 rounded-md bg-danger-bg px-3 py-3 text-sm text-danger-fg">{{icon "alert-circle" "mt-0.5 shrink-0"}}<div class="min-w-0">{{.}}</div></div>
+{{- else}}
+{{- if .Done}}
+{{- if .Failures}}
+<ul class="flex flex-col gap-3">
+{{- range .Failures}}
+<li class="rounded-md bg-danger-bg px-3 py-3 text-sm text-danger-fg">
+<p>{{.Reason | printf "Not deleted: %s."}} <span class="font-mono text-xs">{{shortDigest .Digest}}</span></p>
+<ul class="mt-2 flex flex-wrap gap-1.5">{{range .Tags}}<li class="{{$chip}}" title="{{.Tag}}">{{.Label}}</li>{{end}}</ul>
+</li>
+{{- end}}
+</ul>
+{{- end}}
+{{- template "note" "Disk space comes back only once the registry's garbage collection runs."}}
+{{- else}}
+{{- if .Changed}}<div role="alert">{{template "warning" "The tags changed since this dialog opened, so nothing was deleted. Check what goes now and confirm again."}}</div>{{end}}
+{{- with .Selected}}<ul aria-label="Selected tags" class="flex flex-wrap gap-1.5">{{range .}}<li class="{{$chip}}" title="{{.Tag}}">{{.Label}}</li>{{end}}</ul>{{end}}
+{{- with .Extra}}
+<div role="note" class="flex items-start gap-2.5 rounded-md bg-warn-bg px-3 py-3 text-sm text-warn-fg">{{icon "triangle-alert" "mt-0.5 shrink-0"}}<div class="min-w-0">
+<p><b class="font-semibold">{{$.Plural (len .) "more tag"}} will also go.</b> The registry deletes by image digest, so every tag pointing at the same image is removed, plus any signatures for it.</p>
+<ul aria-label="Also deleted" class="mt-2 flex flex-wrap gap-1.5">{{range .}}<li class="rounded-sm bg-surface px-1.5 font-mono text-xs leading-6 text-text" title="{{.Tag}}">{{.Label}}</li>{{end}}</ul>
+</div></div>
+{{- end}}
+{{- with .Missing}}
+<div role="note" class="flex items-start gap-2.5 rounded-md bg-panel px-3 py-3 text-sm text-muted">{{icon "info" "mt-0.5 shrink-0"}}<div class="min-w-0">
+<p>{{$.Plural (len .) "selected tag"}} can't be deleted: the registry no longer has {{if eq (len .) 1}}its manifest{{else}}their manifests{{end}}, so there's no digest to delete {{if eq (len .) 1}}it{{else}}them{{end}} by.</p>
+<ul class="mt-2 flex flex-wrap gap-1.5">{{range .}}<li class="{{$chip}}" title="{{.Tag}}">{{.Label}}</li>{{end}}</ul>
+</div></div>
+{{- end}}
+{{- if .Gone}}{{template "note" "Disk space comes back only once the registry's garbage collection runs."}}{{end}}
+{{- end}}
+{{- end}}
+<div class="flex flex-wrap justify-end gap-2">
+<button type="submit" formmethod="dialog" formnovalidate autofocus class="inline-flex items-center justify-center gap-1.5 rounded-md border border-border bg-surface px-3 py-1.5 text-sm font-medium whitespace-nowrap text-text hover:border-faint">{{if or .Done .Error (not .Gone)}}Close{{else}}Cancel{{end}}</button>
+{{- if and .Gone (not .Done) (not .Error)}}
+<button type="submit" name="confirm" value="1" class="inline-flex items-center justify-center gap-1.5 rounded-md border border-danger-fg bg-danger-fg px-3 py-1.5 text-sm font-medium whitespace-nowrap text-surface hover:opacity-90 disabled:opacity-60">{{icon "trash-2"}}Delete {{.Plural (len .Gone) "tag"}}</button>
+{{- end}}
+</div>
+</form>
+</dialog>
 {{- end}}

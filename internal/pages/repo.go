@@ -70,6 +70,11 @@ type repoView struct {
 	Page, Pages           int
 	Prev, Next            string // pagination links, "" at either end
 
+	// CanDelete offers Delete… in the list view's selection bar; NoDelete
+	// says instead why it can't. Both are empty when deleting is off.
+	CanDelete bool
+	NoDelete  string
+
 	// The Overview tab: the tag whose labels fill About, its links,
 	// "Tags by image" while it loads, every tag for the dropdown, and the
 	// selected tag's summary.
@@ -213,6 +218,9 @@ func (s *Server) Repo(w http.ResponseWriter, r *http.Request, ref web.Ref) {
 
 	v.cards(r, page, s.PullHost)
 	s.loadCards(r.Context(), &v, page)
+	if v.List && s.Delete {
+		v.CanDelete, v.NoDelete = s.canDelete(r, ref.Repo)
+	}
 	if web.Fragment(r) == "tags" {
 		// The filter is typed into the page, so keep its URL in step without the fragment.
 		w.Header().Set("HX-Replace-Url", v.link(r))

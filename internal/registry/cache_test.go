@@ -407,3 +407,49 @@ func BenchmarkCacheHit(b *testing.B) {
 	b.Run("anonymous", func(b *testing.B) { hit(b, context.Background()) })
 	b.Run("signed-in", func(b *testing.B) { hit(b, WithCredentials(context.Background(), "alice", "secret")) })
 }
+
+// deleter is a counter that can delete, deleting nothing.
+type deleter struct{ counter }
+
+func (s *deleter) CanDelete(ctx context.Context, _ string) error {
+	_, err := s.call(ctx)
+	return err
+}
+
+func (s *deleter) Delete(ctx context.Context, _, _ string) error {
+	_, err := s.call(ctx)
+	return err
+}
+
+// A delete forgets everything about the repository for every identity, so
+// nobody keeps seeing the tags it removed, and nothing about the others.
+func TestCacheDeleteForgetsRepo(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		c := NewCache(&deleter{})
+		alice, bob := WithCredentials(t.Context(), "alice", "secret"), WithCredentials(t.Context(), "bob", "secret")
+		summary := func(context.Context, Source) (canDelete, error) { return canDelete{}, nil }
+		for _, ctx := range []context.Context{t.Context(), alice, bob} {
+			for _, repo := range []string{"team/app", "team/app2"} {
+				_, _ = c.Tags(ctx, repo)
+				_, _ = c.Digest(ctx, repo, "1.0")
+				_, _ = c.Resolve(ctx, repo, "1.0")
+				_, _ = c.Resolve(ctx, repo, testDigest)
+				_, _ = c.TagTime(ctx, repo, "1.0")
+				_ = c.CanDelete(ctx, repo)
+				_, _ = Summary(ctx, c, summary, "catalog row", repo)
+				_, _ = Summary(ctx, c, summary, "tag sort", repo, "1.0")
+			}
+			_, _ = c.Catalog(ctx)
+		}
+		if err := c.Delete(alice, "team/app", testDigest); err != nil {
+			t.Fatal(err)
+		}
+		left := map[string]int{}
+		for k := range c.items {
+			left[about(k)]++
+		}
+		if left["team/app"] != 0 || left["team/app2"] != 3*8 || left[""] != 3 {
+			t.Errorf("entries left by repository = %v", left)
+		}
+	})
+}

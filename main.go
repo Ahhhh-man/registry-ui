@@ -95,7 +95,7 @@ func serve() error {
 	if err != nil {
 		return err
 	}
-	p := &pages.Server{Src: src, Templates: tmpl, Title: cfg.Title, Version: version, PullHost: cfg.PullURL, BasePath: cfg.BasePath, Sessions: sessions, Storage: cfg.StoragePath != "", TagSort: cfg.TagSort, TagsPerPage: cfg.TagsPerPage, CatalogSort: cfg.CatalogSort}
+	p := &pages.Server{Src: src, Templates: tmpl, Title: cfg.Title, Version: version, PullHost: cfg.PullURL, BasePath: cfg.BasePath, Sessions: sessions, Storage: cfg.StoragePath != "", TagSort: cfg.TagSort, TagsPerPage: cfg.TagsPerPage, CatalogSort: cfg.CatalogSort, Delete: cfg.EnableDelete && cfg.StoragePath == ""}
 	if check != nil {
 		p.Check = check.Check
 	}
@@ -126,6 +126,9 @@ var newSource = func(cfg config.Config) (registry.Source, error) {
 		}
 		if cfg.RegistryClientCert != nil {
 			slog.Warn("storage mode: REGISTRY_UI_REGISTRY_CLIENT_CERT and REGISTRY_UI_REGISTRY_CLIENT_KEY are ignored, since the registry's API isn't used")
+		}
+		if cfg.EnableDelete {
+			slog.Warn("storage mode: REGISTRY_UI_ENABLE_DELETE is ignored, since storage mode only reads")
 		}
 		return registry.NewStorage(cfg.StoragePath)
 	}

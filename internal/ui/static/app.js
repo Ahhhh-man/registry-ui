@@ -251,6 +251,46 @@
   };
   const plural = (n, unit) => `${n} ${unit}${n === 1 ? "" : "s"}`;
 
+  // Delete… posts the whole selection, rows on other pages included, and
+  // the server answers a <dialog> saying what goes: the registry deletes by
+  // digest, so other tags can go too. Confirming posts the dialog's form
+  // back, and its answer, the result, replaces it. Tags it deleted
+  // ([data-deleted]) leave the selection, and closing the result reloads
+  // the page, whose counts changed too.
+  const deleteDialog = async (url, body) => {
+    let html;
+    try {
+      const resp = await fetch(url, { method: "POST", body });
+      if (!resp.ok) throw new Error(resp.statusText);
+      html = await resp.text();
+    } catch {
+      toast("Couldn't reach the server");
+      return;
+    }
+    let slot = document.querySelector("[data-delete-slot]");
+    if (!slot) {
+      slot = document.createElement("div");
+      slot.dataset.deleteSlot = "";
+      document.body.append(slot);
+    }
+    slot.innerHTML = html;
+    const dialog = slot.querySelector("dialog");
+    dialog.showModal();
+    const deleted = [...dialog.querySelectorAll("[data-deleted]")].map((el) => el.dataset.deleted);
+    if (!deleted.length) return;
+    for (const tag of deleted) sel.tags.delete(tag);
+    save();
+    dialog.addEventListener("close", () => location.reload(), { once: true });
+  };
+  document.addEventListener("submit", (e) => {
+    const form = e.target.closest("[data-delete-form]");
+    if (!form || e.submitter?.getAttribute("formmethod") === "dialog") return;
+    e.preventDefault();
+    const body = new URLSearchParams(new FormData(form, e.submitter));
+    if (e.submitter) e.submitter.disabled = true; // one delete per click
+    deleteDialog(form.action, body);
+  });
+
   document.addEventListener("click", async (e) => {
     const all = e.target.closest("[data-select-all]");
     if (all) {
@@ -267,6 +307,11 @@
       sel.tags.clear();
       sync();
       document.querySelector("[data-select-all]")?.focus();
+    } else if (action === "delete") {
+      const box = e.target.closest("[data-select]");
+      const body = new URLSearchParams({ repo: box.dataset.repo });
+      for (const tag of sel.tags.keys()) body.append("tag", tag);
+      deleteDialog(box.dataset.delete, body);
     } else if (action) {
       const [unit, pick] = { names: ["tag name", ([tag]) => tag], refs: ["reference", ([, v]) => v.ref], pulls: ["pull command", ([, v]) => v.pull] }[action];
       const lines = [...sel.tags].map(pick).filter(Boolean);

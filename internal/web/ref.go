@@ -35,6 +35,13 @@ var (
 	digestRe = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 )
 
+// ValidRepo and ValidTag report whether a repository or tag name follows
+// the reference grammar, for names that arrive other than in the path.
+func ValidRepo(name string) bool { return nameRe.MatchString(name) }
+
+// ValidTag: see ValidRepo.
+func ValidTag(tag string) bool { return tagRe.MatchString(tag) }
+
 // parseRef parses a path below the base path, without its leading slash,
 // e.g. "library/nginx:1.27.3". It reports false for anything invalid.
 func parseRef(p string) (Ref, bool) {
