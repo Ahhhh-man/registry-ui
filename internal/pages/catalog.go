@@ -296,7 +296,7 @@ func (s *Server) rowDetails(ctx context.Context, row *catalogRow) error {
 	if err != nil {
 		return err
 	}
-	row.Created, row.Description = cfg.Created, cfg.Labels["org.opencontainers.image.description"]
+	row.Created, row.Description = cmp.Or(cfg.Created, p.Created), cfg.Labels["org.opencontainers.image.description"]
 	return nil
 }
 

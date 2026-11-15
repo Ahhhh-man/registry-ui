@@ -65,6 +65,18 @@ const (
 	RepoNested = "team/web/frontend"
 	TagNested  = "main"
 
+	// RepoUndated holds images whose configs have no created date, each
+	// dated some other way: by label under TagLabelled, by manifest
+	// annotation under TagAnnotated, by index annotation under
+	// TagIndexAnnotated, by a label that isn't RFC 3339 under TagBadLabel,
+	// and with a created date as well as both under TagDated.
+	RepoUndated       = "test/undated"
+	TagLabelled       = "labelled"
+	TagAnnotated      = "annotated"
+	TagIndexAnnotated = "index-annotated"
+	TagBadLabel       = "bad-label"
+	TagDated          = "dated"
+
 	// RepoPaged holds Single under each of PagedTags.
 	RepoPaged = "test/paged"
 
@@ -126,6 +138,10 @@ type Registry struct {
 	SignatureTag string
 	// Helm is a Helm chart with config media type MediaHelmConfig.
 	Helm v1.Image
+	// Labelled, Annotated, IndexAnnotated, BadLabel and Dated are what
+	// RepoUndated holds under the tags of the same names.
+	Labelled, Annotated, BadLabel, Dated v1.Image
+	IndexAnnotated                       v1.ImageIndex
 
 	// large replaces the seeded content, for NewLarge.
 	large []tagged
@@ -135,7 +151,10 @@ type Registry struct {
 var (
 	PlatformsCreated = time.Date(2024, 11, 20, 10, 30, 0, 0, time.UTC)
 	SingleCreated    = time.Date(2023, 5, 1, 8, 0, 0, 0, time.UTC)
-	PlatformsLabels  = map[string]string{
+	// LabelCreated and AnnotationCreated date RepoUndated's images.
+	LabelCreated      = time.Date(2022, 3, 4, 5, 6, 7, 0, time.UTC)
+	AnnotationCreated = time.Date(2021, 6, 7, 8, 9, 10, 0, time.UTC)
+	PlatformsLabels   = map[string]string{
 		"org.opencontainers.image.description": "A seeded multi-arch test image.",
 		"org.opencontainers.image.source":      "https://example.com/nginx",
 		// The source again, as docker/metadata-action sets it.
@@ -309,6 +328,13 @@ func (r *Registry) content() []tagged {
 		{repo: RepoHelm, tag: TagHelm, obj: r.Helm},
 		{repo: RepoNested, tag: TagNested, obj: r.Single},
 	}
+	c = append(c,
+		tagged{repo: RepoUndated, tag: TagLabelled, obj: r.Labelled},
+		tagged{repo: RepoUndated, tag: TagAnnotated, obj: r.Annotated},
+		tagged{repo: RepoUndated, tag: TagIndexAnnotated, obj: r.IndexAnnotated},
+		tagged{repo: RepoUndated, tag: TagBadLabel, obj: r.BadLabel},
+		tagged{repo: RepoUndated, tag: TagDated, obj: r.Dated},
+	)
 	for _, tag := range PagedTags {
 		c = append(c, tagged{repo: RepoPaged, tag: tag, obj: r.Single})
 	}
@@ -445,6 +471,23 @@ func (r *Registry) build(t testing.TB) {
 	r.Helm = mutate.ConfigMediaType(
 		image("podinfo-6.7.1.tgz", "application/vnd.cncf.helm.chart.content.v1.tar+gzip", v1.ConfigFile{}),
 		MediaHelmConfig)
+
+	const key = "org.opencontainers.image.created"
+	labelled := func(layer, value string) v1.Image {
+		return image(layer, types.OCILayer, v1.ConfigFile{OS: "linux", Architecture: "amd64", Config: v1.Config{Labels: map[string]string{key: value}}})
+	}
+	annotated := map[string]string{key: AnnotationCreated.Format(time.RFC3339)}
+	r.Labelled = labelled("labelled", LabelCreated.Format(time.RFC3339))
+	r.BadLabel = labelled("bad label", "4 March 2022")
+	undated := image("annotated", types.OCILayer, v1.ConfigFile{OS: "linux", Architecture: "amd64"})
+	r.Annotated = mutate.Annotations(undated, annotated).(v1.Image)
+	r.IndexAnnotated = mutate.Annotations(mutate.AppendManifests(mutate.IndexMediaType(empty.Index, types.OCIImageIndex),
+		mutate.IndexAddendum{Add: undated, Descriptor: v1.Descriptor{Platform: &v1.Platform{OS: "linux", Architecture: "amd64"}}}), annotated).(v1.ImageIndex)
+	dated := image("dated", types.OCILayer, v1.ConfigFile{
+		OS: "linux", Architecture: "amd64", Created: v1.Time{Time: SingleCreated},
+		Config: v1.Config{Labels: map[string]string{key: LabelCreated.Format(time.RFC3339)}},
+	})
+	r.Dated = mutate.Annotations(dated, annotated).(v1.Image)
 }
 
 // paginate pages catalog and tag-list responses the way Distribution does.

@@ -179,6 +179,21 @@ func TestStorageDiskUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	all[digest(t, r.Index)] = int64(len(raw))
+	im, err := r.IndexAnnotated.IndexManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ia, err := r.IndexAnnotated.Image(im.Manifests[0].Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, img := range []v1.Image{r.Labelled, r.Annotated, r.BadLabel, r.Dated, ia} {
+		blobSizes(t, all, img)
+	}
+	if raw, err = r.IndexAnnotated.RawManifest(); err != nil {
+		t.Fatal(err)
+	}
+	all[digest(t, r.IndexAnnotated)] = int64(len(raw))
 
 	// Single's blobs are shared by three repositories, and test/paged links
 	// them under ten tags: each repository counts them once, and so does the

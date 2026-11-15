@@ -295,7 +295,7 @@ func (s *Server) sortTags(ctx context.Context, repo string, tags []string, by st
 		infos[i].size = p.Size
 		if by == "created" {
 			if cfg, err := s.Src.Config(ctx, repo, p.Config); err == nil {
-				infos[i].created = cfg.Created
+				infos[i].created = cmp.Or(cfg.Created, p.Created)
 			}
 		}
 	})
@@ -375,8 +375,8 @@ func (s *Server) header(ctx context.Context, v *repoView, tags []string) {
 		}
 		v.Links = append(v.Links, link{l.Label, u})
 	}
-	if !cfg.Created.IsZero() {
-		pills = append(pills, pill{Icon: "clock", Text: "Created ", Time: cfg.Created})
+	if created := cmp.Or(cfg.Created, p.Created); !created.IsZero() {
+		pills = append(pills, pill{Icon: "clock", Text: "Created ", Time: created})
 	}
 }
 
@@ -515,7 +515,7 @@ func (s *Server) card(ctx context.Context, repo, tag string, m registry.Manifest
 		if err != nil {
 			return c, err
 		}
-		c.Created, c.Size = cfg.Created, p.Size
+		c.Created, c.Size = cmp.Or(cfg.Created, p.Created), p.Size
 		if len(m.Platforms) > 1 {
 			c.Main = format.Platform(p)
 		}

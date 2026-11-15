@@ -1,11 +1,13 @@
 package registry_test
 
 import (
+	"cmp"
 	"errors"
 	"maps"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/types"
@@ -70,7 +72,7 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 	ctx := t.Context()
 
 	repos, err := s.Catalog(ctx)
-	wantRepos := []string{registrytest.RepoHelm, registrytest.RepoEmpty, registrytest.RepoUntagged, registrytest.RepoSingle, registrytest.RepoIndex, registrytest.RepoAllMissing, registrytest.RepoDangling, registrytest.RepoSomeMissing, registrytest.RepoNested, registrytest.RepoPaged}
+	wantRepos := []string{registrytest.RepoHelm, registrytest.RepoEmpty, registrytest.RepoUntagged, registrytest.RepoSingle, registrytest.RepoIndex, registrytest.RepoAllMissing, registrytest.RepoDangling, registrytest.RepoSomeMissing, registrytest.RepoNested, registrytest.RepoPaged, registrytest.RepoUndated}
 	if err != nil || !slices.Equal(repos, wantRepos) {
 		t.Errorf("Catalog = %v, %v; want %v", repos, err, wantRepos)
 	}
@@ -81,6 +83,10 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 		registrytest.RepoHelm:   {registrytest.TagHelm},
 		registrytest.RepoNested: {registrytest.TagNested},
 		registrytest.RepoPaged:  registrytest.PagedTags,
+		registrytest.RepoUndated: {
+			registrytest.TagLabelled, registrytest.TagAnnotated, registrytest.TagIndexAnnotated,
+			registrytest.TagBadLabel, registrytest.TagDated,
+		},
 
 		registrytest.RepoSomeMissing: {registrytest.TagVersion},
 		registrytest.RepoAllMissing:  {registrytest.TagVersion},
@@ -155,6 +161,32 @@ func testSource(t *testing.T, newSource func(t *testing.T) (registry.Source, *re
 	cfg, err := s.Config(ctx, registrytest.RepoSingle, single.Config)
 	if err != nil || !cfg.Created.Equal(registrytest.SingleCreated) || len(cfg.Labels) != 0 {
 		t.Errorf("Config(%s) = %+v, %v", single.Config, cfg, err)
+	}
+
+	// Without a created date in the config, the label dates the image, then
+	// the manifest's annotation, then the index's. The config's date wins.
+	for _, tc := range []struct {
+		tag  string
+		want time.Time
+	}{
+		{registrytest.TagLabelled, registrytest.LabelCreated},
+		{registrytest.TagAnnotated, registrytest.AnnotationCreated},
+		{registrytest.TagIndexAnnotated, registrytest.AnnotationCreated},
+		{registrytest.TagBadLabel, time.Time{}},
+		{registrytest.TagDated, registrytest.SingleCreated},
+	} {
+		m, err := s.Resolve(ctx, registrytest.RepoUndated, tc.tag)
+		if err != nil || len(m.Platforms) != 1 {
+			t.Fatalf("Resolve(%s) = %+v, %v", tc.tag, m, err)
+		}
+		p := m.Platforms[0]
+		cfg, err := s.Config(ctx, registrytest.RepoUndated, p.Config)
+		if err != nil {
+			t.Fatalf("Config(%s) = %v", tc.tag, err)
+		}
+		if got := cmp.Or(cfg.Created, p.Created); !got.Equal(tc.want) {
+			t.Errorf("%s: created = %v (config %v, platform %v), want %v", tc.tag, got, cfg.Created, p.Created, tc.want)
+		}
 	}
 
 	// Only storage mode knows when a tag changed; TestStorageTagTime checks
