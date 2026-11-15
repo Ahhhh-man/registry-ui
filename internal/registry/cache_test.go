@@ -104,7 +104,7 @@ func TestCacheTTL(t *testing.T) {
 	})
 }
 
-func TestCacheEvictsLeastRecentlyUsed(t *testing.T) {
+func TestCacheEvictsUnvisited(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := t.Context()
 		src := &counter{}
@@ -114,16 +114,45 @@ func TestCacheEvictsLeastRecentlyUsed(t *testing.T) {
 
 		get("a")
 		get("b")
-		get("a") // a is now more recent than b
+		get("a") // a has been visited since it was added, b hasn't
 		get("c") // evicts b
 		src.want(t, 3)
 		get("a")
 		get("c")
 		src.want(t, 3)
-		get("b")
+		get("b") // just evicted, so not kept the first time it's back
+		get("a")
+		get("c")
 		src.want(t, 4)
+		get("b") // but kept the second
+		get("b")
+		src.want(t, 5)
 		if n := len(c.items); n != 2 {
 			t.Errorf("cache holds %d entries, want 2", n)
+		}
+	})
+}
+
+// A catalog sort reads every repository in the same order on each visit.
+// When that's more than the cache holds, most of a visit should still come
+// from the cache, not each entry be evicted just before it's needed again.
+func TestCacheSurvivesRepeatedScan(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
+		src := &counter{}
+		c := NewCache(src)
+		c.max = 1000
+		const keys = 1200
+		for pass := range 6 {
+			before := src.calls.Load()
+			for i := range keys {
+				_, _ = c.Config(ctx, "repo", strconv.Itoa(i))
+			}
+			misses := src.calls.Load() - before
+			t.Logf("pass %d fetched %d of %d", pass+1, misses, keys)
+			if pass > 0 && misses > keys/2 {
+				t.Errorf("pass %d fetched %d of %d entries, want at most half", pass+1, misses, keys)
+			}
 		}
 	})
 }

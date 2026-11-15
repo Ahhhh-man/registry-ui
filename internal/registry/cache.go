@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"context"
 	"crypto/sha256"
+	"hash/maphash"
 	"maps"
 	"slices"
 	"sync"
@@ -13,10 +14,10 @@ import (
 )
 
 const (
-	// cacheSize is how many entries the cache holds before evicting the
-	// least recently used. A catalog sort or type filter needs three per
-	// repository (tag list, manifest, config) and a repository's tag sort
-	// two per tag, for each signed-in user. This fits one user's sort of
+	// cacheSize is how many entries the cache holds before evicting one. A
+	// catalog sort or type filter needs three per repository (tag list,
+	// manifest, config) and a repository's tag sort two per tag, for each
+	// signed-in user. This fits one user's sort of
 	// about 1,600 repositories, and keeps the cache within the 15 MB idle
 	// memory budget: realistic entries cost 1–2 kB each.
 	cacheSize = 5000
@@ -37,16 +38,30 @@ type Cache struct {
 	// missing as they're pulled, so even a lookup by digest must expire.
 	partial bool
 
+	// Eviction is SIEVE (https://cachemon.github.io/SIEVE-website/): a hit
+	// only marks its entry visited, and the hand walks from the oldest entry
+	// towards the newest, clearing the mark on visited entries and evicting
+	// the first one without it.
 	mu    sync.Mutex
 	max   int
-	order *list.List // of *cacheEntry, most recently used first
+	order *list.List    // of *cacheEntry, newest first
+	hand  *list.Element // where the next eviction starts looking; nil: the oldest
 	items map[string]*list.Element
+	// gone holds hashes of the last max evicted keys, each mapped to its
+	// slot in ring. A key that comes back while it's here is being read in a
+	// cycle longer than the cache holds, such as a catalog sort, so it isn't
+	// kept the first time: keeping it would evict what the cycle needs next.
+	seed maphash.Seed
+	gone map[uint64]int
+	ring []uint64
+	next int
 }
 
 type cacheEntry struct {
 	key     string
 	val     any
 	expires time.Time // zero: until evicted
+	visited bool
 }
 
 var _ Source = (*Cache)(nil)
@@ -54,7 +69,10 @@ var _ Source = (*Cache)(nil)
 // NewCache returns a Cache in front of src.
 func NewCache(src Source) *Cache {
 	_, partial := src.(*Storage)
-	return &Cache{src: src, partial: partial, max: cacheSize, order: list.New(), items: map[string]*list.Element{}}
+	return &Cache{
+		src: src, partial: partial, max: cacheSize, order: list.New(), items: map[string]*list.Element{},
+		seed: maphash.MakeSeed(), gone: map[uint64]int{},
+	}
 }
 
 // Catalog implements Source.
@@ -170,7 +188,7 @@ func (c *Cache) get(key string) (val any, fresh bool) {
 	if !e.expires.IsZero() && !time.Now().Before(e.expires) {
 		return e.val, false
 	}
-	c.order.MoveToFront(el)
+	e.visited = true
 	return e.val, true
 }
 
@@ -182,14 +200,47 @@ func (c *Cache) put(key string, val any, ttl time.Duration) {
 		e.expires = time.Now().Add(ttl)
 	}
 	if el, ok := c.items[key]; ok {
+		e.visited = true
 		el.Value = e
-		c.order.MoveToFront(el)
 		return
 	}
-	c.items[key] = c.order.PushFront(e)
-	if c.order.Len() > c.max {
-		last := c.order.Back()
-		c.order.Remove(last)
-		delete(c.items, last.Value.(*cacheEntry).key)
+	if c.order.Len() >= c.max {
+		h := maphash.String(c.seed, key)
+		if _, ok := c.gone[h]; ok {
+			delete(c.gone, h)
+			return
+		}
+		c.evict()
 	}
+	c.items[key] = c.order.PushFront(e)
+}
+
+// evict removes the first entry from the hand on that hasn't been visited
+// since the hand last passed it, wrapping round to the oldest, and files
+// its key in gone.
+func (c *Cache) evict() {
+	el := c.hand
+	if el == nil {
+		el = c.order.Back()
+	}
+	for el.Value.(*cacheEntry).visited {
+		el.Value.(*cacheEntry).visited = false
+		if el = el.Prev(); el == nil {
+			el = c.order.Back()
+		}
+	}
+	c.hand = el.Prev()
+	c.order.Remove(el)
+	key := el.Value.(*cacheEntry).key
+	delete(c.items, key)
+
+	if c.ring == nil {
+		c.ring = make([]uint64, c.max)
+	}
+	if old := c.ring[c.next]; c.gone[old] == c.next {
+		delete(c.gone, old)
+	}
+	h := maphash.String(c.seed, key)
+	c.ring[c.next], c.gone[h] = h, c.next
+	c.next = (c.next + 1) % len(c.ring)
 }
