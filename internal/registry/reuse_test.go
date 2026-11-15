@@ -62,7 +62,7 @@ func cachedAPI(t *testing.T, r *registrytest.Registry) (*Cache, *sent) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := &sent{inner: roundTripper{unkept()}, paths: map[string]int{}}
+	s := &sent{inner: roundTripper{inner: unkept()}, paths: map[string]int{}}
 	a.transport = s
 	return NewCache(a), s
 }

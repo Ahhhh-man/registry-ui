@@ -83,6 +83,7 @@ Everything is an environment variable. There are no config files or flags, and a
 | `REGISTRY_UI_BASE_PATH` | `/` | Serve under a sub-path, e.g. `/registry/`. |
 | `REGISTRY_UI_SECRET` | random on each start | Key for the session cookie. Set it to keep people signed in across restarts. |
 | `REGISTRY_UI_REGISTRY_INSECURE` | `false` | Skip TLS verification when talking to the registry. |
+| `REGISTRY_UI_REGISTRY_HEADER_<NAME>` | unset | Send a header with every request to the registry, e.g. an API key for a proxy in front of it. The name comes from the suffix, with underscores as hyphens: `REGISTRY_UI_REGISTRY_HEADER_X_API_KEY=…` sends `X-Api-Key: …`. Set one variable per header. Only the registry's own host gets them, not a separate token service. Values are never logged. Ignored in storage mode. |
 | `REGISTRY_UI_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error`. |
 | `REGISTRY_UI_STORAGE_PATH` | unset | Read the registry's storage folder directly instead of its API. See [Pull-through caches](#pull-through-caches). |
 | `REGISTRY_UI_TAG_SORT` | `version` | The order a repository's tags are listed in until someone picks another: `version` (newest first), `version-asc`, `name`, `created`, `updated` (storage mode only) or `size`. |

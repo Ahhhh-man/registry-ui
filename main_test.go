@@ -18,13 +18,12 @@ func TestHealthcheck(t *testing.T) {
 	_, port, _ := net.SplitHostPort(ln.Addr().String())
 
 	load := func(listen, base string) config.Config {
-		env := map[string]string{
+		cfg, err := config.Load([]string{
 			// Nothing listens on port 1: the healthcheck must not care.
-			"REGISTRY_UI_REGISTRY_URL": "http://127.0.0.1:1",
-			"REGISTRY_UI_LISTEN":       listen,
-			"REGISTRY_UI_BASE_PATH":    base,
-		}
-		cfg, err := config.Load(func(k string) string { return env[k] })
+			"REGISTRY_UI_REGISTRY_URL=http://127.0.0.1:1",
+			"REGISTRY_UI_LISTEN=" + listen,
+			"REGISTRY_UI_BASE_PATH=" + base,
+		})
 		if err != nil {
 			t.Fatal(err)
 		}

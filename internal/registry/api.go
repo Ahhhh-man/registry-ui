@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -83,26 +84,43 @@ type puller struct {
 
 var _ Source = (*API)(nil)
 
+// Option configures an API made by NewAPI.
+type Option func(*apiOptions)
+
+type apiOptions struct {
+	header http.Header
+}
+
+// WithHeader sends header with every request to the registry's host. It is
+// not sent to other hosts, such as a token service or a blob redirect.
+func WithHeader(header http.Header) Option {
+	return func(o *apiOptions) { o.header = header }
+}
+
 // NewAPI returns a Source for the registry at registryURL, e.g.
 // "http://registry:5000". insecure skips TLS certificate verification.
-func NewAPI(registryURL string, insecure bool) (*API, error) {
+func NewAPI(registryURL string, insecure bool, opts ...Option) (*API, error) {
 	u, err := url.Parse(registryURL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || strings.Trim(u.Path, "/") != "" {
 		return nil, fmt.Errorf("registry URL %q: want http(s)://host[:port]", registryURL)
 	}
-	var opts []name.Option
+	var o apiOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	var nameOpts []name.Option
 	if u.Scheme == "http" {
-		opts = append(opts, name.Insecure)
+		nameOpts = append(nameOpts, name.Insecure)
 	}
 	a := &API{max: maxRemembered}
-	if a.reg, err = name.NewRegistry(u.Host, opts...); err != nil {
+	if a.reg, err = name.NewRegistry(u.Host, nameOpts...); err != nil {
 		return nil, fmt.Errorf("registry URL %q: %w", registryURL, err)
 	}
 	t := remote.DefaultTransport.(*http.Transport).Clone()
 	if insecure {
 		t.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
-	a.transport = roundTripper{t}
+	a.transport = roundTripper{inner: t, host: a.reg.RegistryStr(), header: o.header}
 	return a, nil
 }
 
@@ -516,15 +534,27 @@ func (a *API) retire(p *puller) {
 	}
 }
 
-// roundTripper bounds each request to requestTimeout and notes auth
-// challenges. Pullers keep it from one call to the next, so it finds the
-// call a request belongs to in the request's context.
-type roundTripper struct{ inner http.RoundTripper }
+// roundTripper bounds each request to requestTimeout, adds header to
+// requests for host and notes auth challenges. Pullers keep it from one call
+// to the next, so it finds the call a request belongs to in the request's
+// context.
+type roundTripper struct {
+	inner  http.RoundTripper
+	host   string
+	header http.Header
+}
 
 // RoundTrip implements http.RoundTripper.
 func (t roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx, cancel := context.WithTimeout(req.Context(), requestTimeout)
-	resp, err := t.inner.RoundTrip(req.WithContext(ctx))
+	req = req.WithContext(ctx)
+	if len(t.header) > 0 && req.URL.Host == t.host {
+		// A RoundTripper mustn't change the caller's request, and WithContext
+		// shares its header map.
+		req.Header = req.Header.Clone()
+		maps.Copy(req.Header, t.header)
+	}
+	resp, err := t.inner.RoundTrip(req)
 	if err != nil {
 		cancel()
 		return nil, err

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -331,6 +332,87 @@ func TestNewAPI(t *testing.T) {
 		if _, err := registry.NewAPI(u, true); err != nil {
 			t.Errorf("NewAPI(%q): %v", u, err)
 		}
+	}
+}
+
+// WithHeader's headers reach the registry on every kind of request.
+func TestAPIWithHeader(t *testing.T) {
+	up, err := url.Parse(registrytest.New(t).URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	seen := map[string]bool{} // request kind -> every one had the header
+	proxy := httputil.NewSingleHostReverseProxy(up)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		kind := req.URL.Path
+		for _, k := range []string{"/_catalog", "/tags/", "/manifests/", "/blobs/"} {
+			if strings.Contains(kind, k) {
+				kind = k
+			}
+		}
+		mu.Lock()
+		ok, been := seen[kind]
+		seen[kind] = (ok || !been) && req.Header.Get("X-Api-Key") == "k3y" && req.Header.Get("X-Mirror") == "eu"
+		mu.Unlock()
+		proxy.ServeHTTP(w, req)
+	}))
+	t.Cleanup(srv.Close)
+
+	a, err := registry.NewAPI(srv.URL, false, registry.WithHeader(http.Header{"X-Api-Key": {"k3y"}, "X-Mirror": {"eu"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	if _, err := a.Catalog(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Tags(ctx, registrytest.RepoIndex); err != nil {
+		t.Fatal(err)
+	}
+	m, err := a.Resolve(ctx, registrytest.RepoIndex, registrytest.TagLatest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Config(ctx, registrytest.RepoIndex, m.Platforms[0].Config); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"/_catalog", "/tags/", "/manifests/", "/blobs/"} {
+		if ok, been := seen[kind]; !been || !ok {
+			t.Errorf("%s requests: seen %v, all with headers %v", kind, been, ok)
+		}
+	}
+}
+
+// WithHeader's headers stay on the registry's host: a redirect elsewhere, as
+// a registry may send for blobs, doesn't get them.
+func TestAPIWithHeaderOtherHost(t *testing.T) {
+	var leaked atomic.Bool
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked.Store(r.Header.Get("X-Api-Key") != "")
+		_, _ = w.Write([]byte(`{"tags":["1.0.0"]}`))
+	}))
+	t.Cleanup(elsewhere.Close)
+	reg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Api-Key") != "k3y" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		if r.URL.Path != "/v2/" {
+			http.Redirect(w, r, elsewhere.URL+r.URL.Path, http.StatusTemporaryRedirect)
+		}
+	}))
+	t.Cleanup(reg.Close)
+
+	a, err := registry.NewAPI(reg.URL, false, registry.WithHeader(http.Header{"X-Api-Key": {"k3y"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tags, err := a.Tags(t.Context(), "app"); err != nil || len(tags) != 1 {
+		t.Fatalf("tags %v, %v", tags, err)
+	}
+	if leaked.Load() {
+		t.Error("the other host got the header")
 	}
 }
 
