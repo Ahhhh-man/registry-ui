@@ -613,6 +613,35 @@ func TestSortsSkipMissingPlatforms(t *testing.T) {
 	}
 }
 
+// The created and size sorts share one summary per tag in place of its
+// manifest and config, so sorting again reads nothing, while a card still
+// reads the full manifest.
+func TestTagSortSummary(t *testing.T) {
+	s := newTestServer(t, "/")
+	src := &counted{Source: s.Src}
+	s.Src = registry.NewCache(src)
+	const repo = "library/redis"
+	tags, err := s.Src.Tags(t.Context(), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src.n.Store(0)
+	if note := s.sortTags(t.Context(), repo, slices.Clone(tags), "created"); note != "" || src.n.Load() == 0 {
+		t.Fatalf("the created sort made %d calls: %s", src.n.Load(), note)
+	}
+	for _, by := range []string{"size", "created"} {
+		src.n.Store(0)
+		s.sortTags(t.Context(), repo, slices.Clone(tags), by)
+		if n := src.n.Load(); n != 0 {
+			t.Errorf("the %s sort after a sort made %d calls, want 0", by, n)
+		}
+	}
+	src.n.Store(0)
+	if _, err := s.Src.Resolve(t.Context(), repo, "latest"); err != nil || src.n.Load() != 1 {
+		t.Errorf("resolving after a sort made %d calls, want 1: %v", src.n.Load(), err)
+	}
+}
+
 // In the fake, redis:7.2.6 lacks linux/amd64 and linux/s390x, and 7.0.15
 // lacks both of its platforms.
 func TestRepoMissingPlatforms(t *testing.T) {
