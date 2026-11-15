@@ -3,6 +3,8 @@ package registry
 import (
 	"context"
 	"errors"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -140,7 +142,7 @@ func TestCacheEvictsUnvisited(t *testing.T) {
 		ctx := t.Context()
 		src := &counter{}
 		c := NewCache(src)
-		c.max = 2
+		c.max = 2 * configSize(ctx, "a")
 		get := func(d string) { _, _ = c.Config(ctx, "repo", d) }
 
 		get("a")
@@ -164,6 +166,72 @@ func TestCacheEvictsUnvisited(t *testing.T) {
 	})
 }
 
+// configSize is the size of the entry counter's Config answer for digest.
+func configSize(ctx context.Context, digest string) int {
+	return entrySize(entryKey(ctx, "config", "repo", digest), ImageConfig{Labels: map[string]string{"who": "anonymous"}})
+}
+
+// tagLists is a counter whose repositories have as many tags as their name
+// says.
+type tagLists struct{ counter }
+
+func (s *tagLists) Tags(ctx context.Context, repo string) ([]string, error) {
+	_, err := s.call(ctx)
+	n, _ := strconv.Atoi(repo)
+	return slices.Repeat([]string{"v1.2.3"}, n), err
+}
+
+// The cache stays within its byte limit whatever mix of entries it holds,
+// and doesn't keep an entry bigger than a tenth of cacheSize.
+func TestCacheBoundedBySize(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
+		src := &tagLists{}
+		c := NewCache(src)
+		for i := range 3000 {
+			if i%10 == 0 {
+				_, _ = c.Tags(ctx, strconv.Itoa(i*3)) // up to 9,000 tags, about 200 kB
+			}
+			_, _ = c.TagTime(ctx, "repo", strconv.Itoa(i))
+			sum := 0
+			for _, el := range c.items {
+				sum += el.Value.(*cacheEntry).size
+			}
+			if sum != c.used || c.used > c.max {
+				t.Fatalf("after %d: entries take %d bytes, used says %d, limit %d", i, sum, c.used, c.max)
+			}
+		}
+
+		huge := strconv.Itoa(cacheSize/10/22 + 100) // 22 bytes a tag: past a tenth
+		calls := src.calls.Load()
+		_, _ = c.Tags(ctx, huge)
+		_, _ = c.Tags(ctx, huge)
+		src.want(t, calls+2)
+		if _, ok := c.items[entryKey(ctx, "tags", huge)]; ok {
+			t.Error("cache kept an entry bigger than a tenth of its limit")
+		}
+	})
+}
+
+// Every answer a Source gives has a size estimate, so a new type or a new
+// method can't be cached as if it took nothing.
+func TestEntrySize(t *testing.T) {
+	src := reflect.TypeFor[Source]()
+	for i := range src.NumMethod() {
+		m := src.Method(i)
+		t.Run(m.Name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Error(r)
+				}
+			}()
+			if n := entrySize("", reflect.Zero(m.Type.Out(0)).Interface()); n <= entryOverhead {
+				t.Errorf("entrySize = %d, want more than the overhead %d", n, entryOverhead)
+			}
+		})
+	}
+}
+
 // A catalog sort reads every repository in the same order on each visit.
 // When that's more than the cache holds, most of a visit should still come
 // from the cache, not each entry be evicted just before it's needed again.
@@ -172,7 +240,7 @@ func TestCacheSurvivesRepeatedScan(t *testing.T) {
 		ctx := t.Context()
 		src := &counter{}
 		c := NewCache(src)
-		c.max = 1000
+		c.max = 1000 * configSize(ctx, "100")
 		const keys = 1200
 		for pass := range 6 {
 			before := src.calls.Load()

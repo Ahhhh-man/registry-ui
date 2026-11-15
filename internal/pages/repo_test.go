@@ -636,6 +636,11 @@ func TestTagSortSummary(t *testing.T) {
 			t.Errorf("the %s sort after a sort made %d calls, want 0", by, n)
 		}
 	}
+	// The type filter reads the same summaries.
+	src.n.Store(0)
+	if kept, _, note := s.filterTags(t.Context(), repo, tags, "image"); note != "" || len(kept) == 0 || src.n.Load() != 0 {
+		t.Errorf("the type filter after a sort kept %d tags and made %d calls, want 0: %s", len(kept), src.n.Load(), note)
+	}
 	src.n.Store(0)
 	if _, err := s.Src.Resolve(t.Context(), repo, "latest"); err != nil || src.n.Load() != 1 {
 		t.Errorf("resolving after a sort made %d calls, want 1: %v", src.n.Load(), err)
