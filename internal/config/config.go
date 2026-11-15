@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -34,7 +36,10 @@ type Config struct {
 	Secret string
 	// RegistryInsecure skips TLS verification to the registry.
 	RegistryInsecure bool
-	LogLevel         slog.Level
+	// RegistryHeaders are sent with every request to the registry in API
+	// mode, from REGISTRY_UI_REGISTRY_HEADER_<NAME>. Nil when none are set.
+	RegistryHeaders http.Header
+	LogLevel        slog.Level
 	// StoragePath, when set, is an existing directory holding the registry's
 	// filesystem storage (storage mode).
 	StoragePath string
@@ -56,10 +61,20 @@ var tagSorts = []string{"version", "version-asc", "name", "created", "updated", 
 // ?sort= values, plus "name" for the order that has none.
 var catalogSorts = []string{"name", "name-desc", "created", "updated", "tags"}
 
-// Load reads the REGISTRY_UI_* variables through getenv (usually os.Getenv).
-// An empty value counts as unset. Every invalid value is reported in the
-// returned error, one per line.
-func Load(getenv func(string) string) (Config, error) {
+// headerPrefix starts the variables that set RegistryHeaders.
+const headerPrefix = "REGISTRY_UI_REGISTRY_HEADER_"
+
+// Load reads the REGISTRY_UI_* variables from environ (usually os.Environ()),
+// a list of "key=value" strings. An empty value counts as unset. Every invalid
+// value is reported in the returned error, one per line.
+func Load(environ []string) (Config, error) {
+	env := make(map[string]string, len(environ))
+	for _, kv := range environ {
+		k, v, _ := strings.Cut(kv, "=")
+		env[k] = v
+	}
+	getenv := func(k string) string { return env[k] }
+
 	var errs []error
 	bad := func(name, format string, args ...any) {
 		errs = append(errs, fmt.Errorf("%s: "+format, append([]any{name}, args...)...))
@@ -137,6 +152,26 @@ func Load(getenv func(string) string) (Config, error) {
 		}
 	}
 
+	for _, k := range slices.Sorted(maps.Keys(env)) {
+		v := env[k]
+		suffix, ok := strings.CutPrefix(k, headerPrefix)
+		if !ok || v == "" {
+			continue
+		}
+		if suffix == "" || strings.ContainsFunc(suffix, func(r rune) bool { return !isTokenRune(r) }) {
+			bad(k, "the part after %s must be letters, digits and underscores, e.g. %sX_API_KEY", headerPrefix, headerPrefix)
+			continue
+		}
+		if strings.ContainsAny(v, "\r\n\x00") {
+			bad(k, "the value must be on one line")
+			continue
+		}
+		if c.RegistryHeaders == nil {
+			c.RegistryHeaders = http.Header{}
+		}
+		c.RegistryHeaders.Set(strings.ReplaceAll(suffix, "_", "-"), v)
+	}
+
 	c.TagSort = "version"
 	if v := getenv("REGISTRY_UI_TAG_SORT"); v != "" {
 		c.TagSort = v
@@ -170,8 +205,15 @@ func Load(getenv func(string) string) (Config, error) {
 	return c, errors.Join(errs...)
 }
 
+// isTokenRune reports whether r may appear in the name part of a header
+// variable: ASCII letters, digits and underscores (which become hyphens).
+func isTokenRune(r rune) bool {
+	return r == '_' || r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'
+}
+
 // LogValue implements slog.LogValuer so the config can be logged as-is. It
-// never includes the secret or any password in the registry URL.
+// never includes the secret, any password in the registry URL or the values of
+// registry headers, only their names.
 func (c Config) LogValue() slog.Value {
 	registry := ""
 	if c.RegistryURL != nil {
@@ -185,6 +227,7 @@ func (c Config) LogValue() slog.Value {
 		slog.String("base_path", c.BasePath),
 		slog.Bool("secret_set", c.Secret != ""),
 		slog.Bool("registry_insecure", c.RegistryInsecure),
+		slog.Any("registry_headers", slices.Sorted(maps.Keys(c.RegistryHeaders))),
 		slog.String("log_level", c.LogLevel.String()),
 		slog.String("storage_path", c.StoragePath),
 		slog.String("tag_sort", c.TagSort),

@@ -49,7 +49,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "healthcheck":
-		cfg, err := config.Load(os.Getenv)
+		cfg, err := config.Load(os.Environ())
 		if err == nil {
 			err = healthcheck(cfg)
 		}
@@ -64,7 +64,7 @@ func main() {
 }
 
 func serve() error {
-	cfg, err := config.Load(os.Getenv)
+	cfg, err := config.Load(os.Environ())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "invalid configuration:\n%v\n", err)
 		os.Exit(1)
@@ -121,9 +121,12 @@ func serve() error {
 var newSource = func(cfg config.Config) (registry.Source, error) {
 	if cfg.StoragePath != "" {
 		slog.Warn("storage mode: the registry's auth is not consulted, so anyone who can reach this UI can see every repository; put it behind your own auth if that matters")
+		if len(cfg.RegistryHeaders) > 0 {
+			slog.Warn("storage mode: REGISTRY_UI_REGISTRY_HEADER_* is ignored, since the registry's API isn't used")
+		}
 		return registry.NewStorage(cfg.StoragePath)
 	}
-	return registry.NewAPI(cfg.RegistryURL.String(), cfg.RegistryInsecure)
+	return registry.NewAPI(cfg.RegistryURL.String(), cfg.RegistryInsecure, registry.WithHeader(cfg.RegistryHeaders))
 }
 
 // healthcheck fetches one embedded static asset from the UI's own listener.

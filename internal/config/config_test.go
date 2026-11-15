@@ -3,14 +3,20 @@ package config
 import (
 	"bytes"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
 
 func load(env map[string]string) (Config, error) {
-	return Load(func(k string) string { return env[k] })
+	environ := make([]string, 0, len(env))
+	for k, v := range env {
+		environ = append(environ, k+"="+v)
+	}
+	return Load(environ)
 }
 
 func TestLoad(t *testing.T) {
@@ -243,8 +249,12 @@ func TestLoadReportsEveryError(t *testing.T) {
 
 func TestLogValueHidesSecrets(t *testing.T) {
 	c, err := load(map[string]string{
-		"REGISTRY_UI_REGISTRY_URL": "http://user:hunter2@registry:5000",
-		"REGISTRY_UI_SECRET":       "s3cr3t-key",
+		"REGISTRY_UI_REGISTRY_URL":               "http://user:hunter2@registry:5000",
+		"REGISTRY_UI_SECRET":                     "s3cr3t-key",
+		"REGISTRY_UI_REGISTRY_HEADER_X_API_KEY":  "h3ader-key",
+		"REGISTRY_UI_REGISTRY_HEADER_X_MIRROR":   "eu-west",
+		"REGISTRY_UI_REGISTRY_HEADER_UNSET_ONE":  "",
+		"REGISTRY_UI_REGISTRY_HEADERS_NOT_MATCH": "x",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -252,12 +262,48 @@ func TestLogValueHidesSecrets(t *testing.T) {
 	var buf bytes.Buffer
 	slog.New(slog.NewTextHandler(&buf, nil)).Info("start", "config", c)
 	out := buf.String()
-	for _, s := range []string{"hunter2", "s3cr3t-key"} {
+	for _, s := range []string{"hunter2", "s3cr3t-key", "h3ader-key", "eu-west"} {
 		if strings.Contains(out, s) {
 			t.Errorf("log output contains %q: %s", s, out)
 		}
 	}
-	if !strings.Contains(out, "config.secret_set=true") {
-		t.Errorf("log output should say the secret is set: %s", out)
+	for _, s := range []string{"config.secret_set=true", `config.registry_headers="[X-Api-Key X-Mirror]"`} {
+		if !strings.Contains(out, s) {
+			t.Errorf("log output should contain %q: %s", s, out)
+		}
+	}
+}
+
+func TestLoadRegistryHeaders(t *testing.T) {
+	c, err := load(map[string]string{
+		"REGISTRY_UI_REGISTRY_URL":              "http://registry:5000",
+		"REGISTRY_UI_REGISTRY_HEADER_X_API_KEY": "k3y",
+		"REGISTRY_UI_REGISTRY_HEADER_mirror":    "eu",
+		"REGISTRY_UI_REGISTRY_HEADER_EMPTY":     "",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := http.Header{"X-Api-Key": {"k3y"}, "Mirror": {"eu"}}
+	if !reflect.DeepEqual(c.RegistryHeaders, want) {
+		t.Errorf("got %v, want %v", c.RegistryHeaders, want)
+	}
+
+	c, err = load(map[string]string{"REGISTRY_UI_REGISTRY_URL": "http://registry:5000"})
+	if err != nil || c.RegistryHeaders != nil {
+		t.Errorf("no header variables: got %v, %v; want nil", c.RegistryHeaders, err)
+	}
+
+	for k, v := range map[string]string{
+		"REGISTRY_UI_REGISTRY_HEADER_":      "x",
+		"REGISTRY_UI_REGISTRY_HEADER_A.B":   "x",
+		"REGISTRY_UI_REGISTRY_HEADER_X_KEY": "a\r\nInjected: 1",
+	} {
+		_, err := load(map[string]string{"REGISTRY_UI_REGISTRY_URL": "http://registry:5000", k: v})
+		if err == nil || !strings.Contains(err.Error(), k+":") {
+			t.Errorf("%s=%q: got %v, want an error naming it", k, v, err)
+		} else if strings.Contains(err.Error(), "Injected") {
+			t.Errorf("%s: the error repeats the value: %v", k, err)
+		}
 	}
 }
